@@ -49,8 +49,14 @@ def main(argv):
 	stitchedList = []
 	for FeHIdx in range(nFeHs):
 		for ageIdx in range(nAges):
-			isochroneFileP = "isochrones/Parsec/parsecIso_logT" + str(logAgeArr[ageIdx]) + "_FeH" + str(FeHArr[FeHIdx]) + ".dat"
-			isochroneFileS = "isochrones/stitched/isochrones-S-logT" + str(logAgeArr[ageIdx]) + "-FeH" + str(FeHArr[FeHIdx]) + ".dat"
+			logAge_str = f"{logAgeArr[ageIdx]:03.3f}".rstrip("0")
+			if logAge_str[-1] == '.':
+				logAge_str += '0'
+			feHIso_str = f"{FeHArr[FeHIdx]:.2f}".rstrip("0")
+			if feHIso_str[-1] == '.':
+				feHIso_str += '0'
+			isochroneFileP = f"isochrones/Parsec/parsecIso_logT{logAge_str}_FeH{feHIso_str}.dat"
+			isochroneFileS = f"isochrones/stitched/isochrones-S-logT{logAge_str}-FeH{feHIso_str}.dat"
 			ParsecList.append([isochroneFileP, logAgeArr[ageIdx], FeHArr[FeHIdx], 'P'])
 			stitchedList.append([isochroneFileS, logAgeArr[ageIdx], FeHArr[FeHIdx], 'S'])
 			
@@ -121,12 +127,20 @@ def interpolateIsochroneFile(args):
 	# saving templates and print screen message.
 	if isoType == 'P':
 		FeH, logAge, mass, logL, logTeff, logg, magB, magV, stage = np.loadtxt(isochroneFile, unpack=True)
-		sName = "Parsec/templates-logT" + str(logAgeIso) + "-FeH" + str(FeHIso) + ".hdf5"
-		print(("Interpolating Parsec isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso)))
+		logAge_str = f"{logAgeIso:03.3f}".rstrip("0")
+		if logAge_str[-1] == '.':
+			logAge_str += '0'
+		feHIso_str = f"{FeHIso:.2f}".rstrip("0")
+		if feHIso_str[-1] == '.':
+				feHIso_str += '0'
+		sName = f"Parsec/templates-logT{logAge_str}-FeH{feHIso_str}.hdf5"
+		print("Interpolating Parsec isochrone with log t = " + logAge_str + " and [Fe/H] = " + feHIso_str)
 	elif isoType == 'S':
 		FeH, logAge, mass, logTeff, logg, logL, magV, magR, isoID, stage = np.loadtxt(isochroneFile, unpack=True)
-		sName = "stitched/templates-logT" + str(logAgeIso) + "-FeH" + str(FeHIso) + ".hdf5"
-		print(("Interpolating stitched isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso)))
+		logAge_str = f"{logAgeIso:.3f}".rstrip("0")
+		feHIso_str = f"{FeHIso:.2f}".rstrip("0")
+		sName = "stitched/templates-logT" + logAge_str + "-FeH" + feHIso_str + ".hdf5"
+		print("Interpolating stitched isochrone with log t = " + logAge_str + " and [Fe/H] = " + feHIso_str)
 	else:
 		raise sys.exit("\nType of isochrone not recognized.\n")
 	lum = 10**logL
