@@ -41,7 +41,7 @@ def setup(options):
 	abVariations['Si'] = options[option_section, "sampleSi"]
 	abVariations['Ti'] = options[option_section, "sampleTi"]
 	abVariations['Na'] = options[option_section, "sampleNa"]
-	if any(value == True for value in abVariations.values()):
+	if any(value == True for value in list(abVariations.values())):
 		resFunHDF5 = options[option_section, "resFunHDF5"]
 	else:
 		resFunHDF5 = None

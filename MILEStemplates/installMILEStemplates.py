@@ -94,7 +94,7 @@ def printDisclaimer():
 	print("\'python installMILEStemplates.py -n nCores\'.")
 	print("\nAlso note that by default the stellar templates are not binned. Use the")
 	print("option \'-b\' to apply the binning procedure of Dries et al. (2018).")
-	raw_input("\nPress enter to continue")
+	input("\nPress enter to continue")
 
 	
 def interpolateIsochroneFile(args):
@@ -122,11 +122,11 @@ def interpolateIsochroneFile(args):
 	if isoType == 'P':
 		FeH, logAge, mass, logL, logTeff, logg, magB, magV, stage = np.loadtxt(isochroneFile, unpack=True)
 		sName = "Parsec/templates-logT" + str(logAgeIso) + "-FeH" + str(FeHIso) + ".hdf5"
-		print("Interpolating Parsec isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso))
+		print(("Interpolating Parsec isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso)))
 	elif isoType == 'S':
 		FeH, logAge, mass, logTeff, logg, logL, magV, magR, isoID, stage = np.loadtxt(isochroneFile, unpack=True)
 		sName = "stitched/templates-logT" + str(logAgeIso) + "-FeH" + str(FeHIso) + ".hdf5"
-		print("Interpolating stitched isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso))
+		print(("Interpolating stitched isochrone with log t = " + str(logAgeIso) + " and [Fe/H] = " + str(FeHIso)))
 	else:
 		raise sys.exit("\nType of isochrone not recognized.\n")
 	lum = 10**logL

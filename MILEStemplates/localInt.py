@@ -351,9 +351,9 @@ def localInterpolator(spectra, Teff, logg, FeH, SN, Teff0, logg0, FeH0):
 	if normalization != 0:
 		recSpectrum /= normalization
 	else:
-		print "\n\nNormalization of the interpolated spectrum is found to be 0. This"
-		print "probably implies that no stars have been found around the requested"
-		print "point and that the point is out of range for the intepolator.\n"
+		print("\n\nNormalization of the interpolated spectrum is found to be 0. This")
+		print("probably implies that no stars have been found around the requested")
+		print("point and that the point is out of range for the intepolator.\n")
 		raise sys.exit()
 	
 	return recSpectrum

@@ -252,7 +252,7 @@ class respFunctions:
 		self.nSSPs = nSSPs
 		self.abVariations = abVariations
 		self.wavelength = wavelength
-		if all(value == False for value in self.abVariations.values()):
+		if all(value == False for value in list(self.abVariations.values())):
 			self.applyResp = False
 		else:
 			self.applyResp = True

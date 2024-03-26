@@ -91,7 +91,7 @@ class invertCSP:
 
 		"""
 		if self.regScheme != 1 and self.regScheme != 2:
-			print "\nWARNING: regularization scheme not recognized, using identity matrix by default.\n"
+			print("\nWARNING: regularization scheme not recognized, using identity matrix by default.\n")
 		
 		self.C = np.identity(self.nTemplates)
 		if self.regScheme == 2:

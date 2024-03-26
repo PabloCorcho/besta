@@ -3,7 +3,7 @@ import os
 import argparse
 import subprocess
 import multiprocessing
-import ConfigParser
+import configparser
 import numpy as np
 
 def main(argv):
@@ -79,7 +79,7 @@ def configure(args):
 	options['spectrum'] = args.spectrum
 	
 	# Read and check validity options in HBSPS.ini
-	Config = ConfigParser.ConfigParser()
+	Config = configparser.ConfigParser()
 	Config.read("HBSPS.ini")
 	
 	# Stellar templates
