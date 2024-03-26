@@ -1,0 +1,4 @@
+local/
+venv/
+__pycache__/
+cosmosis-standard-library/
