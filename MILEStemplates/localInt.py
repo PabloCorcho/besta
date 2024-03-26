@@ -327,23 +327,23 @@ def localInterpolator(spectra, Teff, logg, FeH, SN, Teff0, logg0, FeH0):
 		boxStars = [boxStars[0], boxStars[2], boxStars[4], boxStars[6]]
  	 
  	# Determined weighted spectra, parameters and SN-ratios of boxes
- 	boxSpectra, boxParameters = getBoxSpectra(theta, logg, FeH, theta0, logg0, FeH0, dTheta, dLogg, dFeH, boxStars, nStars, nBins, spectra, SN, SNmax)
+	boxSpectra, boxParameters = getBoxSpectra(theta, logg, FeH, theta0, logg0, FeH0, dTheta, dLogg, dFeH, boxStars, nStars, nBins, spectra, SN, SNmax)
  	
  	# Determine weights different boxes
- 	boxWeights = getBoxWeights(boxParameters, theta0, logg0, FeH0, dTheta, dLogg, dFeH)
+	boxWeights = getBoxWeights(boxParameters, theta0, logg0, FeH0, dTheta, dLogg, dFeH)
  	
 	# Calculate interpolated spectrum
 	recSpectrum = np.zeros(nBins)
- 	normalization = 0
+	normalization = 0
  	
- 	if (5040.0 / theta0 < 3500.0 or 5040.0 / theta0 > 9000.0):
+	if (5040.0 / theta0 < 3500.0 or 5040.0 / theta0 > 9000.0):
 		for id1 in range(4):
 			if boxWeights[id1] != 0:
 				recSpectrum += boxWeights[id1] * boxSpectra[id1]
 				normalization += boxWeights[id1]
 				
 	else:
- 		for id1 in range(8):
+		for id1 in range(8):
 			if boxWeights[id1] != 0:
 				recSpectrum += boxWeights[id1] * boxSpectra[id1]
 				normalization += boxWeights[id1]
