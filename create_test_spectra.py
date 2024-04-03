@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pst.SSP import BaseGM
 import specBasics
 
+from pst.utils import flux_conserving_interpolation
 
 ssp = BaseGM()
 print(ssp.wavelength)
@@ -35,6 +36,9 @@ ppxf_sed, lnwl, _ = specBasics.log_rebin(ori_wl, ori_sed[2, 10], velscale=velsca
 ref_spectra_sm = specBasics.smoothSpectrumFast(
     ref_spectra, sigma_pix)
 
+ref_spectra_finterp = flux_conserving_interpolation(
+    ssp.wavelength / (1 + redshift), ssp.wavelength, ref_spectra_sm)
+
 print(np.diff(np.log(ssp.wavelength)), ssp.wavelength.size)
 print(np.diff(lnwl), lnwl.size)
 
@@ -43,6 +47,7 @@ plt.plot(ori_wl, ori_sed[2, 10], '-', label='Original')
 plt.plot(ssp.wavelength, ref_spectra, '-', label='Reinterpolated')
 plt.plot(ssp.wavelength, ref_spectra_sm, '-', label='Smoothed')
 plt.plot(ssp.wavelength * (1 + redshift), ref_spectra_sm, '-', label='Redshifted')
+plt.plot(ssp.wavelength, ref_spectra_finterp, '-', label='INT')
 plt.legend()
 plt.show()
 
