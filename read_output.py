@@ -41,6 +41,9 @@ syn_spectra = np.sum(ssp_weights[:, np.newaxis] * ssp_sed, axis=0)
 syn_spectra = specBasics.smoothSpectrumFast(
     syn_spectra, sigma_pix)
 
+syn_spectra_smooth = syn_spectra.copy()
+syn_spectra_smooth_wl = ssp_wl.copy()
+
 syn_spectra = flux_conserving_interpolation(obs_wl, ssp_wl * (1 + redshift), syn_spectra)
 ssp_wl = obs_wl
 
@@ -52,8 +55,10 @@ residuals = obs_f / norm_obs - syn_spectra / norm_syn
 
 fig, axs = plt.subplots(nrows=2, ncols=1, sharex=True)
 ax = axs[0]
-ax.errorbar(obs_wl, obs_f / norm_obs, yerr=obs_e/norm_obs, errorevery=5)
-ax.plot(ssp_wl, syn_spectra / norm_syn)
+ax.errorbar(obs_wl, obs_f / norm_obs, yerr=obs_e/norm_obs, errorevery=5, label='obs')
+ax.plot(syn_spectra_smooth_wl, syn_spectra_smooth / norm_syn, label='synth-sm')
+ax.plot(ssp_wl, syn_spectra / norm_syn, label='synth-sm-vel')
+ax.legend()
 ax = axs[1]
 ax.plot(obs_wl, residuals)
 ax.set_ylim(np.nanpercentile(residuals[(obs_wl >= 4000) & (obs_wl <= 7000)], [5, 95]))
