@@ -21,7 +21,17 @@ def X2min(spectrum, recSp, cov):
 	
 	return chiSq
 
-	
+def make_values_file(values_file, n_ssp, los_v_lims=[-300, 300], sigma_lims=[10, 300]):
+	print(f"Creating values file: {values_file}")
+	with open(values_file, "w") as f:
+		f.write("[parameters]\n")
+		for i in range(n_ssp):
+			f.write(f"ssp{i + 1} = 0.0 0.5 1.0\n")
+		f.write(
+			f"los_vel = {los_v_lims[0]} {(los_v_lims[0] + los_v_lims[1]) / 2} {los_v_lims[1]}\n")
+		f.write(
+			f"sigma = {sigma_lims[0]} {(sigma_lims[0] + sigma_lims[1]) / 2} {sigma_lims[1]}\n")
+
 def setup(options):
 	"""Set-up the COSMOSIS sampler.
 	
@@ -48,6 +58,7 @@ def setup(options):
 	# bcov = 10**(options[option_section, "logbcov"])
 	polOrder = options[option_section, "polOrder"]
 
+	values_file = options[option_section, "values"]
     # INITIALISE OBSERVATIONAL DATA
 	# Read wavelength, spectrum and create covariance matrix
 	wavelength, flux, error = np.loadtxt(fileName, unpack=True)
@@ -84,35 +95,19 @@ def setup(options):
 	sfh_age_bins = (age_range[:-1] + age_range[1:]) / 2
 	sfh_met_bins = (met_range[:-1] + met_range[1:]) / 2
 	ssp = getattr(SSP, ssp_name)
-	if ssp_dir is 'None':
+	if ssp_dir == 'None':
 		ssp_dir = None
+	else:
+		print(f"SSP model directory: {ssp_dir}")
 	ssp = ssp(path=ssp_dir)
 	ssp_sed = np.zeros((n_met, n_ages, ssp.wavelength.size))
-    # Create a grid
-	spp_age_bins = ssp.log_ages_yr
-	lim = 1.5 * spp_age_bins[[0, -1]] - 0.5 * spp_age_bins[[1, -2]]
-	ssp_age_bins = np.hstack(
-            [lim[0], (spp_age_bins[1:] + spp_age_bins[:-1])/2, lim[1]])
-
-	spp_met_bins = ssp.metallicities
-	lim = 1.5 * spp_met_bins[[0, -1]] - 0.5 * spp_met_bins[[1, -2]]
-	ssp_met_bins = np.hstack(
-            [lim[0], (spp_met_bins[1:] + spp_met_bins[:-1])/2, lim[1]])
-	
-	ssp_age_idx = np.searchsorted(ssp_age_bins, age_range)
-	age_bins = [slice(ssp_age_idx[i], ssp_age_idx[i+1]) for i in range(n_ages)]
-	ssp_met_idx = np.searchsorted(ssp_met_bins, met_range)
-	met_bins = [slice(ssp_met_idx[i], ssp_met_idx[i+1]) for i in range(n_met)]
+	ssp.regrid(age_range, met_range)
 
 	ssp_prefix = []
-	for j, m_bin in enumerate(met_bins):
-		sed = np.mean(ssp.L_lambda[m_bin], axis=0)
-		for i, a_bin in enumerate(age_bins):
-			ssp_sed[j, i, :] = np.mean(sed[a_bin], axis=0)
-			ssp_prefix.append(f"SSP_logage_{sfh_age_bins[i]:05.2f}_z_{sfh_met_bins[j]:06.4f}")
-
-	ssp.L_lambda = ssp_sed
-	
+	for m in ssp.metallicities:
+		for a in ssp.log_ages_yr:
+			ssp_prefix.append(
+				f"SSP_logage_{a:05.2f}_z_{m:06.4f}")
 	# Rebin the spectra
 	print("Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s")
 	dlnlam = velscale / specBasics.constants.c.to('km/s').value
@@ -123,20 +118,20 @@ def setup(options):
         ln_wave[-1] + dlnlam * (1 + extra_offset_pixel) * oversampling + 0.5 * dlnlam,
         dlnlam)
 	ssp.interpolate_sed(np.exp(lnlam_bin_edges))
-	print(ln_wave.size, lnlam_bin_edges.size, ssp.wavelength.size)
-	print(ln_wave[:2], np.log(ssp.wavelength[int(extra_offset_pixel * oversampling):int((extra_offset_pixel +1)* oversampling) +1]))
-	
+
     # Reshape the SSPs SED to (n_models, wavelength)
 	ssp_sed = ssp.L_lambda.reshape(
 		(ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2]))
 	ssp_wl = ssp.wavelength
-	print("SSP SED shape: ", ssp_sed.shape)
+	print("Final SSP model shape: ", ssp_sed.shape)
 	
 	ssp_output_file = os.path.join(os.path.dirname(fileName), "ssp_model_spectra.dat")
 	print("Saving model spectra at: ", ssp_output_file)
 	np.savetxt(ssp_output_file, np.vstack((ssp_wl, ssp_sed)).T,
 			header=f"CSP logarithmically sampled (velscale={velscale / oversampling})" + "\nWavelength, " + ", ".join(ssp_prefix)
 			)
+
+	make_values_file(values_file=values_file, n_ssp=ssp_sed.shape[0])
 
 	# Basis of Legendre polynomials for multiplicative polynomial
 	AL = specBasics.getLegendrePolynomial(wavelength, polOrder, bounds=None)
@@ -196,6 +191,7 @@ def execute(block, config):
 	# lumFrs /= sumLumFrs
 	if sumLumFrs > 1:
 		prLumFrs = (sumLumFrs - 1)**2 / (2 * 1e-6)
+		# prLumFrs = -1e14
 	else:
 		prLumFrs = 0
 
@@ -229,7 +225,7 @@ def execute(block, config):
 	block[section_names.likelihoods, "HBSPS_SFH_like"] = like - prLumFrs
 
 	return 0
-	
-def cleanup(config):
-		
+
+
+def cleanup(config):		
 	return 0
