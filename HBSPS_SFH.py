@@ -36,6 +36,7 @@ def setup(options):
 	# Read paramaters/options from start-up file
 	fileName = options[option_section, "inputSpectrum"]
 	ssp_name = options[option_section, "SSPModel"]
+	ssp_dir = options[option_section, "SSPDir"]
 	age_range = options[option_section, "ageRange"]
 	met_range = options[option_section, "metRange"]
 	wl_range = options[option_section, "wlRange"]
@@ -83,7 +84,9 @@ def setup(options):
 	sfh_age_bins = (age_range[:-1] + age_range[1:]) / 2
 	sfh_met_bins = (met_range[:-1] + met_range[1:]) / 2
 	ssp = getattr(SSP, ssp_name)
-	ssp = ssp()
+	if ssp_dir is 'None':
+		ssp_dir = None
+	ssp = ssp(path=ssp_dir)
 	ssp_sed = np.zeros((n_met, n_ages, ssp.wavelength.size))
     # Create a grid
 	spp_age_bins = ssp.log_ages_yr
