@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 
 from pst.utils import flux_conserving_interpolation
 
-obs_wl, obs_f, obs_e = np.loadtxt("BaseGM_mock_spectra.dat", unpack=True)
 
-ssp_data = np.loadtxt("ssp_model_spectra.dat",
+obs_wl, obs_f, obs_e = np.loadtxt("BaseGM_mock_spectra_simple_ssp.dat", unpack=True)
+
+ssp_data = np.loadtxt("BaseGM_mock_spectra_simple_ssp.dat_ssp_model_spectra.dat",
                            unpack=True)
 print(ssp_data.shape)
 ssp_wl, ssp_sed = ssp_data[0], ssp_data[1:]
@@ -16,7 +17,7 @@ ssp_weights = []
 los_vel = None
 sigma = None
 
-with open("output/SFH/means.txt", "r") as f:
+with open("output/simple_ssp/means.txt", "r") as f:
     f.readline()
     for line in f.readlines():
         print(line)

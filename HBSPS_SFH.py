@@ -17,7 +17,7 @@ def X2min(spectrum, recSp, cov):
 	residual1 /= cov
 		
 	# Determine likelihood term (i.e. X2-value)
-	chiSq = -0.5*np.dot(residual1, residual2)
+	chiSq = -0.5 * np.dot(residual1, residual2)
 	
 	return chiSq
 
@@ -72,36 +72,34 @@ def setup(options):
 		(wavelength >= wl_range[0]) & (wavelength <= wl_range[1])
 					)[0]
 	wavelength = wavelength[goodIdx]
-	nBins = len(wavelength)
-	print("Spectra normalized using wavelength range: ", wl_norm_range)
-	normIdx = np.where((wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1]))[0]
-	norm_flux = np.mean(flux[normIdx])
-	flux = flux[goodIdx] / norm_flux
-	error = error[goodIdx] / norm_flux
-	cov = error * error
+	flux = flux[goodIdx]
+	cov = error[goodIdx]**2
 	print("Log-binning spectra to velocity scale: ", velscale)
 	flux, ln_wave, _ = specBasics.log_rebin(wavelength, flux, velscale=velscale)
 	cov, _, _ = specBasics.log_rebin(wavelength, cov, velscale=velscale)
 	wavelength = np.exp(ln_wave)
-
+	# Normalize spectra
+	print("Spectra normalized using wavelength range: ", wl_norm_range)
+	normIdx = np.where((wavelength >= wl_norm_range[0]) & (
+		wavelength <= wl_norm_range[1]))[0]
+	norm_flux = np.nanmedian(flux[normIdx])
+	flux /= norm_flux
+	cov /= norm_flux**2
 	# Add additional global covariance parameterized by bcov
 	medCov = np.median(cov)
 	# cov = cov + bcov*medCov
 
     # INITIALISE SSP MODEL
-	n_ages = len(age_range) - 1
-	n_met = len(met_range) - 1
-	n_models = n_ages * n_met
-	sfh_age_bins = (age_range[:-1] + age_range[1:]) / 2
-	sfh_met_bins = (met_range[:-1] + met_range[1:]) / 2
 	ssp = getattr(SSP, ssp_name)
 	if ssp_dir == 'None':
 		ssp_dir = None
 	else:
 		print(f"SSP model directory: {ssp_dir}")
 	ssp = ssp(path=ssp_dir)
-	ssp_sed = np.zeros((n_met, n_ages, ssp.wavelength.size))
 	ssp.regrid(age_range, met_range)
+	# Renormalize SSP Light-to-mass ratio
+	ssp_lmr = 1 / ssp.get_mass_lum_ratio(wl_norm_range)
+	ssp.L_lambda /= ssp_lmr[:, :, np.newaxis]
 
 	ssp_prefix = []
 	for m in ssp.metallicities:
@@ -125,7 +123,7 @@ def setup(options):
 	ssp_wl = ssp.wavelength
 	print("Final SSP model shape: ", ssp_sed.shape)
 	
-	ssp_output_file = os.path.join(os.path.dirname(fileName), "ssp_model_spectra.dat")
+	ssp_output_file = os.path.join(os.path.dirname(fileName), os.path.basename(fileName) + "_ssp_model_spectra.dat")
 	print("Saving model spectra at: ", ssp_output_file)
 	np.savetxt(ssp_output_file, np.vstack((ssp_wl, ssp_sed)).T,
 			header=f"CSP logarithmically sampled (velscale={velscale / oversampling})" + "\nWavelength, " + ", ".join(ssp_prefix)
@@ -194,6 +192,8 @@ def execute(block, config):
 		# prLumFrs = -1e14
 	else:
 		prLumFrs = 0
+	# Enforce normalization to 1.
+	# lumFrs /= sumLumFrs
 
 	lumFrs = np.array(lumFrs, dtype=float)
 	flux_model = np.sum(ssp_sed * lumFrs[:, np.newaxis], axis=0)
@@ -205,10 +205,6 @@ def execute(block, config):
 	flux_model = flux_conserving_interpolation(
 		wavelength, ssp_wl * (1 + redshift), flux_model)
 	# Apply polynomial correction to reconstructed spectrum
-	residual = flux / flux_model
-	norm = np.nanmedian(residual)
-	flux_model *= norm
-
 	# ALT = np.copy(AL)
 	# ALT = np.transpose(ALT)
 	# for i in range(nBins):

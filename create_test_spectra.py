@@ -13,7 +13,7 @@ ori_sed = ssp.L_lambda.copy()
 ori_wl = ssp.wavelength.copy()
 
 # Degrade the resolution
-velscale = 100
+velscale = 70
 delta_lnwl = velscale / specBasics.constants.c.to('km/s').value
 sigma = 150
 sigma_pix = sigma / velscale
@@ -51,8 +51,8 @@ plt.plot(ssp.wavelength, ref_spectra_finterp, '-', label='INT')
 plt.legend()
 plt.show()
 
-print("saving spectra at: BaseGM_mock_spectra.dat")
-np.savetxt("BaseGM_mock_spectra.dat",
+print("saving spectra at: BaseGM_mock_spectra_simple_ssp.dat")
+np.savetxt("BaseGM_mock_spectra_simple_ssp.dat",
            np.array(
                [ssp.wavelength * (1 + redshift),
                 ref_spectra_sm,
