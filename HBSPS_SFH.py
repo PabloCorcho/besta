@@ -25,8 +25,8 @@ def make_values_file(values_file, n_ssp, los_v_lims=[-300, 300], sigma_lims=[10,
 	print(f"Creating values file: {values_file}")
 	with open(values_file, "w") as f:
 		f.write("[parameters]\n")
-		for i in range(n_ssp):
-			f.write(f"ssp{i + 1} = 0.0 0.5 1.0\n")
+		for i in range(1, n_ssp):
+			f.write(f"ssp{i} = -4 -0.3 0\n")
 		f.write(
 			f"los_vel = {los_v_lims[0]} {(los_v_lims[0] + los_v_lims[1]) / 2} {los_v_lims[1]}\n")
 		f.write(
@@ -45,8 +45,15 @@ def setup(options):
 	
 	# Read paramaters/options from start-up file
 	fileName = options[option_section, "inputSpectrum"]
-	ssp_name = options[option_section, "SSPModel"]
+
+	ssp_name = options[option_section, "SSPModel"]	
 	ssp_dir = options[option_section, "SSPDir"]
+	if options.has_value("HBSPS_SFH", "SSPModelArgs"):
+		ssp_args = options.get_string("HBSPS_SFH", "SSPModelArgs")
+		ssp_args = ssp_args.split(",")
+	else:
+		ssp_args = []
+
 	age_range = options[option_section, "ageRange"]
 	met_range = options[option_section, "metRange"]
 	wl_range = options[option_section, "wlRange"]
@@ -95,7 +102,8 @@ def setup(options):
 		ssp_dir = None
 	else:
 		print(f"SSP model directory: {ssp_dir}")
-	ssp = ssp(path=ssp_dir)
+	print("SSP Model extra arguments: ", ssp_args)
+	ssp = ssp(*ssp_args, path=ssp_dir)
 	ssp.regrid(age_range, met_range)
 	# Renormalize SSP Light-to-mass ratio
 	ssp_lmr = 1 / ssp.get_mass_lum_ratio(wl_norm_range)
@@ -175,9 +183,9 @@ def execute(block, config):
 	# Load sampled parameters
 	sigma = block["parameters", "sigma"]
 	los_vel = block["parameters", "los_vel"]
-	lumFrs = np.array([block["parameters", f"ssp{tIdx}"] for tIdx in range(1, ssp_sed.shape[0] + 1)],
+	lumFrs = np.array([block["parameters", f"ssp{tIdx}"] for tIdx in range(1, ssp_sed.shape[0])],
 				   dtype=float)
-
+	lumFrs = 10**lumFrs
 	# The total sum of luminosity fractions should always be one. If
 	# the sum is larger than one, then penalize model with additional
 	# (strict) prior to prevent degeneracies with multiplicative
@@ -193,6 +201,8 @@ def execute(block, config):
 	else:
 		prLumFrs = 0
 	# Enforce normalization to 1.
+	lumFrs = np.insert(lumFrs, lumFrs.size,
+					   np.clip(1 - sumLumFrs, a_min=0, a_max=None))
 	# lumFrs /= sumLumFrs
 
 	lumFrs = np.array(lumFrs, dtype=float)
