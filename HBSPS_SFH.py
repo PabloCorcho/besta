@@ -1,13 +1,14 @@
 import os
 import sys
 import numpy as np
-import cosmosis
-from cosmosis.datablock import option_section, names as section_names
-import specBasics
-import SPSbasics
+from scipy.signal import convolve
 
+from cosmosis.datablock import option_section, names as section_names
+import hbsps.specBasics as specBasics
 from pst import SSP
-from pst.utils import flux_conserving_interpolation
+
+import extinction
+
 
 def X2min(spectrum, recSp, cov):
 	# Determine residual, divide first residual vector by 
@@ -21,7 +22,9 @@ def X2min(spectrum, recSp, cov):
 	
 	return chiSq
 
-def make_values_file(values_file, n_ssp, los_v_lims=[-300, 300], sigma_lims=[10, 300]):
+def make_values_file(values_file, n_ssp, los_v_lims=[-300, 300],
+					 sigma_lims=[10, 300], inc_extinction=True,
+					 av_lims=[0.0, 3.0]):
 	print(f"Creating values file: {values_file}")
 	with open(values_file, "w") as f:
 		f.write("[parameters]\n")
@@ -31,6 +34,10 @@ def make_values_file(values_file, n_ssp, los_v_lims=[-300, 300], sigma_lims=[10,
 			f"los_vel = {los_v_lims[0]} {(los_v_lims[0] + los_v_lims[1]) / 2} {los_v_lims[1]}\n")
 		f.write(
 			f"sigma = {sigma_lims[0]} {(sigma_lims[0] + sigma_lims[1]) / 2} {sigma_lims[1]}\n")
+		if inc_extinction:
+			f.write(
+			f"av = {av_lims[0]} {(av_lims[0] + av_lims[1]) / 2} {av_lims[1]}\n")
+
 
 def setup(options):
 	"""Set-up the COSMOSIS sampler.
@@ -42,10 +49,13 @@ def setup(options):
 			the sampler.
 			
 	"""
-	
 	# Read paramaters/options from start-up file
 	fileName = options[option_section, "inputSpectrum"]
-
+	# Wavelegth range to include in the fit
+	wl_range = options[option_section, "wlRange"]
+	# Wavelegth range to renormalize the spectra
+	wl_norm_range = options[option_section, "wlNormRange"]
+	# SSP parameters
 	ssp_name = options[option_section, "SSPModel"]	
 	ssp_dir = options[option_section, "SSPDir"]
 	if options.has_value("HBSPS_SFH", "SSPModelArgs"):
@@ -53,21 +63,26 @@ def setup(options):
 		ssp_args = ssp_args.split(",")
 	else:
 		ssp_args = []
-
 	age_range = options[option_section, "ageRange"]
 	met_range = options[option_section, "metRange"]
-	wl_range = options[option_section, "wlRange"]
+	# Dust extinction configuration
+	if options.has_value("HBSPS_SFH", "ExtinctionLaw"):
+		ext_law = options.get_string("HBSPS_SFH", "ExtinctionLaw")
+		extinction_law = getattr(extinction, ext_law)
+		inc_extinction = True
+	else:
+		extinction_law = None
+		inc_extinction = False
 
-	wl_norm_range = options[option_section, "wlNormRange"]
+	# Input redshift (initial guess)
 	redshift = options[option_section, "redshift"]
+	# Sampling configuration
 	velscale = options[option_section, "velscale"]
 	oversampling = options[option_section, "oversampling"]
-	# bcov = 10**(options[option_section, "logbcov"])
-	polOrder = options[option_section, "polOrder"]
-
+	# Pipeline values file
 	values_file = options[option_section, "values"]
-    # INITIALISE OBSERVATIONAL DATA
-	# Read wavelength, spectrum and create covariance matrix
+	# ------------------------------------------------------------------------ #
+	# Read wavelength and spectra
 	wavelength, flux, error = np.loadtxt(fileName, unpack=True)
 	# Set spectra in rest-frame
 	print(f"Input redshift: {redshift}")
@@ -92,11 +107,8 @@ def setup(options):
 	norm_flux = np.nanmedian(flux[normIdx])
 	flux /= norm_flux
 	cov /= norm_flux**2
-	# Add additional global covariance parameterized by bcov
-	medCov = np.median(cov)
-	# cov = cov + bcov*medCov
-
-    # INITIALISE SSP MODEL
+	# ------------------------------------------------------------------------ #
+    # Initialise SSP model
 	ssp = getattr(SSP, ssp_name)
 	if ssp_dir == 'None':
 		ssp_dir = None
@@ -105,19 +117,15 @@ def setup(options):
 	print("SSP Model extra arguments: ", ssp_args)
 	ssp = ssp(*ssp_args, path=ssp_dir)
 	ssp.regrid(age_range, met_range)
+
 	# Renormalize SSP Light-to-mass ratio
 	ssp_lmr = 1 / ssp.get_mass_lum_ratio(wl_norm_range)
 	ssp.L_lambda /= ssp_lmr[:, :, np.newaxis]
 
-	ssp_prefix = []
-	for m in ssp.metallicities:
-		for a in ssp.log_ages_yr:
-			ssp_prefix.append(
-				f"SSP_logage_{a:05.2f}_z_{m:06.4f}")
 	# Rebin the spectra
 	print("Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s")
 	dlnlam = velscale / specBasics.constants.c.to('km/s').value
-	extra_offset_pixel = 300 / velscale
+	extra_offset_pixel = int(300 / velscale)
 	dlnlam /= oversampling
 	lnlam_bin_edges = np.arange(
 		ln_wave[0] - dlnlam * extra_offset_pixel * oversampling - 0.5 * dlnlam,
@@ -130,34 +138,29 @@ def setup(options):
 		(ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2]))
 	ssp_wl = ssp.wavelength
 	print("Final SSP model shape: ", ssp_sed.shape)
-	
-	ssp_output_file = os.path.join(os.path.dirname(fileName), os.path.basename(fileName) + "_ssp_model_spectra.dat")
-	print("Saving model spectra at: ", ssp_output_file)
-	np.savetxt(ssp_output_file, np.vstack((ssp_wl, ssp_sed)).T,
-			header=f"CSP logarithmically sampled (velscale={velscale / oversampling})" + "\nWavelength, " + ", ".join(ssp_prefix)
-			)
 
-	make_values_file(values_file=values_file, n_ssp=ssp_sed.shape[0])
-
-	# Basis of Legendre polynomials for multiplicative polynomial
-	AL = specBasics.getLegendrePolynomial(wavelength, polOrder, bounds=None)
-
-	# Pass parameters to execute function.
+	if extinction_law is not None:
+		norm_extinction = np.median(extinction_law(wavelength[normIdx], 1, 3.1))
+	else:
+		norm_extinction = None
+	# ------------------------------------------------------------------------ #
+	make_values_file(values_file=values_file, n_ssp=ssp_sed.shape[0],
+				     inc_extinction=inc_extinction)
 	config = {}
+	# Observational information
 	config['flux'] = flux
-	config['wavelength'] = wavelength
-	config['velscale'] = velscale
-	config['oversampling'] = oversampling
-	#config['nBins'] = nBins
-	#config['goodIdx'] = goodIdx
-	config['error'] = error
 	config['cov'] = cov
-	config['polOrder'] = polOrder
-	config['AL'] = AL
-	# config['bcov'] = bcov
+	config['wavelength'] = wavelength
+	# SSP model
 	config['ssp_sed'] = ssp_sed
 	config['ssp_wl'] = ssp_wl
-
+	# Grid parameters
+	config['velscale'] = velscale
+	config['oversampling'] = oversampling
+	config['extra_pixels'] = extra_offset_pixel
+	# Dust extinction
+	config['extinction_law'] = extinction_law
+	config['norm_extinction'] = norm_extinction
 	return config
 	
 def execute(block, config):
@@ -166,69 +169,56 @@ def execute(block, config):
 	likelihood resulting from this function is the evidence on the basis
 	of which the parameter space is sampled.
 	"""
-	
 	# Obtain parameters from setup
 	flux = config['flux']
+	cov = config['cov']
 	wavelength = config['wavelength']
 	ssp_sed = config['ssp_sed']
-	ssp_wl = config['ssp_wl']
+	# ssp_wl = config['ssp_wl']
 	velscale = config['velscale']
 	oversampling = config['oversampling']
-	#nBins = config['nBins']
-	#error = config['error']
-	cov = config['cov']
-	polOrder = config['polOrder']
+	extra_pixels = config['extra_pixels']
+	extinction_law = config['extinction_law']
+	norm_extinction = config['norm_extinction']
 
-	AL = config['AL']
 	# Load sampled parameters
 	sigma = block["parameters", "sigma"]
 	los_vel = block["parameters", "los_vel"]
 	lumFrs = np.array([block["parameters", f"ssp{tIdx}"] for tIdx in range(1, ssp_sed.shape[0])],
 				   dtype=float)
 	lumFrs = 10**lumFrs
-	# The total sum of luminosity fractions should always be one. If
-	# the sum is larger than one, then penalize model with additional
-	# (strict) prior to prevent degeneracies with multiplicative
-	# polynomial. Set the fraction of the last remaining SSP to one
-	# minus the other luminosity fractions (or zero if this is already
-	# higher than one). This saves one parameter in sampling procedure.
-	#lumFrs = np.array(lumFrs, dtype=float)
 	sumLumFrs = lumFrs.sum()
-	# lumFrs /= sumLumFrs
-	if sumLumFrs > 1:
-		prLumFrs = (sumLumFrs - 1)**2 / (2 * 1e-6)
-		# prLumFrs = -1e14
-	else:
-		prLumFrs = 0
-	# Enforce normalization to 1.
 	lumFrs = np.insert(lumFrs, lumFrs.size,
 					   np.clip(1 - sumLumFrs, a_min=0, a_max=None))
-	# lumFrs /= sumLumFrs
 
 	lumFrs = np.array(lumFrs, dtype=float)
 	flux_model = np.sum(ssp_sed * lumFrs[:, np.newaxis], axis=0)
-	# Broaden the spectra
-	gauss_kernel_pixel_size = sigma / (velscale / oversampling)
-	flux_model = specBasics.smoothSpectrumFast(flux_model, gauss_kernel_pixel_size)
-	# Apply redshift offset
-	redshift = np.exp(los_vel / specBasics.constants.c.to('km/s').value) -1
-	flux_model = flux_conserving_interpolation(
-		wavelength, ssp_wl * (1 + redshift), flux_model)
-	# Apply polynomial correction to reconstructed spectrum
-	# ALT = np.copy(AL)
-	# ALT = np.transpose(ALT)
-	# for i in range(nBins):
-	# 	ALT[:,i] = ALT[:,i] / cov[i]
-		
-	# cL = np.linalg.solve(np.dot(ALT,AL), np.dot(ALT, residual))
-	# polL = np.dot(AL,cL)
-	# recSpecCSP *= polL
-	
+	# Kinematics
+	sigma_pixel = sigma / (velscale / oversampling)
+	veloffset_pixel = los_vel / (velscale / oversampling)
+	x = np.arange(- 8*sigma_pixel, 8*sigma_pixel) - veloffset_pixel
+	losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel)
+	flux_model = convolve(
+		flux_model, losvd_kernel, mode='same', method='fft')
+	# Rebin model spectra to observed grid
+	flux_model = flux_model[
+		extra_pixels * oversampling:-(extra_pixels * oversampling +1)
+			].reshape((flux.size, oversampling)).mean(axis=1)
+	### Mask pixels at the edges with artifacts produced by the convolution
+	mask = np.ones_like(flux, dtype=bool)
+	mask[:int(5 * sigma_pixel)] = False
+	mask[-int(5 * sigma_pixel):] = False
+
+	# Dust extinction
+	if extinction_law is not None:
+		flux_model = flux_model * 10**(-0.4 * extinction_law(
+			wavelength, block["parameters", "av"], 3.1)) / norm_extinction
+
 	# Calculate likelihood-value of the fit
-	like = X2min(flux, flux_model, cov)
-	
-	# Final posterior for sampling: combination likelihood and prior lumFrs
-	block[section_names.likelihoods, "HBSPS_SFH_like"] = like - prLumFrs
+	like = X2min(flux[mask], flux_model[mask], cov[mask])
+
+	# Final posterior for sampling
+	block[section_names.likelihoods, "HBSPS_SFH_like"] = like
 
 	return 0
 

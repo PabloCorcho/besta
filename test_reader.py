@@ -1,12 +1,12 @@
 import numpy as np
-import specBasics
+import hbsps.specBasics as specBasics
 import matplotlib.pyplot as plt
 
 from pst.utils import flux_conserving_interpolation
 from pst.SSP import BaseGM
 
-from utils import read_ini_file, read_chain_file, make_plot_chains, compute_chain_percentiles
-from output import Reader
+from hbsps.utils import read_ini_file, read_chain_file, make_plot_chains, compute_chain_percentiles
+from io import Reader
 
 #ini_file = read_ini_file("HBSPS_SFHdelayedtau.ini")
 

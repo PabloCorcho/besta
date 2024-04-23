@@ -3,9 +3,9 @@ import numpy as np
 import copy
 import cosmosis
 from cosmosis.datablock import option_section, names as section_names
-import specBasics
-import SPSbasics
-import linearInv
+import hbsps.specBasics as specBasics
+import modules.SPSbasics as SPSbasics
+import modules.linearInv as linearInv
 
 def setup(options):
 	"""Set-up the COSMOSIS sampler.

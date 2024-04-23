@@ -8,7 +8,7 @@ import sys
 import os.path
 import numpy as np
 import h5py
-import specBasics
+import hbsps.specBasics as specBasics
 
 class stellarTemplates:
 	"""Class for reading stellar templates data.

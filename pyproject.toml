@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools >= 61.0", "versioneer[toml]"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hbsps"
+dynamic = ["version"]
+authors = [
+  { name="Pablo Corcho-Caballero", email="p.corcho.caballero@rug.nl" },
+]
+description = "Hierarchical Bayesian Stelllar Population Synthesis"
+readme = "README.md"
+keywords = ["astronomy", "SPS"]
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    'Development Status :: 3 - Alpha',
+    'Intended Audience :: Science/Research',
+    'License :: OSI Approved :: BSD License',
+    'Topic :: Scientific/Engineering',
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.6"
+
+[project.urls]
+Homepage = "https://github.com/PabloCorcho/HBSPS"
+Issues = "https://github.com/PabloCorcho/HBSPS/issues"

@@ -191,7 +191,7 @@ def smoothSpectrumFast(spectrum, sigmaPixel):
 	smoothSpectrum = scipy.ndimage.gaussian_filter(spectrum, sigma=(sigmaPixel), order=0)
 	
 	return smoothSpectrum
-	
+
 def getGaussianLP(w, wc, wstd, norm):
 	"""Calculate Gaussian line profile for local covariance structure
 	
@@ -199,6 +199,16 @@ def getGaussianLP(w, wc, wstd, norm):
 	glp = norm * np.exp(-((w-wc)**2/(2*wstd**2)))
 	
 	return glp
+
+def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
+	y = vel_pixel / sigma_pixel
+	g = np.exp(-y**2/2) / sigma_pixel / np.sqrt(2 * np.pi) * (
+		1
+		+ h3 * (y * (2 * y**2 - 3) / np.sqrt(3))  # H3
+		+ h4 * ((4 * (y**2 - 3) * y**2 + 3) / np.sqrt(24))  # H4
+		)
+	return g
+
 	
 def getLegendrePolynomial(wavelength, order, bounds=None):
 	nBins = len(wavelength)

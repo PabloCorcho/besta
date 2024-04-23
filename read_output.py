@@ -1,5 +1,5 @@
 import numpy as np
-import specBasics
+import hbsps.specBasics as specBasics
 import matplotlib.pyplot as plt
 
 from pst.utils import flux_conserving_interpolation

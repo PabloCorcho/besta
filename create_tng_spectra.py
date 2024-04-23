@@ -5,6 +5,8 @@ from pst.SSP import PyPopStar
 import specBasics
 import h5py
 
+import extinction
+
 ssp = PyPopStar("KRO")
 ssp.cut_wavelength(3500, 9000)
 
@@ -37,6 +39,9 @@ for subhalo in subhalos:
 
     tng_sed, tng_ssp_weights = ssp.compute_SED(times[::-1] * 1e9, mass_history[::-1], met_history[::-1])
 
+    tng_dust_free = tng_sed.copy()
+    tng_sed = extinction.apply(extinction.ccm89(ssp.wavelength, 1.0, 3.1),
+                               tng_sed)
     plt.figure()
     plt.subplot(121)
     plt.plot(times, mass_history)
@@ -71,7 +76,8 @@ for subhalo in subhalos:
     ref_spectra_sm_err = ref_spectra_sm / snr
 
     plt.figure()
-    plt.plot(ori_wl, ori_sed, '-', label='Original')
+    plt.plot(ori_wl, tng_dust_free, '-', label='Original')
+    plt.plot(ori_wl, ori_sed, '-', label='Reddened')
     plt.plot(ssp.wavelength, ref_spectra, '-', label='Reinterpolated')
     plt.plot(ssp.wavelength, ref_spectra_sm, label='Smoothed')
     plt.errorbar(ssp.wavelength * (1 + redshift), ref_spectra_sm,
