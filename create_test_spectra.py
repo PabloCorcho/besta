@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pst.SSP import BaseGM
-import specBasics
+import hbsps.specBasics as specBasics
 
 from pst.utils import flux_conserving_interpolation
 
