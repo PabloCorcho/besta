@@ -1,6 +1,6 @@
 import os
 import numpy as np
-
+from astropy.io import fits
 from sklearn.decomposition import NMF
 
 from cosmosis.datablock import option_section, names as section_names, DataBlock
@@ -9,6 +9,7 @@ from cosmosis.utils import underline
 
 import hbsps.specBasics as specBasics
 from hbsps import output
+
 
 def prepare_observed_spectra(cosmosis_options, config, module=None):
     print(underline("\nConfiguring input observational data"))
@@ -40,32 +41,49 @@ def prepare_observed_spectra(cosmosis_options, config, module=None):
     # Read wavelength and spectra
     wavelength, flux, error = np.loadtxt(fileName, unpack=True)
     print(f"Input redshift: {redshift}")
-    wavelength /= (1 + redshift)
+    wavelength /= 1 + redshift
     print("Constraining fit to wavelength range: ", wl_range)
-    goodIdx = np.where(
-		(wavelength >= wl_range[0]) & (wavelength <= wl_range[1])
-					)[0]
+    goodIdx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
     wavelength = wavelength[goodIdx]
     flux = flux[goodIdx]
-    cov = error[goodIdx]**2
+    cov = error[goodIdx] ** 2
     print("Log-binning spectra to velocity scale: ", velscale)
     flux, ln_wave, _ = specBasics.log_rebin(wavelength, flux, velscale=velscale)
     cov, _, _ = specBasics.log_rebin(wavelength, cov, velscale=velscale)
     wavelength = np.exp(ln_wave)
     # Normalize spectra
     print("Spectra normalized using wavelength range: ", wl_norm_range)
-    normIdx = np.where((wavelength >= wl_norm_range[0]) & (
-        wavelength <= wl_norm_range[1]))[0]
+    normIdx = np.where(
+        (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1])
+    )[0]
     norm_flux = np.nanmedian(flux[normIdx])
     flux /= norm_flux
     cov /= norm_flux**2
-    config['flux'] = flux
-    config['cov'] = cov
-    config['wavelength'] = wavelength
-    config['ln_wave'] = ln_wave
+    config["flux"] = flux
+    config["cov"] = cov
+    config["wavelength"] = wavelength
+    config["ln_wave"] = ln_wave
     return flux, cov, wavelength, ln_wave
 
-def prepare_ssp_data(cosmosis_options, config, module=None):
+
+def prepare_ssp_from_fits(filename, config={}):
+    """Load the SSP from a FITS file."""
+    print(f"Loading SSP model from FITS file: {filename}")
+    with fits.open(filename) as hdul:
+        config["velscale"] = hdul[0].header["velscale"]
+        config["oversampling"] = hdul[0].header["oversampling"]
+        config["extra_pixels"] = hdul[0].header["extra_pixels"]
+
+        config["ssp_wl"] = hdul["WAVE"].data
+        config["ssp_sed"] = hdul["SSP"].data
+    return config
+
+
+def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=None):
+    """Prepare the SSP data."""
+    if (cosmosis_options is None) and (fits_file is not None):
+        return prepare_ssp_from_fits(fits_file, config=config)
+
     print(underline("\nConfiguring SSP parameters"))
     # Wavelegth range to renormalize the spectra
     if type(cosmosis_options) is DataBlock:
@@ -111,10 +129,10 @@ def prepare_ssp_data(cosmosis_options, config, module=None):
         from pst import SSP
     except:
         raise ImportError("PST module was not found")
-    
+
     ssp = getattr(SSP, ssp_name)
 
-    if ssp_dir == 'None':
+    if ssp_dir == "None":
         ssp_dir = None
     else:
         print(f"SSP model directory: {ssp_dir}")
@@ -125,19 +143,27 @@ def prepare_ssp_data(cosmosis_options, config, module=None):
     ssp.L_lambda /= ssp_lmr[:, :, np.newaxis]
 
     # Rebin the spectra
-    print("Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s")
-    dlnlam = velscale / specBasics.constants.c.to('km/s').value
+    print(
+        "Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s"
+    )
+    dlnlam = velscale / specBasics.constants.c.to("km/s").value
     extra_offset_pixel = int(300 / velscale)
     dlnlam /= oversampling
     lnlam_bin_edges = np.arange(
-        config['ln_wave'][0] - dlnlam * extra_offset_pixel * oversampling - 0.5 * dlnlam,
-        config['ln_wave'][-1] + dlnlam * (1 + extra_offset_pixel) * oversampling + 0.5 * dlnlam,
-        dlnlam)
+        config["ln_wave"][0]
+        - dlnlam * extra_offset_pixel * oversampling
+        - 0.5 * dlnlam,
+        config["ln_wave"][-1]
+        + dlnlam * (1 + extra_offset_pixel) * oversampling
+        + 0.5 * dlnlam,
+        dlnlam,
+    )
     ssp.interpolate_sed(np.exp(lnlam_bin_edges))
 
     # Reshape the SSPs SED to (n_models, wavelength)
     ssp_sed = ssp.L_lambda.reshape(
-        (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2]))
+        (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
+    )
     ssp_wl = ssp.wavelength
     # ------------------------------ Decomposition --------------------------- #
     if do_nmf:
@@ -147,34 +173,40 @@ def prepare_ssp_data(cosmosis_options, config, module=None):
         ssp_sed = pca.components_
     # ------------------------------------------------------------------------ #
     print("Final SSP model shape: ", ssp_sed.shape)
+    config["ssp_sed"] = ssp_sed
+    config["ssp_wl"] = ssp_wl
+    # Grid parameters
+    config["velscale"] = velscale
+    config["oversampling"] = oversampling
+    config["extra_pixels"] = extra_offset_pixel
+
     if ssp_save is not None:
         output.save_ssp(
             filename=os.path.join(
-                os.path.dirname(cosmosis_options['output', 'filename']),
-                "SSP_model.dat"),
-            ssp_wave=ssp_wl, ssp_sed=ssp_sed)
+                os.path.dirname(cosmosis_options["output", "filename"]),
+                "SSP_model.fits",
+            ),
+            config=config,
+            SSPModel=ssp_name,
+            SSPDir=ssp_dir,
+        )
 
-    config['ssp_sed'] = ssp_sed
-    config['ssp_wl'] = ssp_wl
-    # Grid parameters
-    config['velscale'] = velscale
-    config['oversampling'] = oversampling
-    config['extra_pixels'] = extra_offset_pixel
-    return 
+    return
+
 
 def prepare_extinction_law(cosmosis_options, config, module=None):
     print(underline("\nConfiguring dust extinction parameters"))
     if type(cosmosis_options) is DataBlock:
         if not cosmosis_options.has_value(option_section, "ExtinctionLaw"):
-            config['extinction_law'] = None
-            config['norm_extinction'] = None
+            config["extinction_law"] = None
+            config["norm_extinction"] = None
             return
         ext_law = cosmosis_options.get_string(option_section, "ExtinctionLaw")
         wl_norm_range = cosmosis_options[option_section, "wlNormRange"]
     elif type(cosmosis_options) is Inifile:
         if not cosmosis_options.get(module, "ExtinctionLaw", fallback=False):
-            config['extinction_law'] = None
-            config['norm_extinction'] = None
+            config["extinction_law"] = None
+            config["norm_extinction"] = None
             return
         ext_law = cosmosis_options[module, "ExtinctionLaw"]
         wl_norm_range = cosmosis_options[module, "wlNormRange"]
@@ -186,12 +218,13 @@ def prepare_extinction_law(cosmosis_options, config, module=None):
     except:
         raise ImportError("extinction library was not found")
     extinction_law = getattr(extinction, ext_law)
-    config['extinction_law'] = extinction_law
+    config["extinction_law"] = extinction_law
     # Wavelegth range to renormalize the spectra
-    normIdx = np.where((config['wavelength'] >= wl_norm_range[0]) & (
-        config['wavelength'] <= wl_norm_range[1]))[0]
-    
-    norm_extinction = np.median(
-        extinction_law(config['wavelength'][normIdx], 1.0, 3.1))
-    config['norm_extinction'] = norm_extinction
+    normIdx = np.where(
+        (config["wavelength"] >= wl_norm_range[0])
+        & (config["wavelength"] <= wl_norm_range[1])
+    )[0]
+
+    norm_extinction = np.median(extinction_law(config["wavelength"][normIdx], 1.0, 3.1))
+    config["norm_extinction"] = norm_extinction
     return

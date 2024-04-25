@@ -1,18 +1,10 @@
-import cosmosis
-from cosmosis.datablock import option_section
+import numpy as np
 
-class SFHModule(cosmosis.ClassModule):
 
-    def load_data(self):
-        
-    def initialise_ssp(self):
-        pass
-
-class SFHMassBins(cosmosis.ClassModule):
-    def __init__(self, options):
-        self.setup(options)
-
-    def setup(self, options):
-        fileName = options.get_string("sfh_mass_bins", "inputSpectrum")
-        ssp_name = options.get_string("SSPModel")
-        if options.has_value()
+def composite_stellar_population(config, weights):
+    if type(weights) is dict:
+        w_array = np.array([weights[w] for w in weights.keys() if "ssp" in w])
+    else:
+        w_array = weights
+    composite_spectra = np.sum(config["ssp_sed"] * w_array[:, np.newaxis], axis=0)
+    return composite_spectra

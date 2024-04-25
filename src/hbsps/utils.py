@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+
 def read_ini_file(path):
     ini_info = {}
     with open(path, "r") as f:
@@ -9,7 +10,7 @@ def read_ini_file(path):
             line = line.replace("\n", "")
             if len(line) == 0:
                 continue
-            if line[0] == '[':
+            if line[0] == "[":
                 module = line.strip("[]")
                 ini_info[module] = {}
             else:
@@ -25,13 +26,12 @@ def read_ini_file(path):
                     numbers = [n for n in components[1].split(" ") if len(n) > 0]
                     if ("." in components[1]) or ("e" in components[1]):
                         # Float number
-                        ini_info[module][name] = np.array(
-                            numbers, dtype=float)
+                        ini_info[module][name] = np.array(numbers, dtype=float)
                     else:
                         # int number
-                        ini_info[module][name] = np.array(
-                            numbers, dtype=int)
+                        ini_info[module][name] = np.array(numbers, dtype=int)
     return ini_info
+
 
 def read_chain_file(path):
     with open(path, "r") as f:
@@ -43,13 +43,16 @@ def read_chain_file(path):
     last_ssp = 0
     for ith, par in enumerate(columns):
         results[par] = matrix[:, ith]
-        if 'ssp' in par:
-            last_ssp +=1
-            ssp_weights += 10**matrix[:, ith]
-    results[f'parameters-ssp{last_ssp + 1}'] = np.log10(np.clip(1 - ssp_weights, a_min=1e-4, a_max=None))
+        if "ssp" in par:
+            last_ssp += 1
+            ssp_weights += 10 ** matrix[:, ith]
+    results[f"parameters-ssp{last_ssp + 1}"] = np.log10(
+        np.clip(1 - ssp_weights, a_min=1e-4, a_max=None)
+    )
     return results
 
-def make_plot_chains(chain_results, truth_values=None, output='.'):
+
+def make_plot_chains(chain_results, truth_values=None, output="."):
     parameters = [par for par in chain_results.keys() if "parameters" in par]
     if truth_values is None:
         truth_values = [np.nan] * len(parameters)
@@ -57,23 +60,22 @@ def make_plot_chains(chain_results, truth_values=None, output='.'):
     for par, truth in zip(parameters, truth_values):
         fig = plt.figure(constrained_layout=True)
         ax = fig.add_subplot(111)
-        ax.plot(chain_results[par], ',', c='k')
-        ax.axhline(truth, c='r')
-        inax = ax.inset_axes((1.05, 0, .5, 1))
-        inax.hist(chain_results[par], weights=chain_results['weight'],
-                  bins=100)
-        inax.axvline(truth, c='r')
+        ax.plot(chain_results[par], ",", c="k")
+        ax.axhline(truth, c="r")
+        inax = ax.inset_axes((1.05, 0, 0.5, 1))
+        inax.hist(chain_results[par], weights=chain_results["weight"], bins=100)
+        inax.axvline(truth, c="r")
         plt.show()
         all_figs.append(fig)
     return all_figs
 
-def compute_chain_percentiles(chain_results, pct=[.5, .16, .50, .84, .95]):
+
+def compute_chain_percentiles(chain_results, pct=[0.5, 0.16, 0.50, 0.84, 0.95]):
     parameters = [par for par in chain_results.keys() if "parameters" in par]
     pct_resutls = {}
     for par in parameters:
         sort_pos = np.argsort(chain_results[par])
-        cum_distrib = np.cumsum(chain_results['weight'][sort_pos])
+        cum_distrib = np.cumsum(chain_results["weight"][sort_pos])
         cum_distrib /= cum_distrib[-1]
-        pct_resutls[par] = np.interp(
-            pct, cum_distrib, chain_results[par][sort_pos])
+        pct_resutls[par] = np.interp(pct, cum_distrib, chain_results[par][sort_pos])
     return pct_resutls
