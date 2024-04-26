@@ -4,14 +4,14 @@ from scipy.signal import fftconvolve
 from hbsps import specBasics
 
 
-def convolve_ssp(config, sigma, los_vel):
+def convolve_ssp(config, los_sigma, los_vel):
     velscale = config["velscale"]
     oversampling = config["oversampling"]
     extra_pixels = config["extra_pixels"]
     ssp_sed = config["ssp_sed"]
     flux = config["flux"]
     # Kinematics
-    sigma_pixel = sigma / (velscale / oversampling)
+    sigma_pixel = los_sigma / (velscale / oversampling)
     veloffset_pixel = los_vel / (velscale / oversampling)
     x = np.arange(-8 * sigma_pixel, 8 * sigma_pixel) - veloffset_pixel
     losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel)

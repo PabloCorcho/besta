@@ -32,13 +32,11 @@ def setup(options):
 			
 	"""
 	# Pipeline values file
-	values_file = options[option_section, "values"]
 	config = {}
 	# ------------------------------------------------------------------------ #
-	flux, cov, wavelength, ln_wave = prepare_spectra.prepare_observed_spectra(
-		options, config)
+	prepare_spectra.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_ssp_data(options, config, obs_ln_wave=ln_wave)
+	prepare_spectra.prepare_ssp_data(options, config)
 	# ------------------------------------------------------------------------ #
 	prepare_spectra.prepare_extinction_law(options, config)
 
@@ -51,10 +49,14 @@ def setup(options):
 			config['ssp_sed'] = sed
 			config['ssp_wl'] = config['wavelength'].copy()
 			config['mask'] = mask
+			print("Valid pixels: ", np.count_nonzero(mask), mask.size)
+	else:
+		print("No kinematic information was provided")
 
 	if options.has_value(option_section, "ExtinctionLaw"):
-		print(f"Reddening SSP models to {options[option_section, "av"]}")
-		dust_extinction.redden_ssp(config, options[option_section, "av"])
+		av = options[option_section, "av"]
+		print(f"Reddening SSP models using Av={av}")
+		dust_extinction.redden_ssp(config, av)
 
 	return config
 	
@@ -70,8 +72,8 @@ def execute(block, config):
 	ssp_sed = config['ssp_sed']
 	mask = config['mask']
 
-	lumFrs = np.array([block["parameters", f"ssp{tIdx}"] for tIdx in range(1, ssp_sed.shape[0])],
-				   dtype=float)
+	lumFrs = np.array([block["parameters", f"ssp{tIdx}"] for tIdx in range(
+		1, ssp_sed.shape[0])], dtype=float)
 	lumFrs = 10**lumFrs
 	sumLumFrs = lumFrs.sum()
 	lumFrs = np.insert(lumFrs, lumFrs.size,
@@ -81,7 +83,7 @@ def execute(block, config):
 	like = X2min(flux[mask], flux_model[mask], cov[mask])
 
 	# Final posterior for sampling
-	block[section_names.likelihoods, "HBSPS_SFH_like"] = like
+	block[section_names.likelihoods, "SFH_like"] = like
 
 	return 0
 

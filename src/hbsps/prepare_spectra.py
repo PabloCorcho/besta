@@ -9,6 +9,12 @@ from cosmosis.utils import underline
 
 import hbsps.specBasics as specBasics
 from hbsps import output
+from hbsps import dust_extinction
+
+try:
+    from pst import SSP
+except:
+    raise ImportError("PST module was not found")
 
 
 def prepare_observed_spectra(cosmosis_options, config, module=None):
@@ -61,8 +67,10 @@ def prepare_observed_spectra(cosmosis_options, config, module=None):
     cov /= norm_flux**2
     config["flux"] = flux
     config["cov"] = cov
+    config["norm_flux"] = norm_flux
     config["wavelength"] = wavelength
     config["ln_wave"] = ln_wave
+    print(underline("\nConfiguration done"))
     return flux, cov, wavelength, ln_wave
 
 
@@ -75,7 +83,10 @@ def prepare_ssp_from_fits(filename, config={}):
         config["extra_pixels"] = hdul[0].header["extra_pixels"]
 
         config["ssp_wl"] = hdul["WAVE"].data
-        config["ssp_sed"] = hdul["SSP"].data
+        config["ssp_sed"] = hdul["SED"].data
+        config["ssp_metals"] = hdul["METALS"].data
+        config["ssp_ages"] = hdul["AGES"].data
+        config["ssp_mlr"] = hdul["MLR"].data
     return config
 
 
@@ -101,6 +112,14 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
             ssp_save = cosmosis_options.get_bool(option_section, "SSPSave")
         else:
             ssp_save = False
+
+        if cosmosis_options.has_value(option_section, "ageRange") and cosmosis_options.has_value(option_section, "metRange"):
+            regrid = True
+            age_range = cosmosis_options[option_section, "ageRange"]
+            met_range = cosmosis_options[option_section, "metRange"]
+        else:
+            regrid = False       
+
         do_nmf = cosmosis_options.has_value(option_section, "SSP-NMF")
         if do_nmf:
             do_nmf = cosmosis_options.get_bool(option_section, "SSP-NMF")
@@ -121,14 +140,18 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
             ssp_args = ssp_args.split(",")
         # ssp_save = cosmosis_options.get(module, "SSPSave", fallback=False)
         ssp_save = False
+
+        if cosmosis_options.getfloat(option_section, "ageRange") and cosmosis_options.getfloat(option_section, "metRange"):
+            regrid = True
+            age_range = cosmosis_options[option_section, "ageRange"]
+            met_range = cosmosis_options[option_section, "metRange"]
+        else:
+            regrid = False       
+
         do_nmf = cosmosis_options.getboolean(module, "SSP-NMF")
         if do_nmf:
             n_nmf = cosmosis_options[module, "SSP-NMF-N"]
             n_nmf = int(n_nmf.strip("[]"))
-    try:
-        from pst import SSP
-    except:
-        raise ImportError("PST module was not found")
 
     ssp = getattr(SSP, ssp_name)
 
@@ -138,9 +161,9 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
         print(f"SSP model directory: {ssp_dir}")
     print("SSP Model extra arguments: ", ssp_args)
     ssp = ssp(*ssp_args, path=ssp_dir)
-    # Renormalize SSP Light-to-mass ratio
-    ssp_lmr = 1 / ssp.get_mass_lum_ratio(wl_norm_range)
-    ssp.L_lambda /= ssp_lmr[:, :, np.newaxis]
+
+    if regrid:
+        ssp.regrid(age_range, met_range)
 
     # Rebin the spectra
     print(
@@ -160,21 +183,30 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
     )
     ssp.interpolate_sed(np.exp(lnlam_bin_edges))
 
+    # Renormalize SSP Light-to-mass ratio
+    ssp_mlr = ssp.get_mass_lum_ratio(wl_norm_range)
+    ssp.L_lambda *= ssp_mlr[:, :, np.newaxis]
+
     # Reshape the SSPs SED to (n_models, wavelength)
     ssp_sed = ssp.L_lambda.reshape(
         (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
     )
     ssp_wl = ssp.wavelength
+    ssp_metals, ssp_ages = np.meshgrid(
+        ssp.metallicities, ssp.ages, indexing='ij')
     # ------------------------------ Decomposition --------------------------- #
     if do_nmf:
         print("Reducing dimensionality with Non-negative Matrix Factorisation")
-        pca = NMF(n_components=n_nmf, alpha_H=1.0, max_iter=1000)
+        pca = NMF(n_components=n_nmf, alpha_H=1.0, max_iter=5000)
         pca.fit(ssp_sed)
         ssp_sed = pca.components_
     # ------------------------------------------------------------------------ #
     print("Final SSP model shape: ", ssp_sed.shape)
     config["ssp_sed"] = ssp_sed
     config["ssp_wl"] = ssp_wl
+    config["ssp_mlr"] = ssp_mlr
+    config["ssp_metals"] = ssp_metals
+    config["ssp_ages"] = ssp_ages
     # Grid parameters
     config["velscale"] = velscale
     config["oversampling"] = oversampling
@@ -190,7 +222,7 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
             SSPModel=ssp_name,
             SSPDir=ssp_dir,
         )
-
+    print(underline("\nConfiguration done"))
     return
 
 
@@ -213,18 +245,8 @@ def prepare_extinction_law(cosmosis_options, config, module=None):
         wl_norm_range = wl_norm_range.strip("[]")
         wl_norm_range = np.array(wl_norm_range.split(" "), dtype=float)
 
-    try:
-        import extinction
-    except:
-        raise ImportError("extinction library was not found")
-    extinction_law = getattr(extinction, ext_law)
+    extinction_law = dust_extinction.DustScreen(ext_law_name=ext_law,
+                                                wave_norm_range=wl_norm_range)
     config["extinction_law"] = extinction_law
-    # Wavelegth range to renormalize the spectra
-    normIdx = np.where(
-        (config["wavelength"] >= wl_norm_range[0])
-        & (config["wavelength"] <= wl_norm_range[1])
-    )[0]
-
-    norm_extinction = np.median(extinction_law(config["wavelength"][normIdx], 1.0, 3.1))
-    config["norm_extinction"] = norm_extinction
+    print(underline("\nConfiguration done"))
     return

@@ -36,7 +36,6 @@ def setup(options):
 	"""
 
 	# Pipeline values file
-	values_file = options[option_section, "values"]
 	config = {}
 	# ------------------------------------------------------------------------ #
 	prepare_spectra.prepare_observed_spectra(options, config)
@@ -52,6 +51,10 @@ def setup(options):
 				os.path.dirname(options['output', 'filename']),
 				"SSP_weights.dat"),
 			"w")
+		header = '#' + ", ".join(
+			[f"parameters--ssp{i + 1}" for i in range(config['ssp_sed'].shape[0])])
+		header += ", parameters--los_vel, parameters--los_sigma, parameters--av, like\n"
+		config['ssp_log'].write(header)
 	return config
 
 def execute(block, config):
@@ -64,26 +67,33 @@ def execute(block, config):
 	cov = config['cov']
 
 	# Load sampled parameters
-	sigma = block["parameters", "sigma"]
+	sigma = block["parameters", "los_sigma"]
 	los_vel = block["parameters", "los_vel"]
-
+	av = block["parameters", "av"]
 	# Kinematics
 	sed, mask = kinematics.convolve_ssp(config, sigma, los_vel)
 
 	# Dust extinction
-	dered_flux = deredden_spectra(config, block["parameters", "av"], r=3.1)
+	dered_flux = deredden_spectra(config, av)
 	
 	# Solve the linear system
 	solution, rnorm = nnls(sed.T, dered_flux, maxiter=sed.shape[0] * 10)
-	if 'ssp_log' in config:
-		config['ssp_log'].write(", ".join(np.array(solution, dtype=str)) + "\n")
 
 	flux_model = np.sum(sed * solution[:, np.newaxis], axis=0)
 	# Calculate likelihood-value of the fit
 	like = X2min(dered_flux[mask], flux_model[mask], cov[mask])
+	#TODO: This should be stored as
+	# block["parameters", "ssp1"] = solution[0]
+	# block["parameters", "ssp2"] = solution[1]
 
 	# Final posterior for sampling
 	block[section_names.likelihoods, "KinDust_like"] = like
+
+	if 'ssp_log' in config:
+		config['ssp_log'].write(
+			", ".join(np.array(np.log10(solution + 1e-10), dtype=str))
+			+ f", {los_vel}, {sigma}, {av}"
+			+ f", {like}" + "\n")
 
 	return 0
 

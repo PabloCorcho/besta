@@ -35,7 +35,10 @@ def save_ssp(filename, config, **extra_args):
         [
             fits.PrimaryHDU(header=p_header),
             fits.ImageHDU(name="WAVE", data=config["ssp_wl"]),
-            fits.ImageHDU(name="SSP", data=config["ssp_sed"]),
+            fits.ImageHDU(name="SED", data=config["ssp_sed"]),
+            fits.ImageHDU(name="METALS", data=config["ssp_metals"]),
+            fits.ImageHDU(name="AGES", data=config["ssp_ages"]),
+            fits.ImageHDU(name="MLR", data=config["ssp_mlr"])
         ]
     )
     hdul.writeto(filename, overwrite=True)
@@ -53,11 +56,13 @@ def make_ini_file(filename, config):
                 if type(value) is str:
                     content += " " + value
                 elif type(value) is list:
-                    content += " ".join(value)
-                elif (type(value) is float) or (type(value) is int):
-                    content += "{}".format(value)
+                    content += " ".join([str(v) for v in value])
+                # elif (type(value) is float) or (type(value) is int):
+                #     content += str(value)
                 elif value is None:
                     content += "None"
+                else:
+                    content += str(value)
                 f.write(f"{content}\n")
         f.write(f"; \(ﾟ▽ﾟ)/")
 
@@ -193,7 +198,7 @@ class Reader(object):
         return pct_resutls
 
     def get_maxlike_solution(self, log_prob="post"):
-        maxlike_pos = np.argmax(self.chain[log_prob])
+        maxlike_pos = np.argmax(self.chain[log_prob][self.chain[log_prob] != 0])
         solution = {}
         for k, v in self.chain.items():
             if "parameters" in k:
@@ -230,11 +235,11 @@ class Reader(object):
             av = 10 ** pct_results["parameters--av"][column]
             extinction_law = getattr(extinction, self.ini["HBSPS_SFH"]["ExtinctionLaw"])
             syn_spectra *= 10 ** (
-                -0.4 * extinction_law(self.observation["wavelength_fit"], av, 3.1)
+                -0.4 * extinction_law(self.observation["wavelength_fit"], av)
             ) / 10 ** (
                 -0.4
                 * extinction_law(
-                    np.array([self.ini["HBSPS_SFH"]["wlNormRange"].mean()]), av, 3.1
+                    np.array([self.ini["HBSPS_SFH"]["wlNormRange"].mean()]), av
                 )
             )
         else:
