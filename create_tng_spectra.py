@@ -29,6 +29,7 @@ delta_lnwl = velscale / specBasics.constants.c.to('km/s').value
 sigma = 100
 vel_offset = 200
 snr = 100
+av = 1.
 
 newBorders = np.arange(
         np.log(ssp.wavelength[0]),
@@ -45,7 +46,7 @@ for subhalo in subhalos:
         times[::-1] * 1e9, mass_history[::-1], met_history[::-1])
 
     tng_dust_free = tng_sed.copy()
-    tng_sed = extinction.apply(extinction.ccm89(ssp.wavelength, 1.0, 3.1),
+    tng_sed = extinction.apply(extinction.ccm89(ssp.wavelength, av, 3.1),
                                tng_sed)
 
     fig = plt.figure(constrained_layout=True)

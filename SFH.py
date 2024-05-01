@@ -57,7 +57,6 @@ def setup(options):
 		av = options[option_section, "av"]
 		print(f"Reddening SSP models using Av={av}")
 		dust_extinction.redden_ssp(config, av)
-
 	return config
 	
 def execute(block, config):

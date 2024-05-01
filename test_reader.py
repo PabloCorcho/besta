@@ -12,7 +12,8 @@ reader.load_ssp_model()
 reader.load_extinction_model()
 reader.load_chain()
 
-results = reconstruct_sfh_from_table(reader.config, reader.table_chain)
+results = reconstruct_sfh_from_table(reader.config, reader.table_chain,
+                                     av=reader.ini['SFH']['av'])
 
 w = reader.table_chain['post'].value
 w -= w.max()

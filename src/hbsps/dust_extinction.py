@@ -38,9 +38,12 @@ class DustScreen(object):
         self.r = r
         self.extinction_law = getattr(extinction, ext_law_name)
 
+    def extinction(self, wave, av):
+        return 10**(-0.4 * self.extinction_law(wave, av, self.r))
+
     def __call__(self, wave, spectra, av, deredden=False):
-        ext = 10**(-0.4 * self.extinction_law(wave, av, self.r))
-        ext /= 10**(-0.4 * self.extinction_law(self.norm_wave, av, self.r))
+        ext = self.extinction(wave, av)
+        ext /= self.extinction(self.norm_wave, av)
 
         if spectra.ndim > 1:
             ext = ext[np.newaxis, :]
