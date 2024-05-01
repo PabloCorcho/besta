@@ -8,7 +8,7 @@ import cosmosis
 from cosmosis.datablock import option_section, names as section_names
 import hbsps.specBasics as specBasics
 
-from hbsps import prepare_spectra
+from hbsps import prepare_fit
 from hbsps import kinematics
 from hbsps.dust_extinction import deredden_spectra
 
@@ -38,11 +38,11 @@ def setup(options):
 	# Pipeline values file
 	config = {}
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_observed_spectra(options, config)
+	prepare_fit.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_ssp_data(options, config)
+	prepare_fit.prepare_ssp_data(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_extinction_law(options, config)
+	prepare_fit.prepare_extinction_law(options, config)
 	# ------------------------------------------------------------------------ #
 #	make_values_file(values_file=values_file, inc_extinction=inc_extinction)
 	if options.has_value(option_section, "SSPSave"):

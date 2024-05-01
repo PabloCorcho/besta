@@ -6,7 +6,7 @@ from scipy.signal import convolve
 from cosmosis.datablock import option_section, names as section_names
 import hbsps.specBasics as specBasics
 
-from hbsps import prepare_spectra, kinematics, dust_extinction
+from hbsps import prepare_fit, kinematics, dust_extinction
 
 
 def X2min(spectrum, recSp, cov):
@@ -34,11 +34,11 @@ def setup(options):
 	# Pipeline values file
 	config = {}
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_observed_spectra(options, config)
+	prepare_fit.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_ssp_data(options, config)
+	prepare_fit.prepare_ssp_data(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_spectra.prepare_extinction_law(options, config)
+	prepare_fit.prepare_extinction_law(options, config)
 
 	if options.has_value(option_section, "los_vel"):
 		if options.has_value(option_section, "los_sigma"):

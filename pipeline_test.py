@@ -36,7 +36,7 @@ kin_configuration = {
     "KinDust": {
         "file": "/home/pcorchoc/Develop/HBSPS/KinDust.py",
         "redshift": 0.0,
-        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng_sub_id_588577.dat",
+        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng/tng_sub_id_588577.dat",
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,
@@ -71,9 +71,18 @@ sfh_configuration = {
     },
 
     "emcee": {
-        "walkers": 128,
+        "walkers": 256,
         "samples": 5000,
-        "nsteps": 500,
+        "nsteps": 1000,
+    },
+
+    "multinest":{
+        "max_iterations": 50000,
+        "live_points": 700,
+        "feedback": True,
+        "update_interval": 2000,
+        "log_zero": -1e14,
+        "multinest_outfile_root": "/home/pcorchoc/Develop/HBSPS/output/KinDust/sampling/"
     },
 
     "output": {
@@ -93,7 +102,7 @@ sfh_configuration = {
     "SFH": {
         "file": "/home/pcorchoc/Develop/HBSPS/SFH.py",
         "redshift": 0.0,
-        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng_sub_id_588577.dat",
+        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng/tng_sub_id_588577.dat",
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,
@@ -102,8 +111,8 @@ sfh_configuration = {
         "SSPSave": "T",
         "wlRange": "3700.0 8900.0",
         "wlNormRange": "5000.0 5500.0",
-        "ageRange": [1.0, 7.0, 8.0, 8.5, 9.0, 9.5, 10.0],
-        "metRange": [-3., -2.5, -1.0],
+        "ageRange": [5.0, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 11.0],
+        "metRange": [-3., -2.5, -2.0, -1.5, -1.0],
         "velscale": 70.0,
         "oversampling": 2,
         "polOrder": 10,
@@ -114,17 +123,15 @@ sfh_configuration = {
     },
 
     "Values": {
-        "ssp1": "-4 -0.3 0",
-        "ssp2": "-4 -0.3 0",
-        "ssp3": "-4 -0.3 0",
-        "ssp4": "-4 -0.3 0",
-        "ssp5": "-4 -0.3 0",
-        "ssp6": "-4 -0.3 0",
-        "ssp7": "-4 -0.3 0",
-        "ssp8": "-4 -0.3 0",
-        "ssp9": "-4 -0.3 0",
-        "ssp10": "-4 -0.3 0",
-        "ssp11": "-4 -0.3 0",
+        "ssp1": "-6 -0.3 0",
+        "ssp2": "-6 -0.3 0",
+        "ssp3": "-6 -0.3 0",
+        "ssp4": "-6 -0.3 0",
+        "ssp5": "-6 -0.3 0",
+        "ssp6": "-6 -0.3 0",
+        "ssp7": "-6 -0.3 0",
+        "ssp8": "-6 -0.3 0",
+        "ssp9": "-6 -0.3 0",
     }
 }
 
@@ -132,6 +139,6 @@ main_pipe = MainPipeline([kin_configuration,
                           sfh_configuration
                           ],
                          n_cores_list=[1,
-                                        8
+                                        4
                                        ])
 main_pipe.execute_all()

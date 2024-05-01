@@ -84,8 +84,8 @@ def prepare_ssp_from_fits(filename, config={}):
 
         config["ssp_wl"] = hdul["WAVE"].data
         config["ssp_sed"] = hdul["SED"].data
-        config["ssp_metals"] = hdul["METALS"].data
-        config["ssp_ages"] = hdul["AGES"].data
+        config["ssp_metals_edges"] = hdul["METALS_EDGES"].data
+        config["ssp_ages_edges"] = hdul["AGES_EDGES"].data
         config["ssp_mlr"] = hdul["MLR"].data
     return config
 
@@ -164,7 +164,11 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
 
     if regrid:
         ssp.regrid(age_range, met_range)
-
+        config["ssp_metals_edges"] = met_range
+        config["ssp_ages_edges"] = age_range
+    else:
+        config["ssp_metals_edges"], config["ssp_ages_edges"] = ssp.get_ssp_logedges(
+        )
     # Rebin the spectra
     print(
         "Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s"
@@ -192,8 +196,6 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
         (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
     )
     ssp_wl = ssp.wavelength
-    ssp_metals, ssp_ages = np.meshgrid(
-        ssp.metallicities, ssp.ages, indexing='ij')
     # ------------------------------ Decomposition --------------------------- #
     if do_nmf:
         print("Reducing dimensionality with Non-negative Matrix Factorisation")
@@ -205,8 +207,6 @@ def prepare_ssp_data(cosmosis_options=None, config={}, module=None, fits_file=No
     config["ssp_sed"] = ssp_sed
     config["ssp_wl"] = ssp_wl
     config["ssp_mlr"] = ssp_mlr
-    config["ssp_metals"] = ssp_metals
-    config["ssp_ages"] = ssp_ages
     # Grid parameters
     config["velscale"] = velscale
     config["oversampling"] = oversampling

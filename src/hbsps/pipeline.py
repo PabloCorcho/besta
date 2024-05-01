@@ -14,7 +14,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import hbsps.output as output
-from hbsps import prepare_spectra
+from hbsps import prepare_fit
 from hbsps import kinematics, sfh
 from hbsps.dust_extinction import deredden_spectra, redden_ssp
 
@@ -81,8 +81,9 @@ class MainPipeline(object):
                     for k, v in prev_solution.items()
                     if k in pipeline_config[pipeline_config["pipeline"]["modules"]]
                 )
-            # Execute subpipepline
+            # Execute sub-pipepline
             ini_filename = self.execute_pipeline(pipeline_config, n_cores)
+            # Extract best solution
             print("Extracting results from the run")
             reader = self.get_cosmosis_result(ini_filename)
             reader.load_observation()
@@ -97,39 +98,46 @@ class MainPipeline(object):
             prev_solution = solution.copy()
             print("MaxLike solution: ", solution)
             # Reconstruct best fit
-            if "los_sigma" in solution:
-                print("Convolvind SED with kinematic solution")
-                sed, mask = kinematics.convolve_ssp(
-                    reader.config, solution["los_sigma"], solution["los_vel"]
-                )
-            elif "los_sigma" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-                print("Convolvind SED with kinematic input")
-                los_sigma = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_sigma']
-                los_vel = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_vel']
-                sed, mask = kinematics.convolve_ssp(
-                    reader.config, los_sigma=los_sigma, los_vel=los_vel
-                )
-            reader.config["ssp_sed"] = sed
-            reader.config["ssp_wl"] = reader.config["wavelength"]
-            reader.config["mask"] = mask
+            flux_model, sol_config = self.reconstruct_solution(
+                pipeline_config, reader.config.copy(), solution)
 
-            # Dust extinction
-            if "av" in solution:
-                print("Reddening SED with dust solution")
-                redden_ssp(reader.config, solution["av"])
-            elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-                print("Reddening SED with dust input")
-                av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
-                redden_ssp(reader.config, av)
-
-            flux_model = sfh.composite_stellar_population(
-                reader.config, solution)
             if reader.last_module == "SFH":
-                self.plot_fit(pipeline_config, reader.config, flux_model,
+                self.plot_fit(pipeline_config, sol_config, flux_model,
                               solution=solution)
             else:
-                self.plot_fit(pipeline_config, reader.config, flux_model)
+                self.plot_fit(pipeline_config, sol_config, flux_model)
 
+
+    def reconstruct_solution(self, pipeline_config, config, solution):
+        """Reconstruct a fit solution"""
+        if "los_sigma" in solution:
+            print("Convolvind SED with kinematic solution")
+            sed, mask = kinematics.convolve_ssp(
+                config, solution["los_sigma"], solution["los_vel"]
+            )
+        elif "los_sigma" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
+            print("Convolvind SED with kinematic input")
+            los_sigma = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_sigma']
+            los_vel = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_vel']
+            sed, mask = kinematics.convolve_ssp(
+                config, los_sigma=los_sigma, los_vel=los_vel
+            )
+        config["ssp_sed"] = sed
+        config["ssp_wl"] = config["wavelength"]
+        config["mask"] = mask
+
+        # Dust extinction
+        if "av" in solution:
+            print("Reddening SED with dust solution")
+            redden_ssp(config, solution["av"])
+        elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
+            print("Reddening SED with dust input")
+            av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
+            redden_ssp(config, av)
+
+        flux_model = sfh.composite_stellar_population(
+            config, solution)
+        return flux_model, config
 
     def plot_fit(self, pipe_config, config, flux_model, solution=None):
         """Plot the fit."""
@@ -187,29 +195,34 @@ class MainPipeline(object):
         inax.tick_params(labelleft=False)
 
         if solution is not None:
+            # Include the solution
             sol_text = "Solution\n"
             for k, v in solution.items():
-                if "ssp" not in k:
+                if "ssp" in k:
                     #sol_text += f"{k}={v:.3f}\n"
                     continue
                 else:
-                    sol_text += f"{k}={v:.1f} "
+                    sol_text += f"{k}={v:.3f}\n"
             ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
                         va='top', ha='right', fontsize=7, color='Grey')
 
             sfh_result = sfh.reconstruct_sfh(config, solution)
             inax = axs[0].inset_axes((1.05, 0, 0.3, 1))
-            mappable = inax.pcolormesh(sfh_result['metals'], sfh_result['ages'],
-                            np.log10(sfh_result['ssp_mass_formed'] + 1),
-                            vmin=4)
-            inax.set_xscale('log')
-            inax.set_yscale('log')
-            plt.colorbar(mappable, ax=inax)
-            inax = inax.inset_axes((0, 1.05, 1., .3))
-            inax.plot(sfh_result['ages'][0, :],
-                      np.log10(sfh_result['mass_formed_history'] + 1))
-            inax.set_ylim(3, 11)
-
+            mappable = inax.pcolormesh(
+                sfh_result['ages'], sfh_result['metals'],
+                np.log10(sfh_result['ssp_mass_formed'] + 1),
+                vmin=4, cmap='Spectral_r')
+            inax.set_xlabel(r"Lookback time ($\log(t/\rm yr)$)")
+            inax.set_ylabel(r"Metallicity ($\log_{10}(Z/Z_\odot)$)")
+            plt.colorbar(mappable, ax=inax, label='Mass formed')
+            iinax = inax.inset_axes((0, 1.05, 1., .3), sharex=inax)
+            iinax.plot((sfh_result['ages'][:-1] + sfh_result['ages'][1:]) / 2,
+                        np.log10(sfh_result['mass_formed_history'] + 1),
+                        '-o', color='k')
+            iinax.set_ylim(3, 11)
+            iinax.tick_params(labelbottom=False)
+            iinax.set_title(f"Total mass: {np.log10(sfh_result['total_mass']):.2f}")
+            inax.set_ylabel(r"Mass formed ($\log_{10}(M/M_\odot)$)")
         fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
                     f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
                     bbox_inches='tight', dpi=200)

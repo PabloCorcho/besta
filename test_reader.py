@@ -1,16 +1,23 @@
 import numpy as np
-import hbsps.specBasics as specBasics
 import matplotlib.pyplot as plt
 
-from pst.utils import flux_conserving_interpolation
-from pst.SSP import BaseGM
-
 from hbsps.utils import read_ini_file, read_chain_file, make_plot_chains, compute_chain_percentiles
-from io import Reader
+from hbsps.output import Reader
+from hbsps.sfh import reconstruct_sfh_from_table
 
-#ini_file = read_ini_file("HBSPS_SFHdelayedtau.ini")
+reader = Reader("SFH_auto.ini")
 
-reader = Reader("HBSPS_SFH_tng.ini")
+reader.load_observation()
+reader.load_ssp_model()
+reader.load_extinction_model()
+reader.load_chain()
 
-pct_results = reader.get_chain_percentiles()
-reader.compute_solution_from_pct(pct_results)
+results = reconstruct_sfh_from_table(reader.config, reader.table_chain)
+
+w = reader.table_chain['post'].value
+w -= w.max()
+w = np.exp(w / 2)
+
+plt.figure()
+plt.hist(np.log10(results['total_mass']), bins=100, weights=w)
+plt.show()

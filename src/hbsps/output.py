@@ -3,9 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from astropy.io import fits, ascii
+from astropy import table
 
 import hbsps.specBasics as specBasics
-import hbsps.prepare_spectra as prepare_spectra
+import hbsps.prepare_fit as prepare_fit
 
 from pst import SSP
 from pst.utils import flux_conserving_interpolation
@@ -36,8 +37,8 @@ def save_ssp(filename, config, **extra_args):
             fits.PrimaryHDU(header=p_header),
             fits.ImageHDU(name="WAVE", data=config["ssp_wl"]),
             fits.ImageHDU(name="SED", data=config["ssp_sed"]),
-            fits.ImageHDU(name="METALS", data=config["ssp_metals"]),
-            fits.ImageHDU(name="AGES", data=config["ssp_ages"]),
+            fits.ImageHDU(name="METALS_EDGES", data=config["ssp_metals_edges"]),
+            fits.ImageHDU(name="AGES_EDGES", data=config["ssp_ages_edges"]),
             fits.ImageHDU(name="MLR", data=config["ssp_mlr"])
         ]
     )
@@ -67,14 +68,29 @@ def make_ini_file(filename, config):
         f.write(f"; \(ﾟ▽ﾟ)/")
 
 
-def make_values_file(config):
+def make_values_file(config, ssp_auto_fill=True):
     """Make a values.ini file from the configuration."""
     values_filename = config["pipeline"]["values"]
     values_section = f"Values"
+
+    if ssp_auto_fill:
+        module = config["pipeline"]["modules"].split(" ")[-1]
+        n_ssp = 1
+        if "ageRange" in config[module]:
+            n_ssp *= len(config[module]["ageRange"]) - 1
+        if "metRange" in config[module]:
+            n_ssp *= len(config[module]["metRange"]) - 1
+        else:
+            ssp_auto_fill = False
+
     if values_section in config:
         print(f"Creating values file: {values_filename}")
         with open(values_filename, "w") as f:
             f.write("[parameters]\n")
+            if ssp_auto_fill:
+                for i in range(n_ssp - 1):
+                    f.write(f"ssp{i+1} = -6 {np.log10(1/n_ssp)} 0\n")
+                return
             for name, lims in config[values_section].items():
                 if type(lims) is str:
                     f.write(f"{name} = {lims}\n")
@@ -128,10 +144,11 @@ class Reader(object):
         self.chain = self.read_chain_file(path)
         if include_ssp_weights:
             self.load_ssp_weights()
+        self.table_chain = table.Table(self.chain)
 
     def load_observation(self):
         last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
-        prepare_spectra.prepare_observed_spectra(
+        prepare_fit.prepare_observed_spectra(
             cosmosis_options=self.ini_data, config=self.config, module=last_module
         )
 
@@ -142,9 +159,9 @@ class Reader(object):
             path_to_ssp = os.path.join(
                 os.path.dirname(self.ini["output"]["filename"]), "SSP_model.fits"
             )
-            prepare_spectra.prepare_ssp_data(config=self.config, fits_file=path_to_ssp)
+            prepare_fit.prepare_ssp_data(config=self.config, fits_file=path_to_ssp)
         else:
-            prepare_spectra.prepare_ssp_data(
+            prepare_fit.prepare_ssp_data(
                 cosmosis_options=self.ini_data, config=self.config, module=last_module
             )
 
@@ -183,7 +200,7 @@ class Reader(object):
 
     def load_extinction_model(self):
         last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
-        prepare_spectra.prepare_extinction_law(
+        prepare_fit.prepare_extinction_law(
             cosmosis_options=self.ini_data, config=self.config, module=last_module
         )
 
@@ -198,11 +215,31 @@ class Reader(object):
         return pct_resutls
 
     def get_maxlike_solution(self, log_prob="post"):
-        maxlike_pos = np.argmax(self.chain[log_prob][self.chain[log_prob] != 0])
+        good_sample = self.chain[log_prob] != 0
+        maxlike_pos = np.argmax(self.chain[log_prob][good_sample])
         solution = {}
         for k, v in self.chain.items():
             if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[maxlike_pos]
+                solution[k.replace("parameters--", "")] = v[good_sample][maxlike_pos]
+        return solution
+
+    def get_pct_solutions(self, pct=99, log_prob="post"):
+        good_sample = self.chain[log_prob] != 0
+        maxlike_pos = np.argmax(self.chain[log_prob][good_sample])
+        # Normalize the weights
+        weights = self.chain[log_prob][good_sample] - self.chain[log_prob][good_sample][maxlike_pos]
+        weights = np.exp(weights / 2)
+        weights /= np.nansum(weights)
+        # From the highest to the lowest weight
+        sort = np.argsort(weights)
+        cum_weights = np.cumsum(weights[sort][::-1])
+        last_sample = np.searchsorted(cum_weights, pct / 100)
+
+        solution = {'weights': weights[sort][-last_sample:]}    
+        for k, v in self.chain.items():
+            if "parameters" in k:
+                solution[k.replace("parameters--", "")] = v[
+                    good_sample][sort][-last_sample:]
         return solution
 
     def compute_solution_from_pct(self, pct_results, pct=0.5):
