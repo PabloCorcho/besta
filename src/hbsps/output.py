@@ -32,14 +32,14 @@ def save_ssp(filename, config, **extra_args):
             p_header["hierarch  " + k] = ", ".join(v)
         else:
             p_header["hierarch  " + k] = v
+    metal_edges, age_edges = config['ssp_model'].get_ssp_logedges()
     hdul = fits.HDUList(
         [
             fits.PrimaryHDU(header=p_header),
             fits.ImageHDU(name="WAVE", data=config["ssp_wl"]),
             fits.ImageHDU(name="SED", data=config["ssp_sed"]),
-            fits.ImageHDU(name="METALS_EDGES", data=config["ssp_metals_edges"]),
-            fits.ImageHDU(name="AGES_EDGES", data=config["ssp_ages_edges"]),
-            fits.ImageHDU(name="MLR", data=config["ssp_mlr"])
+            fits.ImageHDU(name="METALS_EDGES", data=metal_edges.value),
+            fits.ImageHDU(name="AGES_EDGES", data=age_edges.value),
         ]
     )
     hdul.writeto(filename, overwrite=True)
@@ -51,6 +51,9 @@ def make_ini_file(filename, config):
     with open(filename, "w") as f:
         f.write(f"; File generated automatically\n")
         for section in config.keys():
+            # Ignore the Values section
+            if section == 'Values':
+                continue
             f.write(f"[{section}]\n")
             for key, value in config[section].items():
                 content = f"{key} = "
@@ -155,15 +158,17 @@ class Reader(object):
     def load_ssp_model(self):
         """Load an SSP model from a file"""
         last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
-        if "SSPSave" in self.ini[last_module]:
-            path_to_ssp = os.path.join(
-                os.path.dirname(self.ini["output"]["filename"]), "SSP_model.fits"
-            )
-            prepare_fit.prepare_ssp_data(config=self.config, fits_file=path_to_ssp)
-        else:
-            prepare_fit.prepare_ssp_data(
+        prepare_fit.prepare_ssp_model(
                 cosmosis_options=self.ini_data, config=self.config, module=last_module
             )
+        prepare_fit.prepare_ssp_model_preprocessing(
+            cosmosis_options=self.ini_data, config=self.config, module=last_module)
+
+    def load_sfh_model(self):
+        last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
+        prepare_fit.prepare_sfh_model(
+            cosmosis_options=self.ini_data, config=self.config, module=last_module
+        )
 
     def load_ssp_weights(self):
         """Load the SSP weights used during the fit.
@@ -349,7 +354,7 @@ class Reader(object):
                         else:
                             # int number
                             ini_info[module][name] = np.array(numbers, dtype=int)
-        ini = cosmosis.runtime.Inifile(ini_info)
+        ini = cosmosis.runtime.Inifile(path)
         return ini_info, ini
 
     @staticmethod
