@@ -36,7 +36,7 @@ def setup(options):
 	# ------------------------------------------------------------------------ #
 	prepare_fit.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_fit.prepare_ssp_data(options, config)
+	prepare_fit.prepare_ssp_model(options, config)
 	# ------------------------------------------------------------------------ #
 	prepare_fit.prepare_extinction_law(options, config)
 
