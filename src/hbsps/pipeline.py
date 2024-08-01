@@ -2,19 +2,14 @@
 This module contains the tools to build a pipeline
 """
 
-import importlib.util
-import sys
 import os
-import argparse
 import subprocess
-import multiprocessing
-import configparser
 import numpy as np
+from scipy.optimize import nnls
 
 from matplotlib import pyplot as plt
 
-import hbsps.output as output
-from hbsps import prepare_fit
+from hbsps import output
 from hbsps import kinematics, sfh
 from hbsps.dust_extinction import deredden_spectra, redden_ssp
 
@@ -46,7 +41,9 @@ class MainPipeline(object):
 
     def execute_pipeline(self, config, n_cores):
         """Execute a pipeline"""
-        ini_filename = config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini"
+        ini_filename = os.path.join(
+            os.path.dirname(config["output"]["filename"]),
+            config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini")
         output.make_ini_file(ini_filename, config)
         output.make_values_file(config)
 
@@ -55,7 +52,6 @@ class MainPipeline(object):
         else:
             command = f"cosmosis {ini_filename}"
         return_code = self.run_command(command)
-        # return_code = 0
         if return_code == 0:
             return ini_filename
         else:
@@ -68,13 +64,7 @@ class MainPipeline(object):
         for pipeline_config, n_cores in zip(self.pipelines_config, self.n_cores_list):
             if prev_solution is not None:
                 print("Updating configuration file with previus run results")
-                # Update the initial values
-                # print(pipeline_config["Values"])
-                # pipeline_config["Values"].update(
-                #     (k, v)
-                #     for k, v in prev_solution.items()
-                #     if k in pipeline_config["Values"]
-                # )
+
                 # Update the input values
                 pipeline_config[pipeline_config["pipeline"]["modules"]].update(
                     (k, v)
@@ -87,11 +77,13 @@ class MainPipeline(object):
             print("Extracting results from the run")
             reader = self.get_cosmosis_result(ini_filename)
             reader.load_observation()
-            reader.load_ssp_model()
             reader.load_extinction_model()
+            reader.load_ssp_model()
             # TODO: remove somehow the if conditional
+            if "SFH" in reader.last_module:
+                reader.load_sfh_model()
             if "KinDust" in reader.last_module:
-                reader.load_chain(include_ssp_weights=True)
+                reader.load_chain(include_ssp_weights=False)
             else:
                 reader.load_chain()
             solution = reader.get_maxlike_solution()
@@ -101,7 +93,7 @@ class MainPipeline(object):
             flux_model, sol_config = self.reconstruct_solution(
                 pipeline_config, reader.config.copy(), solution)
 
-            if reader.last_module == "SFH":
+            if "SFH" in reader.last_module:
                 self.plot_fit(pipeline_config, sol_config, flux_model,
                               solution=solution)
             else:
@@ -135,8 +127,20 @@ class MainPipeline(object):
             av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
             redden_ssp(config, av)
 
-        flux_model = sfh.composite_stellar_population(
-            config, solution)
+        if 'SFH' in pipeline_config['pipeline']['modules']:
+            sfh_model = config['sfh_model']
+            mask = config['mask']
+            valid = sfh_model.parse_free_params(solution)
+            if not valid:
+                print("ERROR PARSING PARAMETERS")
+                return
+            flux_model = sfh_model.model.compute_SED(config['ssp_model'],
+										     t_obs=sfh_model.today,
+											 allow_negative=False).value
+            flux_model *= np.mean(config['flux'][mask] / flux_model[mask])
+        else:
+            solution, rnorm = nnls(config["ssp_sed"].T, config['flux'], maxiter=sed.shape[0] * 10)
+            flux_model = np.sum(config["ssp_sed"] * solution[:, np.newaxis], axis=0)
         return flux_model, config
 
     def plot_fit(self, pipe_config, config, flux_model, solution=None):
@@ -206,23 +210,6 @@ class MainPipeline(object):
             ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
                         va='top', ha='right', fontsize=7, color='Grey')
 
-            sfh_result = sfh.reconstruct_sfh(config, solution)
-            inax = axs[0].inset_axes((1.05, 0, 0.3, 1))
-            mappable = inax.pcolormesh(
-                sfh_result['ages'], sfh_result['metals'],
-                np.log10(sfh_result['ssp_mass_formed'] + 1),
-                vmin=4, cmap='Spectral_r')
-            inax.set_xlabel(r"Lookback time ($\log(t/\rm yr)$)")
-            inax.set_ylabel(r"Metallicity ($\log_{10}(Z/Z_\odot)$)")
-            plt.colorbar(mappable, ax=inax, label='Mass formed')
-            iinax = inax.inset_axes((0, 1.05, 1., .3), sharex=inax)
-            iinax.plot((sfh_result['ages'][:-1] + sfh_result['ages'][1:]) / 2,
-                        np.log10(sfh_result['mass_formed_history'] + 1),
-                        '-o', color='k')
-            iinax.set_ylim(3, 11)
-            iinax.tick_params(labelbottom=False)
-            iinax.set_title(f"Total mass: {np.log10(sfh_result['total_mass']):.2f}")
-            inax.set_ylabel(r"Mass formed ($\log_{10}(M/M_\odot)$)")
         fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
                     f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
                     bbox_inches='tight', dpi=200)
