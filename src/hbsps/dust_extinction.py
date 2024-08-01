@@ -1,11 +1,18 @@
 import numpy as np
 import extinction
 
-def redden_ssp(config, av=0):
+# def redden_ssp(config, av=0):
+#    extinction_law = config["extinction_law"]
+#    if extinction_law is not None:
+#        config["ssp_sed"] = extinction_law(
+#            config["ssp_wl"], config["ssp_sed"], av)
+
+def redden_ssp_model(config, av=0):
     extinction_law = config["extinction_law"]
     if extinction_law is not None:
-        config["ssp_sed"] = extinction_law(
-            config["ssp_wl"], config["ssp_sed"], av)
+        config["ssp_model"].L_lambda = extinction_law(
+            config["ssp_model"].wavelength, config["ssp_model"].L_lambda, av,
+            normalize=False)
 
 
 def redden_spectra(config, av=0):
@@ -34,19 +41,24 @@ class DustScreen(object):
     
     def __init__(self, ext_law_name, wave_norm_range=None, r=3.1):
         self.wave_norm_range = wave_norm_range
-        self.norm_wave = np.atleast_1d(np.mean(self.wave_norm_range))
+        if wave_norm_range is None:
+            self.norm_wave = None
+        else:
+            self.norm_wave = np.atleast_1d(np.mean(self.wave_norm_range))
         self.r = r
         self.extinction_law = getattr(extinction, ext_law_name)
 
     def extinction(self, wave, av):
         return 10**(-0.4 * self.extinction_law(wave, av, self.r))
 
-    def __call__(self, wave, spectra, av, deredden=False):
+    def __call__(self, wave, spectra, av, deredden=False, normalize=True):
         ext = self.extinction(wave, av)
-        ext /= self.extinction(self.norm_wave, av)
+        if normalize:
+            ext /= self.extinction(self.norm_wave, av)
 
         if spectra.ndim > 1:
-            ext = ext[np.newaxis, :]
+            extra_dims = tuple(np.arange(0, spectra.ndim - 1, dtype=int))
+            ext = np.expand_dims(ext, axis=extra_dims)
 
         if deredden:
             return spectra / ext
