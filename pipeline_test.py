@@ -1,9 +1,10 @@
 from hbsps.pipeline import MainPipeline
+from time import time
 
 kin_configuration = {
     
     "runtime": {
-        "sampler": "maxlike emcee"
+        "sampler": "maxlike"
     },
 
     "maxlike": {
@@ -14,21 +15,21 @@ kin_configuration = {
 
     "emcee": {
         "walkers": 16,
-        "samples": 500,
+        "samples": 1000,
         "nsteps": 500,
     },
 
     "output": {
-        "filename": "/home/pcorchoc/Develop/HBSPS/output/KinDust/tng_kin",
+        "filename": "/home/pcorchoc/Develop/HBSPS/output/lognormal/kinematics",
         "format": "text"
     },
 
     "pipeline": {
         "modules": "KinDust",
-        "values": "/home/pcorchoc/Develop/HBSPS/output/KinDust/values_KinDust.ini",
+        "values": "/home/pcorchoc/Develop/HBSPS/output/lognormal/values_KinDust.ini",
         "likelihoods": "KinDust",
         "quiet": "T",
-        "timing": "F",
+        "timing": "T",
         "debug": "F",
         #"extra_output": "parameters/ssp1 parameters/ssp2"
     },
@@ -36,14 +37,14 @@ kin_configuration = {
     "KinDust": {
         "file": "/home/pcorchoc/Develop/HBSPS/KinDust.py",
         "redshift": 0.0,
-        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng/tng_sub_id_588577.dat",
+        "inputSpectrum": "test/lognormal/input_spectra.dat",
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,
-        "SSP-NMF": "T",
+        "SSP-NMF": "T", 
         "SSP-NMF-N": 10,
         "SSPSave": "T",
-        "wlRange": "3700.0 8900.0",
+        "wlRange": "3700.0 8000.0",
         "wlNormRange": "5000.0 5500.0",
         "velscale": 70.0,
         "oversampling": 2,
@@ -71,9 +72,9 @@ sfh_configuration = {
     },
 
     "emcee": {
-        "walkers": 256,
-        "samples": 5000,
-        "nsteps": 1000,
+        "walkers": 16,
+        "samples": 1000,
+        "nsteps": 100,
     },
 
     "multinest":{
@@ -82,63 +83,68 @@ sfh_configuration = {
         "feedback": True,
         "update_interval": 2000,
         "log_zero": -1e14,
-        "multinest_outfile_root": "/home/pcorchoc/Develop/HBSPS/output/KinDust/sampling/"
+        "multinest_outfile_root": "/home/pcorchoc/Develop/HBSPS/output/lognormal/sampling/"
     },
 
     "output": {
-        "filename": "/home/pcorchoc/Develop/HBSPS/output/KinDust/tng_sfh",
+        "filename": "/home/pcorchoc/Develop/HBSPS/output/lognormal/SFH_results",
         "format": "text"
     },
 
     "pipeline": {
-        "modules": "SFH",
-        "values": "/home/pcorchoc/Develop/HBSPS/output/KinDust/values_SFH.ini",
-        "likelihoods": "SFH",
+        "modules": "SFH_stellar_mass",
+        "values": "/home/pcorchoc/Develop/HBSPS/output/lognormal/values_SFH.ini",
+        "likelihoods": "SFH_stellar_mass",
         "quiet": "T",
-        "timing": "F",
-        "debug": "F",
+        "timing": "T",
+        "debug": "T",
+        "extra_output": "parameters/normalization"
     },
 
-    "SFH": {
-        "file": "/home/pcorchoc/Develop/HBSPS/SFH.py",
+    "SFH_stellar_mass": {
+        "file": "/home/pcorchoc/Develop/HBSPS/SFH_stellar_mass.py",
         "redshift": 0.0,
-        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/tng/tng_sub_id_588577.dat",
+        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/lognormal/input_spectra.dat",
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,
         # "SSP-NMF": "F",
         # "SSP-NMF-N": None,
-        "SSPSave": "T",
-        "wlRange": "3700.0 8900.0",
+        #"SSPSave": "F",
+        "wlRange": "3700.0 6000.0",
         "wlNormRange": "5000.0 5500.0",
-        "ageRange": [5.0, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 11.0],
-        "metRange": [-3., -2.5, -2.0, -1.5, -1.0],
+        # "SFHModel": "LogNormalQuenchedSFH",
+        # "SFHModel": "LogNormalSFH",
+        "SFHModel": "FixedMassFracSFH",
+        "SFHArgs1": [0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99],
         "velscale": 70.0,
         "oversampling": 2,
         "polOrder": 10,
-        "los_vel": 100.0,
+        "los_vel": 0.0,
         "los_sigma": 100.0,
-        "av": 1.0,
+        "av": 0.0,
         "ExtinctionLaw": "ccm89",
     },
 
     "Values": {
-        "ssp1": "-6 -0.3 0",
-        "ssp2": "-6 -0.3 0",
-        "ssp3": "-6 -0.3 0",
-        "ssp4": "-6 -0.3 0",
-        "ssp5": "-6 -0.3 0",
-        "ssp6": "-6 -0.3 0",
-        "ssp7": "-6 -0.3 0",
-        "ssp8": "-6 -0.3 0",
-        "ssp9": "-6 -0.3 0",
+        # "alpha": "0.0 1.0 3.0",
+        # "z_today": "0.005 0.01 0.08",
+        # "scale": "0.1 3.0 50",
+        # "lnt0": "-2.3025850929940455 1.9070938758868938 5.2004821128936785",
+        #"lnt_quench": "-1.2039728043259361 2.6002410564468392 3.2933882370067846",
+        #"lntau_quench": "-2.3025850929940455 -0.6931471805599453 2.6002410564468392"
     }
 }
 
-main_pipe = MainPipeline([kin_configuration,
+t0 = time()
+main_pipe = MainPipeline([
+                          kin_configuration,
                           sfh_configuration
                           ],
-                         n_cores_list=[1,
-                                        4
+                         n_cores_list=[
+                             1, 1
+                             #           4
                                        ])
 main_pipe.execute_all()
+tend = time()
+print("TOTAL ELAPSED TIME (min): ", (tend - t0) / 60)
