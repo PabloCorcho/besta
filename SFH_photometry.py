@@ -7,7 +7,8 @@ from cosmosis.datablock import option_section, names as section_names
 import hbsps.specBasics as specBasics
 
 from hbsps import prepare_fit, kinematics, dust_extinction
-
+from astropy import units as u
+from pst.dust import DustScreen
 
 def X2min(spectrum, recSp, cov):
 	# Determine residual, divide first residual vector by 
@@ -63,6 +64,22 @@ def setup(options):
 	# 	av = options[option_section, "av"]
 	# 	print(f"Reddening SSP models using Av={av}")
 	# 	dust_extinction.redden_ssp_model(config, av)
+	print("Producing photometry grid")
+	dust_model = DustScreen("ccm89")
+	a_v_array = np.linspace(0.1, 3, 30)
+	ssps = [dust_model.redden_ssp_model(config['ssp_model'], a_v=av) for av in a_v_array]
+	all_photometry = np.zeros(
+		(a_v_array.size, len(config['filters']),
+                             *config['ssp_model'].L_lambda.shape[:-1])
+							 ) * u.Quantity("3631e-9 Jy / Msun")
+
+	for j, ssp in enumerate(ssps):
+			photo = ssp.compute_photometry(
+				filter_list=config['filters'], z_obs=config['redshift']
+				).to("3631e-9 Jy / Msun")
+			all_photometry[j] = photo
+	config['av_grid'] = a_v_array
+	config['photometry_grid'] = all_photometry
 	return config
 	
 def execute(block, config):
@@ -82,18 +99,22 @@ def execute(block, config):
 		print("Invalid")
 		block[section_names.likelihoods, "SFH_photometry_like"] = -1e20
 		return 0
-	if not hasattr(ssp, "photometry"):
-		ssp.compute_photometry(
-			filter_list=config['filters'], z_obs=config['redshift'])
+	
+	av = 0.5
+	av_idx = np.searchsorted(config['av_grid'], av)
+	w_idx = (av - config['av_grid'][av_idx - 1]) / (
+		config['av_grid'][av_idx] - config['av_grid'][av_idx - 1])
+	photometry = config['photometry_grid'][av_idx] * w_idx + config['photometry_grid'][av_idx - 1] * (1 - w_idx)
 
 	flux_model = sfh_model.model.compute_photometry(
 		ssp,
 		t_obs=sfh_model.today,
-		allow_negative=False)
-	# Convert to nanomaggies
+		allow_negative=False,
+		photometry=photometry)
 	flux_model = flux_model.to_value("3631e-9 Jy")
 
 	normalization = np.mean(config['photometry_flux'] / flux_model)
+	print(normalization)
 	block['parameters', 'normalization'] = normalization
 	flux_model *= normalization
 	print(config['photometry_flux'], flux_model)
