@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+from astropy.cosmology import FlatLambdaCDM
+
+cosmology = FlatLambdaCDM(H0=70., Om0=0.3)
 
 def read_ini_file(path):
     ini_info = {}
