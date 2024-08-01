@@ -14,6 +14,7 @@ from hbsps.utils import cosmology
 from hbsps import dust_extinction, sfh
 from hbsps import kinematics
 
+
 try:
     from pst import SSP, observables
 except:
@@ -90,7 +91,8 @@ def prepare_observed_spectra(cosmosis_options, config, module=None,
     print(underline("\nConfiguration done"))
     return flux, cov, wavelength, ln_wave
 
-def prepare_photometry(cosmosis_options=None, config={}, module=None):
+
+def prepare_observed_photometry(cosmosis_options=None, config={}, module=None):
     """Prepare the Photometric Data."""
     print(underline("\nConfiguring photometric data"))
     if type(cosmosis_options) is DataBlock:
@@ -100,13 +102,13 @@ def prepare_photometry(cosmosis_options=None, config={}, module=None):
 
     # Read the data
     filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
-    magnitudes, magnitudes_err = np.loadtxt(photometry_file, usecols=(1, 2), unpack=True, dtype=float)
-    # Convert AB magnitudes to nanomaggies
-    flux = 10**(-0.4 * magnitudes) / 1e-9
-    flux_err = (0.4 * magnitudes_err) * flux * np.log(10)
+    # Assuming flux units == nanomaggies
+    flux, flux_err = np.loadtxt(
+        photometry_file, usecols=(1, 2), unpack=True, dtype=float)
     config['photometry_flux'] = flux
-    config['photometry_flux_err'] = flux_err
+    config['photometry_flux_var'] = flux_err**2
 
+    # Load the photometric filters
     photometric_filters = []
     for filter_name in filter_names:
         print(f"Loading photometric filter: {filter_name}")
@@ -116,6 +118,8 @@ def prepare_photometry(cosmosis_options=None, config={}, module=None):
             f = observables.Filter(filter_name=filter_name)
         photometric_filters.append(f)
     config['filters'] = photometric_filters
+    return config
+
 
 def prepare_ssp_from_fits(filename, config={}):
     """Load the SSP from a FITS file."""
@@ -138,26 +142,27 @@ def prepare_ssp_model(cosmosis_options=None, config={}, module=None,
     print(underline("\nConfiguring SSP parameters"))
     # Wavelegth range to renormalize the spectra
     if type(cosmosis_options) is DataBlock:
-        wl_norm_range = cosmosis_options[option_section, "wlNormRange"]
         velscale = cosmosis_options[option_section, "velscale"]
         oversampling = cosmosis_options[option_section, "oversampling"]
         ssp_name = cosmosis_options[option_section, "SSPModel"]
         ssp_dir = cosmosis_options[option_section, "SSPDir"]
+
         if cosmosis_options.has_value(option_section, "SSPModelArgs"):
             ssp_args = cosmosis_options.get_string(option_section, "SSPModelArgs")
             ssp_args = ssp_args.split(",")
         else:
             ssp_args = []
 
+        if cosmosis_options.has_value(option_section, "wlNormRange"):
+            wl_norm_range = cosmosis_options[option_section, "wlNormRange"]
+        else:
+            wl_norm_range = None
         do_nmf = cosmosis_options.has_value(option_section, "SSP-NMF")
         if do_nmf:
             do_nmf = cosmosis_options.get_bool(option_section, "SSP-NMF")
             n_nmf = cosmosis_options.get_int(option_section, "SSP-NMF-N")
 
     elif type(cosmosis_options) is Inifile:
-        wl_norm_range = cosmosis_options[module, "wlNormRange"]
-        wl_norm_range = wl_norm_range.strip("[]")
-        wl_norm_range = np.array(wl_norm_range.split(" "), dtype=float)
         velscale = cosmosis_options[module, "velscale"]
         velscale = float(velscale.strip("[]"))
         oversampling = cosmosis_options[module, "oversampling"]
@@ -168,6 +173,13 @@ def prepare_ssp_model(cosmosis_options=None, config={}, module=None,
         if len(ssp_args) > 0:
             ssp_args = ssp_args.split(",")
  
+        if cosmosis_options.get(module, "wlNormRange", fallback='none') != 'none':
+            wl_norm_range = cosmosis_options[module, "wlNormRange"]
+            wl_norm_range = wl_norm_range.strip("[]")
+            wl_norm_range = np.array(wl_norm_range.split(" "), dtype=float)
+        else:
+            wl_norm_range = None
+
         do_nmf = cosmosis_options.getboolean(module, "SSP-NMF", fallback=False)
         if do_nmf:
             n_nmf = cosmosis_options[module, "SSP-NMF-N"]
@@ -186,18 +198,26 @@ def prepare_ssp_model(cosmosis_options=None, config={}, module=None,
         "Log-binning SSP spectra to velocity scale: ", velscale / oversampling, " km/s"
     )
     dlnlam = velscale / specBasics.constants.c.to("km/s").value
-    extra_offset_pixel = int(300 / velscale)
     dlnlam /= oversampling
+
+    if "ln_wave" in config:
+        ln_wl_edges = config["ln_wave"][[0, -1]]
+        extra_offset_pixel = int(300 / velscale)
+    else:
+        ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
+        extra_offset_pixel = 0
+
     lnlam_bin_edges = np.arange(
-        config["ln_wave"][0]
+        ln_wl_edges[0]
         - dlnlam * extra_offset_pixel * oversampling
         - 0.5 * dlnlam,
-        config["ln_wave"][-1]
+        ln_wl_edges[-1]
         + dlnlam * (1 + extra_offset_pixel) * oversampling
         + 0.5 * dlnlam,
         dlnlam,
     )
     ssp.interpolate_sed(np.exp(lnlam_bin_edges))
+    print("SED shape: ", ssp.L_lambda.shape)
 
     if normalize:
         print("Normalizing SSPs")
@@ -223,6 +243,7 @@ def prepare_ssp_model(cosmosis_options=None, config={}, module=None,
     config["extra_pixels"] = extra_offset_pixel
     print(underline("\nConfiguration done"))
     return
+
 
 def prepare_ssp_model_preprocessing(cosmosis_options, config, module=None):
     print("Preprocessing SSP model")
@@ -289,6 +310,7 @@ def prepare_extinction_law(cosmosis_options, config, module=None):
     print(underline("\nConfiguration done"))
     return
 
+
 def prepare_sfh_model(cosmosis_options=None, config={}, module=None):
     """Prepare the SFH model."""
     print(underline("\nConfiguring SFH model"))
@@ -308,7 +330,7 @@ def prepare_sfh_model(cosmosis_options=None, config={}, module=None):
             key = key.replace(key[-1], str(int(key[-1]) + 1))
 
     sfh_model = getattr(sfh, sfh_model_name)
-    sfh_model = sfh_model(*sfh_args)
+    sfh_model = sfh_model(*sfh_args, **config)
     sfh_model.make_ini(cosmosis_options["pipeline", "values"])
     config["sfh_model"] = sfh_model
     print(underline("\nConfiguration done"))

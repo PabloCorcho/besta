@@ -81,32 +81,11 @@ def reconstruct_sfh_from_table(config, table, av=None):
 
 # Star formation history models
 
-class ChemicalEvolutionBase():
-    """Base class for chemical evolution models"""
-    def __init__(self, *args, **kwargs):
-        self.today = kwargs.get(
-            "today", cosmology.age(kwargs.get("redshift", 0.0)))
-
-class MassRelationChemicalModel(ChemicalEvolutionBase):
-    free_params = {'alpha': [0, 10], 'z_today': [0.001, 0.1]}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        print(f"[ChemicalEvolution] Initialising MassRelationChemicalModel")
-
-    def parse_free_params(self, free_params):
-        self.z_today = free_params['z_today']
-        self.alpha = free_params['alpha']
-
-    def metallicity_history(self, sfh_model, times):
-        mass = sfh_model.mass_history(times)
-        z = self.z_today * np.power(mass / mass[-1], self.alpha
-                                )
-        return z 
-
 class SFHBase():
     free_params = {}
     def __init__(self, *args, **kwargs):
+        print("Initialising Star Formation History model")
+        
         self.today = kwargs.get(
             "today", cosmology.age(kwargs.get("redshift", 0.0)))
 
