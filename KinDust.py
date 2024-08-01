@@ -40,21 +40,20 @@ def setup(options):
 	# ------------------------------------------------------------------------ #
 	prepare_fit.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
-	prepare_fit.prepare_ssp_data(options, config)
+	prepare_fit.prepare_ssp_model(options, config)
 	# ------------------------------------------------------------------------ #
 	prepare_fit.prepare_extinction_law(options, config)
 	# ------------------------------------------------------------------------ #
-#	make_values_file(values_file=values_file, inc_extinction=inc_extinction)
-	if options.has_value(option_section, "SSPSave"):
-		config['ssp_log'] = open(
-			os.path.join(
-				os.path.dirname(options['output', 'filename']),
-				"SSP_weights.dat"),
-			"w")
-		header = '#' + ", ".join(
-			[f"parameters--ssp{i + 1}" for i in range(config['ssp_sed'].shape[0])])
-		header += ", parameters--los_vel, parameters--los_sigma, parameters--av, like\n"
-		config['ssp_log'].write(header)
+	# if options.has_value(option_section, "SSPSave"):
+	# 	config['ssp_log'] = open(
+	# 		os.path.join(
+	# 			os.path.dirname(options['output', 'filename']),
+	# 			"SSP_weights.dat"),
+	# 		"w")
+	# 	header = '#' + ", ".join(
+	# 		[f"parameters--ssp{i + 1}" for i in range(config['ssp_sed'].shape[0])])
+	# 	header += ", parameters--los_vel, parameters--los_sigma, parameters--av, like\n"
+	# 	config['ssp_log'].write(header)
 	return config
 
 def execute(block, config):
@@ -89,18 +88,20 @@ def execute(block, config):
 	# Final posterior for sampling
 	block[section_names.likelihoods, "KinDust_like"] = like
 
-	if 'ssp_log' in config:
-		config['ssp_log'].write(
-			", ".join(np.array(np.log10(solution + 1e-10), dtype=str))
-			+ f", {los_vel}, {sigma}, {av}"
-			+ f", {like}" + "\n")
+	# if 'ssp_log' in config:
+	# 	config['ssp_log'].write(
+	# 		", ".join(np.array(np.log10(solution + 1e-10), dtype=str))
+	# 		+ f", {los_vel}, {sigma}, {av}"
+	# 		+ f", {like}"
+	# 		+ "\n"
+	# 		)
 
 	return 0
 
 def cleanup(config):
-	if "ssp_log" in config:
-		print("Saving SSP log")
-		config['ssp_log'].close()
+	# if "ssp_log" in config:
+	# 	print("Saving SSP log")
+	# 	config['ssp_log'].close()
 	return 0
 
 module = cosmosis.FunctionModule("KinDust", setup, execute)
