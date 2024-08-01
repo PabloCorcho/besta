@@ -4,3 +4,4 @@ __pycache__/
 cosmosis-standard-library/
 *.ini
 *.dat
+*.png
