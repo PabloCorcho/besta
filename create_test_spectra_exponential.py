@@ -6,8 +6,8 @@ from pst import models
 
 from hbsps import specBasics
 from hbsps import kinematics
-from hbsps.sfh import FixedTimeSFH
-from hbsps.utils import cosmology
+from hbsps.sfh import ExponentialSFH
+
 import extinction
 import os
 from astropy import units as u
@@ -18,7 +18,7 @@ ssp.cut_wavelength(3500, 9000)
 velscale = 70
 delta_lnwl = velscale / specBasics.constants.c.to('km/s').value
 delta_lnwl = velscale / 3e5
-snr = 300
+snr = 50
 # Default non-linear parameters
 sigma = np.asarray([100])
 vel_offset = np.asarray([0])
@@ -30,21 +30,15 @@ newBorders = np.arange(
 
 ssp.interpolate_sed(np.exp(newBorders))
 
-tau = 3e9 * u.yr
-times = cosmology.age(np.geomspace(0.001, 30, 300))
 params = {}
-for t in times:
-    params[f'logmass_at_{t.value:.3f}'] = (1 - np.exp(-t / tau))
+params['logtau'] = 0.5
 params['alpha'] = 1
 params['z_today'] = 0.02
 
-sfh = FixedTimeSFH(times, today=cosmology.age(0))
+sfh = ExponentialSFH()
 sfh.parse_free_params(params)
-m = (1 - np.exp(-sfh.time / tau))
-sfh.model.table_M = m / m[-1] * u.Msun
-print(sfh.time)
 sed = sfh.model.compute_SED(ssp, t_obs=sfh.today)
-output_dir = "test/fixedgrid"
+output_dir = "test/exponential"
 
 print(sed)
 
@@ -63,6 +57,7 @@ ax.plot(ssp.wavelength, convolved_spectra, label='Redshifted', lw=0.7)
 
 ax = fig.add_subplot(212)
 ax.plot(sfh.time, sfh.model.integral_SFR(sfh.time))
+ax.minorticks_on()
 ax.grid(visible=True, which='both')
 
 fig.savefig(os.path.join(output_dir, f"input_spectra.png"),
