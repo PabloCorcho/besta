@@ -66,7 +66,7 @@ def setup(options):
 	# 	dust_extinction.redden_ssp_model(config, av)
 	print("Producing photometry grid")
 	dust_model = DustScreen("ccm89")
-	a_v_array = np.linspace(0.1, 3, 30)
+	a_v_array = np.linspace(0, 3, 30)
 	ssps = [dust_model.redden_ssp_model(config['ssp_model'], a_v=av) for av in a_v_array]
 	all_photometry = np.zeros(
 		(a_v_array.size, len(config['filters']),
@@ -100,7 +100,8 @@ def execute(block, config):
 		block[section_names.likelihoods, "SFH_photometry_like"] = -1e20
 		return 0
 	
-	av = 0.5
+	# TODO: REMOVE THIS ONCE PROPERLY TESTED
+	av = 0.0
 	av_idx = np.searchsorted(config['av_grid'], av)
 	w_idx = (av - config['av_grid'][av_idx - 1]) / (
 		config['av_grid'][av_idx] - config['av_grid'][av_idx - 1])
@@ -114,7 +115,6 @@ def execute(block, config):
 	flux_model = flux_model.to_value("3631e-9 Jy")
 
 	normalization = np.mean(config['photometry_flux'] / flux_model)
-	print(normalization)
 	block['parameters', 'normalization'] = normalization
 	flux_model *= normalization
 	print(config['photometry_flux'], flux_model)
