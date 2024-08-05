@@ -2,7 +2,6 @@ import numpy as np
 from hbsps.utils import cosmology
 import pst
 from astropy import units as u
-from scipy.special import erf, hyp2f1, betainc
 
 def composite_stellar_population(config, weights):
     if type(weights) is dict:
@@ -86,15 +85,19 @@ class SFHBase():
     def __init__(self, *args, **kwargs):
         print("Initialising Star Formation History model")
         
+        self.redshift = kwargs.get("redshift", 0.0)
         self.today = kwargs.get(
-            "today", cosmology.age(kwargs.get("redshift", 0.0)))
+            "today", cosmology.age(self.redshift))
 
     def make_ini(self, ini_file):
         print("Making ini file: ", ini_file)
         with open(ini_file, "w") as file:
             file.write("[parameters]\n")
             for k, v in self.free_params.items():
-                file.write(f"{k} = {v[0]} {v[1]} {v[2]}\n")
+                if len(v) > 1:
+                    file.write(f"{k} = {v[0]} {v[1]} {v[2]}\n")
+                else:
+                    file.write(f"{k} = {v[0]}\n")
 
 class FixedTimeSFH(SFHBase):
     free_params = {'alpha': [0, 1, 10], 'z_today': [0.005, 0.01, 0.08]}
@@ -139,6 +142,63 @@ class FixedTimeSFH(SFHBase):
         self.model.alpha = free_params['alpha']
         self.model.z_today = free_params['z_today'] * u.dimensionless_unscaled
         return 1
+
+
+class FixedTime_sSFR_SFH(SFHBase):
+    free_params = {'alpha': [0, 1, 10], 'z_today': [0.005, 0.01, 0.08]}
+
+    def __init__(self, delta_time, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print("[SFH] Initialising FixedGrid-sSFR-SFH model")
+        if not isinstance(delta_time, u.Quantity):
+            print("Assuming input times are in Gyr: ", delta_time)
+            delta_time = np.array(delta_time) * u.Gyr
+        self.delta_time = np.sort(delta_time)[::-1]
+        self.today = cosmology.age(self.redshift)
+
+        self.time = np.sort(self.today - self.delta_time)
+        self.time = np.insert(self.time, [0, self.time.size],
+                              [0 * u.Gyr, self.today])
+        for dt in self.delta_time.to_value('yr'):
+            max_logssfr = np.min((np.log10(1 / dt), -8.0))
+            self.free_params[
+                    f'logssfr_over_{np.log10(dt):.2f}_yr'] = [-14, -10, max_logssfr]
+
+        self.model = pst.models.Tabular_ZPowerLaw(
+            times=self.time, masses=np.ones(self.time.size) * u.Msun,
+            z_today=kwargs.get("z_today", 0.02)  * u.dimensionless_unscaled,
+            alpha=kwargs.get("alpha", 0.0))
+
+    def parse_free_params(self, free_params):
+        dt_yr = self.delta_time.to_value('yr')
+        ssfr_over_last = np.array(
+            [free_params[f'logssfr_over_{np.log10(dt):.2f}_yr'] for dt in dt_yr],
+            dtype=float)
+        mass_frac = 1 - dt_yr * 10**ssfr_over_last
+        mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
+        if (mass_frac[1:] - mass_frac[:-1] < 0).any():
+            return 0
+        # Update the mass of the tabular model
+        self.model.table_M =  mass_frac * u.Msun
+        self.model.alpha = free_params['alpha']
+        self.model.z_today = free_params['z_today'] * u.dimensionless_unscaled
+        return 1
+
+    def parse_datablock(self, datablock):
+        dt_yr = self.delta_time.to_value('yr')
+        ssfr_over_last = np.array(
+            [datablock["parameters", f'logssfr_over_{np.log10(dt):.2f}_yr'] for dt in dt_yr],
+            dtype=float)
+        mass_frac = 1 - dt_yr * 10**ssfr_over_last
+        mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
+        if (mass_frac[1:] - mass_frac[:-1] < 0).any():
+            return 0
+        # Update the mass of the tabular model
+        self.model.table_M =  mass_frac * u.Msun
+        self.model.alpha = datablock["parameters",'alpha']
+        self.model.z_today = datablock["parameters",'z_today'] * u.dimensionless_unscaled
+        return 1
+
 
 class FixedMassFracSFH(SFHBase):
     free_params = {'alpha': [0, 1, 10], 'z_today': [0.005, 0.01, 0.08]}
