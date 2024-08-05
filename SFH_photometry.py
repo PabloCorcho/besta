@@ -101,7 +101,7 @@ def execute(block, config):
 		return 0
 	
 	# TODO: REMOVE THIS ONCE PROPERLY TESTED
-	av = block["parameter", "a_v"]
+	av = block["parameters", "a_v"]
 	av_idx = np.searchsorted(config['av_grid'], av)
 	w_idx = (av - config['av_grid'][av_idx - 1]) / (
 		config['av_grid'][av_idx] - config['av_grid'][av_idx - 1])
@@ -117,7 +117,6 @@ def execute(block, config):
 	normalization = np.mean(config['photometry_flux'] / flux_model)
 	block['parameters', 'normalization'] = normalization
 	flux_model *= normalization
-	print(config['photometry_flux'], flux_model)
 	like = X2min(
 		config['photometry_flux'], flux_model, config['photometry_flux_var'])
 	# Final posterior for sampling
