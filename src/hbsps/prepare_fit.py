@@ -293,6 +293,7 @@ def prepare_extinction_law(cosmosis_options, config, module=None):
             config["norm_extinction"] = None
             return
         ext_law = cosmosis_options.get_string(option_section, "ExtinctionLaw")
+        
         wl_norm_range = cosmosis_options[option_section, "wlNormRange"]
     elif type(cosmosis_options) is Inifile:
         if not cosmosis_options.get(module, "ExtinctionLaw", fallback=False):
@@ -319,8 +320,17 @@ def prepare_sfh_model(cosmosis_options=None, config={}, module=None):
         sfh_args = []
         key = "SFHArgs1"
         while cosmosis_options.has_value(option_section, key):
-            sfh_args.append(cosmosis_options[option_section, key])
+            value = cosmosis_options[option_section, key]
+            if "," in value:
+                value = np.array(value.split(","), dtype=float)
+            sfh_args.append(value)
             key = key.replace(key[-1], str(int(key[-1]) + 1))
+        
+        if cosmosis_options.has_value(option_section, "make_ini"):
+            make_ini = cosmosis_options[option_section, "make_ini"]
+        else:
+            make_ini = False
+
     elif type(cosmosis_options) is Inifile:
         sfh_model_name = cosmosis_options[module, "SFHModel"]
         sfh_args = []
@@ -329,9 +339,13 @@ def prepare_sfh_model(cosmosis_options=None, config={}, module=None):
             sfh_args.append(cosmosis_options[module, key])
             key = key.replace(key[-1], str(int(key[-1]) + 1))
 
+        make_ini = cosmosis_options.getboolean(
+            module, "make_ini", fallback=False)
+
     sfh_model = getattr(sfh, sfh_model_name)
     sfh_model = sfh_model(*sfh_args, **config)
-    sfh_model.make_ini(cosmosis_options["pipeline", "values"])
+    if make_ini:
+        sfh_model.make_ini(cosmosis_options["pipeline", "values"])
     config["sfh_model"] = sfh_model
     print(underline("\nConfiguration done"))
 
