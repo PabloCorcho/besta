@@ -101,7 +101,7 @@ def execute(block, config):
 		return 0
 	
 	# TODO: REMOVE THIS ONCE PROPERLY TESTED
-	av = 0.0
+	av = block["parameter", "a_v"]
 	av_idx = np.searchsorted(config['av_grid'], av)
 	w_idx = (av - config['av_grid'][av_idx - 1]) / (
 		config['av_grid'][av_idx] - config['av_grid'][av_idx - 1])
