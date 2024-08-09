@@ -97,7 +97,8 @@ def execute(block, config):
 	valid = sfh_model.parse_datablock(block)
 	if not valid:
 		print("Invalid")
-		block[section_names.likelihoods, "SFH_photometry_like"] = -1e20
+		block[section_names.likelihoods, "SFH_photometry_like"] = -1e3
+		block['parameters', 'normalization'] = 0.0
 		return 0
 	
 	# TODO: REMOVE THIS ONCE PROPERLY TESTED
