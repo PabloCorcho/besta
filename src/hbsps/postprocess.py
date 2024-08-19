@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from matplotlib import pyplot as plt
 from astropy.table import Table
@@ -178,7 +179,16 @@ def compute_pdf_from_results(table,
                         ax.axvline(real_values[key_1], c='r')
                     if real_values is not None and key_2 in real_values:
                         ax.axhline(real_values[key_2], c='r')
-                    plt.show()
+                    
+                    if output_filename is None:
+                        fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
+                                    pdi=200, bbox_inches='tight')
+                    else:
+                        fig.savefig(os.path.join(
+                            os.path.dirname(output_filename),
+                            f"stat_analysis_pdf_{key_1}_{key_2}.png"),
+                                    pdi=200, bbox_inches='tight')
+                    plt.close()
 
     output_hdul = fits.HDUList([fits.PrimaryHDU(), *output_hdul])
     if output_filename is None:
@@ -197,16 +207,16 @@ def compute_pdf_from_results(table,
 
 if __name__ == "__main__":
     table = read_results_file(
-        "/home/pcorchoc/Develop/HBSPS/output/photometry/gaea_131/SFH_results.txt")
+        "/home/pcorchoc/Develop/HBSPS/output/photometry/illustris/subhalo_167396/SFH_results.txt")
     compute_pdf_from_results(
         table, real_values={'parameters--a_v': 0.50,
-                            'parameters--logssfr_over_10.00_yr': np.log10(7.93e-11),
-                            'parameters--logssfr_over_9.70_yr': np.log10(9.46e-12),
-                            'parameters--logssfr_over_9.48_yr': np.log10(1.30e-12),
-                            'parameters--logssfr_over_9.00_yr': np.log10(8.02e-13),
-                            'parameters--logssfr_over_8.70_yr': np.log10(7.15e-13),
-                            'parameters--logssfr_over_8.48_yr': np.log10(6.54e-13),
-                            'parameters--logssfr_over_8.00_yr': np.log10(1.03e-14),
+                            'parameters--logssfr_over_10.00_yr': np.log10(9.31e-11),
+                            'parameters--logssfr_over_9.70_yr': np.log10(9.05e-11),
+                            'parameters--logssfr_over_9.48_yr': np.log10(8.90e-11),
+                            'parameters--logssfr_over_9.00_yr': np.log10(8.46e-11),
+                            'parameters--logssfr_over_8.70_yr': np.log10(1.06e-10),
+                            'parameters--logssfr_over_8.48_yr': np.log10(9.60e-11),
+                            'parameters--logssfr_over_8.00_yr': np.log10(9.77e-11),
                             },
                             # parameter_keys=['parameters--logssfr_over_9.48_yr',
                             #                 'parameters--logssfr_over_9.00_yr',
