@@ -77,12 +77,17 @@ def compute_pdf_from_results(table,
             dummy_bins = (dummy_value[1:] + dummy_value[:-1]) / 2
 
             key_name = key.replace(parameter_prefix + "--", "")
-            kde = stats.gaussian_kde(value[mask], weights=posterior[mask])
+            try:
+                kde = stats.gaussian_kde(value[mask], weights=posterior[mask])
+                kde_pdf = kde(dummy_bins)
+            except Exception as e:
+                print("There was an error during KDE estimation: ", e)
+                kde_pdf = np.full_like(pdf, fill_value=np.nan)
 
             table_1d_pdf.add_column(dummy_bins,
                                     name=f"{key_name}_bin")
             table_1d_pdf.add_column(pdf, name=f"{key_name}_pdf")
-            table_1d_pdf.add_column(kde(dummy_bins), name=f"{key_name}_pdf_kde")
+            table_1d_pdf.add_column(kde_pdf, name=f"{key_name}_pdf_kde")
 
             table_1d_percentiles.add_column(value_pct, name=f"{key_name}_pct")
 
@@ -96,7 +101,7 @@ def compute_pdf_from_results(table,
                 fig, ax = plt.subplots()
                 ax.set_title(key)
                 ax.plot(dummy_bins, pdf, label='Original')
-                ax.plot(dummy_value, kde(dummy_value), label='KDE')
+                ax.plot(dummy_value, kde_pdf, label='KDE')
                 for p, v in zip(percentiles, value_pct):
                     ax.axvline(v, label=f"P{p*100}", color=pct_cmap(p))
 
