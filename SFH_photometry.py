@@ -94,10 +94,10 @@ def execute(block, config):
 
 	# sfh_free_params = {k:block["parameters", k] for k in sfh_model.free_params.keys()}
 	# valid = sfh_model.parse_free_params(sfh_free_params)
-	valid = sfh_model.parse_datablock(block)
+	valid, penalty = sfh_model.parse_datablock(block)
 	if not valid:
 		print("Invalid")
-		block[section_names.likelihoods, "SFH_photometry_like"] = -1e3
+		block[section_names.likelihoods, "SFH_photometry_like"] = -1e5 * penalty
 		block['parameters', 'normalization'] = 0.0
 		return 0
 	
