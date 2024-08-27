@@ -69,6 +69,7 @@ def compute_pdf_from_results(table,
             cmf = np.cumsum(posterior[mask][sort_pos])
 
             value_pct = np.interp(percentiles, cmf, value[mask][sort_pos])
+            value_mean = np.sum(posterior[mask] * value[mask])
 
             dummy_value = np.linspace(value[mask].min(), value[mask].max(),
                                       pdf_size + 1)
@@ -101,7 +102,8 @@ def compute_pdf_from_results(table,
                 fig, ax = plt.subplots()
                 ax.set_title(key)
                 ax.plot(dummy_bins, pdf, label='Original')
-                ax.plot(dummy_value, kde_pdf, label='KDE')
+                ax.plot(dummy_bins, kde_pdf, label='KDE')
+                ax.axvline(value_mean, label='Mean')
                 for p, v in zip(percentiles, value_pct):
                     ax.axvline(v, label=f"P{p*100}", color=pct_cmap(p))
 
@@ -173,27 +175,27 @@ def compute_pdf_from_results(table,
                     fraction = compute_fraction_from_map(pdf)
 
                     fig, ax = plt.subplots()
-                    ax.pcolormesh(dummy_value_1, dummy_value_2, pdf,
+                    ax.pcolormesh(dummy_value_2, dummy_value_1, pdf,
                                 cmap='Greys')
-                    ax.contour(dummy_value_1, dummy_value_2, fraction,
+                    ax.contour(dummy_value_2, dummy_value_1, fraction,
                             levels=[.1, .5, .84])
-                    ax.set_xlabel(key_1_name)
-                    ax.set_ylabel(key_2_name)
+                    ax.set_xlabel(key_2_name)
+                    ax.set_ylabel(key_1_name)
 
                     if real_values is not None and key_1 in real_values:
-                        ax.axvline(real_values[key_1], c='r')
+                        ax.axhline(real_values[key_1], c='r')
                     if real_values is not None and key_2 in real_values:
-                        ax.axhline(real_values[key_2], c='r')
+                        ax.axvline(real_values[key_2], c='r')
                     
-                    if output_filename is None:
-                        fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
-                                    pdi=200, bbox_inches='tight')
-                    else:
-                        fig.savefig(os.path.join(
-                            os.path.dirname(output_filename),
-                            f"stat_analysis_pdf_{key_1}_{key_2}.png"),
-                                    pdi=200, bbox_inches='tight')
-                    plt.close()
+                    # if output_filename is None:
+                    #     fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
+                    #                 dpi=200, bbox_inches='tight')
+                    # else:
+                    #     fig.savefig(os.path.join(
+                    #         os.path.dirname(output_filename),
+                    #         f"stat_analysis_pdf_{key_1}_{key_2}.png"),
+                    #                 dpi=200, bbox_inches='tight')
+                    # plt.close()
 
     output_hdul = fits.HDUList([fits.PrimaryHDU(), *output_hdul])
     if output_filename is None:
@@ -212,21 +214,23 @@ def compute_pdf_from_results(table,
 
 if __name__ == "__main__":
     table = read_results_file(
-        "/home/pcorchoc/Develop/HBSPS/output/photometry/illustris/subhalo_167396/SFH_results.txt")
+        "/home/pcorchoc/Develop/HBSPS/output/photometry/illustris_dust_and_redshift/subhalo_484448/SFH_results.txt")
     compute_pdf_from_results(
-        table, real_values={'parameters--a_v': 0.50,
-                            'parameters--logssfr_over_10.00_yr': np.log10(9.31e-11),
-                            'parameters--logssfr_over_9.70_yr': np.log10(9.05e-11),
-                            'parameters--logssfr_over_9.48_yr': np.log10(8.90e-11),
-                            'parameters--logssfr_over_9.00_yr': np.log10(8.46e-11),
-                            'parameters--logssfr_over_8.70_yr': np.log10(1.06e-10),
-                            'parameters--logssfr_over_8.48_yr': np.log10(9.60e-11),
-                            'parameters--logssfr_over_8.00_yr': np.log10(9.77e-11),
+        table, real_values={'parameters--a_v': 0.15,
+                            'parameters--z_today': 0.02869,
+                            'parameters--logssfr_over_10.00_yr': np.log10(9.33e-11),
+                            'parameters--logssfr_over_9.70_yr': np.log10(1.40e-11),
+                            'parameters--logssfr_over_9.48_yr': np.log10(1.78e-12),
+                            'parameters--logssfr_over_9.00_yr': np.log10(1.49e-13),
+                            'parameters--logssfr_over_8.70_yr': np.log10(5.84e-14),
+                            'parameters--logssfr_over_8.48_yr': np.log10(1e-14),
+                            'parameters--logssfr_over_8.00_yr': np.log10(1e-14),
                             },
                             # parameter_keys=['parameters--logssfr_over_9.48_yr',
                             #                 'parameters--logssfr_over_9.00_yr',
                             #                 'parameters--logssfr_over_8.70_yr',
                             #                 'parameters--logssfr_over_8.48_yr'],
                             pdf_2d=False,
-                            plot=True
+                            plot=True,
+                            pdf_size=30,
                             )

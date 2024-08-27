@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 
 from astropy.cosmology import FlatLambdaCDM
+from astropy.table import Table
 
 cosmology = FlatLambdaCDM(H0=70., Om0=0.28)
 

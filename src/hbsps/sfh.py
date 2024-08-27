@@ -145,7 +145,7 @@ class FixedTimeSFH(SFHBase):
 
 
 class FixedTime_sSFR_SFH(SFHBase):
-    free_params = {'alpha': [0, 1, 10], 'z_today': [0.005, 0.01, 0.08]}
+    free_params = {'alpha': [0, 0.5, 3], 'z_today': [0.005, 0.01, 0.08]}
 
     def __init__(self, delta_time, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,7 +162,10 @@ class FixedTime_sSFR_SFH(SFHBase):
         for dt in self.delta_time.to_value('yr'):
             max_logssfr = np.min((np.log10(1 / dt), -8.0))
             self.free_params[
-                    f'logssfr_over_{np.log10(dt):.2f}_yr'] = [-14, -10, max_logssfr]
+                    f'logssfr_over_{np.log10(dt):.2f}_yr'] = [
+                        -14,
+                        np.log10(1 / self.today.to_value("yr")),
+                        max_logssfr]
 
         self.model = pst.models.Tabular_ZPowerLaw(
             times=self.time, masses=np.ones(self.time.size) * u.Msun,
@@ -177,12 +180,13 @@ class FixedTime_sSFR_SFH(SFHBase):
         mass_frac = 1 - dt_yr * 10**ssfr_over_last
         mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
         if (mass_frac[1:] - mass_frac[:-1] < 0).any():
-            return 0
+            dm = mass_frac[1:] - mass_frac[:-1]
+            return 0, 1 + np.abs(dm[dm < 0].sum())
         # Update the mass of the tabular model
         self.model.table_M =  mass_frac * u.Msun
         self.model.alpha = free_params['alpha']
         self.model.z_today = free_params['z_today'] * u.dimensionless_unscaled
-        return 1
+        return 1, None
 
     def parse_datablock(self, datablock):
         dt_yr = self.delta_time.to_value('yr')
@@ -192,12 +196,13 @@ class FixedTime_sSFR_SFH(SFHBase):
         mass_frac = 1 - dt_yr * 10**ssfr_over_last
         mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
         if (mass_frac[1:] - mass_frac[:-1] < 0).any():
-            return 0
+            dm = mass_frac[1:] - mass_frac[:-1]
+            return 0, 1 + np.abs(dm[dm < 0].sum())
         # Update the mass of the tabular model
         self.model.table_M =  mass_frac * u.Msun
         self.model.alpha = datablock["parameters",'alpha']
         self.model.z_today = datablock["parameters",'z_today'] * u.dimensionless_unscaled
-        return 1
+        return 1, None
 
 
 class FixedMassFracSFH(SFHBase):
