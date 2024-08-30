@@ -42,9 +42,11 @@ def compute_pdf_from_results(table,
                              pdf_1d=True,
                              percentiles=[0.05, 0.16, 0.5, 0.84, 0.95],
                              pdf_2d=True,
+                             parameter_key_pairs=None,
                              pdf_size=100, 
                              plot=True,
-                             real_values=None):
+                             real_values=None,
+                             extra_info={}):
 
     posterior = np.exp(
         table[posterior_key].value - np.nanmax(table[posterior_key].value)) 
@@ -121,8 +123,8 @@ def compute_pdf_from_results(table,
              fits.BinTableHDU(table_1d_percentiles, name='PERCENTILES',
                               header=table_1d_pct_hdr)])
     if pdf_2d:
-        for ith, key_1 in enumerate(parameter_keys):
-            for key_2 in parameter_keys[ith + 1:]:
+        for key_1 in enumerate(parameter_key_pairs[0]):
+            for key_2 in parameter_key_pairs[1]:
                 print("Computing 2D posterior distribution of\n",
                       key_1, "versus", key_2)
                 
@@ -197,7 +199,10 @@ def compute_pdf_from_results(table,
                     #                 dpi=200, bbox_inches='tight')
                     # plt.close()
 
-    output_hdul = fits.HDUList([fits.PrimaryHDU(), *output_hdul])
+    primary = fits.PrimaryHDU()
+    for k, v in extra_info.items():
+        primary.header[k] = v, "user-provided information"
+    output_hdul = fits.HDUList([primary, *output_hdul])
     if output_filename is None:
         output_hdul.writeto("stat_analysis.fits", overwrite=True)
     else:
