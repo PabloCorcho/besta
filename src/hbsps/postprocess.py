@@ -75,7 +75,7 @@ def compute_pdf_from_results(table,
 
             dummy_value = np.linspace(value[mask].min(), value[mask].max(),
                                       pdf_size + 1)
-            interp_cmf = np.interp(dummy_value, value[sort_pos], cmf)
+            interp_cmf = np.interp(dummy_value, value[mask][sort_pos], cmf)
             pdf = (interp_cmf[1:] - interp_cmf[:-1]) / (dummy_value[1:] - dummy_value[:-1])
             dummy_bins = (dummy_value[1:] + dummy_value[:-1]) / 2
 
@@ -96,7 +96,7 @@ def compute_pdf_from_results(table,
 
             if real_values is not None and key in real_values:
                 integral_to_real = np.interp(
-                    real_values[key], value[sort_pos], cmf)
+                    real_values[key], value[mask][sort_pos], cmf)
                 table_1d_pct_hdr[f"hierarch {key_name}_real"] = np.nan_to_num(real_values[key])
                 table_1d_pct_hdr[f"hierarch {key_name}_int_to_real"] = np.nan_to_num(integral_to_real)
 
