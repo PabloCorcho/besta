@@ -123,81 +123,80 @@ def compute_pdf_from_results(table,
              fits.BinTableHDU(table_1d_percentiles, name='PERCENTILES',
                               header=table_1d_pct_hdr)])
     if pdf_2d:
-        for key_1 in enumerate(parameter_key_pairs[0]):
-            for key_2 in parameter_key_pairs[1]:
-                print("Computing 2D posterior distribution of\n",
-                      key_1, "versus", key_2)
+        for key_1, key_2 in zip(*parameter_key_pairs):
+            print("Computing 2D posterior distribution of\n",
+                    key_1, "versus", key_2)
+            
+            value_1 = table[key_1].value
+            mask_1 = np.isfinite(value_1)
+
+            value_2 = table[key_2].value
+            mask_2 = np.isfinite(value_2)
+            mask = mask_1 & mask_2
+
+            # dummy_value_1 = np.linspace(
+            #     value_1[mask].min(), value_1[mask].max(), pdf_size + 1)
+            # dummy_value_2 = np.linspace(
+            #     value_2[mask].min(), value_2[mask].max(), pdf_size + 1)
+            
+            # dd1, dd2 = np.meshgrid(dummy_value_1, dummy_value_2)
+
+            # kde = stats.gaussian_kde(np.array([value_1[mask], value_2[mask]]),
+            #                    weights=posterior[mask])
+            # pdf = kde(np.vstack([dd1.ravel(), dd2.ravel()]))
+            # pdf = pdf.reshape(dd1.shape)
+
+            pdf, xedges, yedges = np.histogram2d(
+                value_1[mask], value_2[mask], weights=posterior[mask],
+                density=True, bins=pdf_size)
+
+            dummy_value_1 = (xedges[:-1] + xedges[1:]) / 2
+            dummy_value_2 = (yedges[:-1] + yedges[1:]) / 2
+
+            hdr = fits.Header()
+            hdr['AXIS0'] = key_1
+            hdr['AXIS1'] = key_2
+
+            hdr['A0_INI'] = dummy_value_1[0]
+            hdr['A0_END'] = dummy_value_1[-1]
+
+            hdr['A1_INI'] = dummy_value_2[0]
+            hdr['A1_END'] = dummy_value_2[-1]
+
+            k1 = key_1.replace(parameter_prefix + "--", "")
+            k2 = key_2.replace(parameter_prefix + "--", "")
+            output_hdul.append(
+                fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}")
+                        )
+
+            key_1_name = key_1.replace(parameter_prefix + "--", "")
+            key_2_name = key_2.replace(parameter_prefix + "--", "")
+
+            if plot:
+                fraction = compute_fraction_from_map(pdf)
+
+                fig, ax = plt.subplots()
+                ax.pcolormesh(dummy_value_2, dummy_value_1, pdf,
+                            cmap='Greys')
+                ax.contour(dummy_value_2, dummy_value_1, fraction,
+                        levels=[.1, .5, .84])
+                ax.set_xlabel(key_2_name)
+                ax.set_ylabel(key_1_name)
+
+                if real_values is not None and key_1 in real_values:
+                    ax.axhline(real_values[key_1], c='r')
+                if real_values is not None and key_2 in real_values:
+                    ax.axvline(real_values[key_2], c='r')
                 
-                value_1 = table[key_1].value
-                mask_1 = np.isfinite(value_1)
-
-                value_2 = table[key_2].value
-                mask_2 = np.isfinite(value_2)
-                mask = mask_1 & mask_2
-
-                # dummy_value_1 = np.linspace(
-                #     value_1[mask].min(), value_1[mask].max(), pdf_size + 1)
-                # dummy_value_2 = np.linspace(
-                #     value_2[mask].min(), value_2[mask].max(), pdf_size + 1)
-                
-                # dd1, dd2 = np.meshgrid(dummy_value_1, dummy_value_2)
-
-                # kde = stats.gaussian_kde(np.array([value_1[mask], value_2[mask]]),
-                #                    weights=posterior[mask])
-                # pdf = kde(np.vstack([dd1.ravel(), dd2.ravel()]))
-                # pdf = pdf.reshape(dd1.shape)
-
-                pdf, xedges, yedges = np.histogram2d(
-                    value_1[mask], value_2[mask], weights=posterior[mask],
-                    density=True, bins=pdf_size)
-
-                dummy_value_1 = (xedges[:-1] + xedges[1:]) / 2
-                dummy_value_2 = (yedges[:-1] + yedges[1:]) / 2
-
-                hdr = fits.Header()
-                hdr['AXIS0'] = key_1
-                hdr['AXIS1'] = key_2
-
-                hdr['A0_INI'] = dummy_value_1[0]
-                hdr['A0_END'] = dummy_value_1[-1]
-
-                hdr['A1_INI'] = dummy_value_2[0]
-                hdr['A1_END'] = dummy_value_2[-1]
-
-                k1 = key_1.replace(parameter_prefix + "--", "")
-                k2 = key_2.replace(parameter_prefix + "--", "")
-                output_hdul.append(
-                    fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}")
-                            )
-
-                key_1_name = key_1.replace(parameter_prefix + "--", "")
-                key_2_name = key_2.replace(parameter_prefix + "--", "")
-
-                if plot:
-                    fraction = compute_fraction_from_map(pdf)
-
-                    fig, ax = plt.subplots()
-                    ax.pcolormesh(dummy_value_2, dummy_value_1, pdf,
-                                cmap='Greys')
-                    ax.contour(dummy_value_2, dummy_value_1, fraction,
-                            levels=[.1, .5, .84])
-                    ax.set_xlabel(key_2_name)
-                    ax.set_ylabel(key_1_name)
-
-                    if real_values is not None and key_1 in real_values:
-                        ax.axhline(real_values[key_1], c='r')
-                    if real_values is not None and key_2 in real_values:
-                        ax.axvline(real_values[key_2], c='r')
-                    
-                    # if output_filename is None:
-                    #     fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
-                    #                 dpi=200, bbox_inches='tight')
-                    # else:
-                    #     fig.savefig(os.path.join(
-                    #         os.path.dirname(output_filename),
-                    #         f"stat_analysis_pdf_{key_1}_{key_2}.png"),
-                    #                 dpi=200, bbox_inches='tight')
-                    # plt.close()
+                # if output_filename is None:
+                #     fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
+                #                 dpi=200, bbox_inches='tight')
+                # else:
+                #     fig.savefig(os.path.join(
+                #         os.path.dirname(output_filename),
+                #         f"stat_analysis_pdf_{key_1}_{key_2}.png"),
+                #                 dpi=200, bbox_inches='tight')
+                # plt.close()
 
     primary = fits.PrimaryHDU()
     for k, v in extra_info.items():
