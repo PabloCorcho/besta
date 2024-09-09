@@ -70,7 +70,7 @@ def execute(block, config):
 	valid, penalty = sfh_model.parse_datablock(block)
 	if not valid:
 		print("Invalid")
-		block[section_names.likelihoods, "SFH_stellar_mass_like"] = -1e20 * penalty
+		block[section_names.likelihoods, "SFH_spectra_like"] = -1e20 * penalty
 		block['parameters', 'normalization'] = 0.0
 		return 0
 
@@ -83,7 +83,7 @@ def execute(block, config):
 
 	like = X2min(config['flux'][mask], flux_model[mask], config['cov'][mask])
 	# Final posterior for sampling
-	block[section_names.likelihoods, "SFH_stellar_mass_like"] = like
+	block[section_names.likelihoods, "SFH_spectra_like"] = like
 	return 0
 
 
