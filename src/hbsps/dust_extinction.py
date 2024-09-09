@@ -1,12 +1,6 @@
 import numpy as np
 import extinction
 
-# def redden_ssp(config, av=0):
-#    extinction_law = config["extinction_law"]
-#    if extinction_law is not None:
-#        config["ssp_sed"] = extinction_law(
-#            config["ssp_wl"], config["ssp_sed"], av)
-
 def redden_ssp_model(config, av=0):
     extinction_law = config["extinction_law"]
     if extinction_law is not None:
