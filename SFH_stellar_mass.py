@@ -1,11 +1,5 @@
-import os
-import sys
 import numpy as np
-from scipy.signal import convolve
-
 from cosmosis.datablock import option_section, names as section_names
-import hbsps.specBasics as specBasics
-
 from hbsps import prepare_fit, kinematics, dust_extinction
 
 
@@ -72,14 +66,14 @@ def execute(block, config):
 	# Obtain parameters from setup
 	sfh_model = config['sfh_model']
 	mask = config['mask']
-	
-	# sfh_free_params = {k:block["parameters", k] for k in sfh_model.free_params.keys()}
-	# valid = sfh_model.parse_free_params(sfh_free_params)
-	valid = sfh_model.parse_datablock(block)
+
+	valid, penalty = sfh_model.parse_datablock(block)
 	if not valid:
 		print("Invalid")
-		block[section_names.likelihoods, "SFH_stellar_mass_like"] = -1e20
+		block[section_names.likelihoods, "SFH_stellar_mass_like"] = -1e20 * penalty
+		block['parameters', 'normalization'] = 0.0
 		return 0
+
 	flux_model = sfh_model.model.compute_SED(config['ssp_model'],
 										     t_obs=sfh_model.today,
 											 allow_negative=False).value

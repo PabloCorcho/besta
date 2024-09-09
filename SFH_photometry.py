@@ -100,8 +100,7 @@ def execute(block, config):
 		block[section_names.likelihoods, "SFH_photometry_like"] = -1e5 * penalty
 		block['parameters', 'normalization'] = 0.0
 		return 0
-	
-	# TODO: REMOVE THIS ONCE PROPERLY TESTED
+
 	av = block["parameters", "a_v"]
 	av_idx = np.searchsorted(config['av_grid'], av)
 	w_idx = (av - config['av_grid'][av_idx - 1]) / (
