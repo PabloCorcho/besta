@@ -5,3 +5,4 @@ cosmosis-standard-library/
 *.ini
 *.dat
 *.png
+output/
