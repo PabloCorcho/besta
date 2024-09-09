@@ -6,3 +6,4 @@ cosmosis-standard-library/
 *.dat
 *.png
 output/
+test_data/
