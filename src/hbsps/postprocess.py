@@ -11,8 +11,8 @@ def read_results_file(path):
     with open(path, "r") as f:
         header = f.readline().strip("#")
         columns = header.replace("\n", "").split("\t")
-    matrix = np.loadtxt(path)
-    
+    matrix = np.atleast_2d(np.loadtxt(path))
+
     table = Table()
     for ith, c in enumerate(columns):
         table.add_column(matrix.T[ith], name=c.lower())
