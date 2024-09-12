@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 from hbsps import output
 from hbsps import kinematics, sfh
-from hbsps.dust_extinction import deredden_spectra, redden_ssp
+from hbsps.dust_extinction import deredden_spectra, redden_ssp_model
 
 
 class MainPipeline(object):
@@ -118,17 +118,16 @@ class MainPipeline(object):
             # Extract best solution
             print("Extracting results from the run")
             reader = output.Reader(ini_filename)
-            if "SFH" in reader.last_module:
-                reader.load_sfh_model()
-            if "KinDust" in reader.last_module:
-                reader.load_chain(include_ssp_weights=False)
-            else:
-                reader.load_chain()
+            reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
             print("MaxLike solution: ", solution)
 
             if plot_result:
+                if "SFH" in reader.last_module:
+                    reader.load_sfh_model()
+                elif "KinDust" in reader.last_module:
+                    reader.load_chain(include_ssp_extra_output=True)
                 reader.load_observation()
                 reader.load_extinction_model()
                 reader.load_ssp_model()
@@ -165,11 +164,11 @@ class MainPipeline(object):
         # Dust extinction
         if "av" in solution:
             print("Reddening SED with dust solution")
-            redden_ssp(config, solution["av"])
+            redden_ssp_model(config, solution["av"])
         elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
             print("Reddening SED with dust input")
             av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
-            redden_ssp(config, av)
+            redden_ssp_model(config, av)
 
         if 'SFH' in pipeline_config['pipeline']['modules']:
             sfh_model = config['sfh_model']
