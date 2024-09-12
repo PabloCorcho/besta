@@ -1,13 +1,11 @@
+"""
+Module for fitting stellar kinematics using spectroscopic data.
+"""
 import numpy as np
-import os
-
-from scipy.signal import fftconvolve
 from scipy.optimize import nnls
 
 import cosmosis
 from cosmosis.datablock import option_section, names as section_names
-import hbsps.specBasics as specBasics
-
 from hbsps import prepare_fit
 from hbsps import kinematics
 from hbsps.dust_extinction import deredden_spectra
@@ -36,7 +34,8 @@ def setup(options):
 	"""
 
 	# Pipeline values file
-	config = {}
+	config = {"solution":[],
+		      "solution_output": options["output", "filename"] + "_ssp_sol"}
 	# ------------------------------------------------------------------------ #
 	prepare_fit.prepare_observed_spectra(options, config)
 	# ------------------------------------------------------------------------ #
@@ -56,33 +55,37 @@ def execute(block, config):
 	cov = config['cov']
 
 	# Load sampled parameters
-	sigma = block["parameters", "los_sigma"]
-	los_vel = block["parameters", "los_vel"]
+
 	av = block["parameters", "av"]
 	# Kinematics
-	sed, mask = kinematics.convolve_ssp(config, sigma, los_vel)
+	sed, mask = kinematics.convolve_ssp(config,
+									 los_vel=block["parameters", "los_vel"],
+									 los_sigma=block["parameters", "los_sigma"],
+									 los_h3=block["parameters", "los_h3"],
+									 los_h4=block["parameters", "los_h4"])
 
 	# Dust extinction
 	dered_flux = deredden_spectra(config, av)
 	
 	# Solve the linear system
-	solution, rnorm = nnls(sed.T, dered_flux, maxiter=sed.shape[0] * 10)
+	solution, _ = nnls(sed.T, dered_flux, maxiter=sed.shape[0] * 10)
+	#TODO: This should be stored as
+	# block["parameters", "ssp1"] = solution[0]
+	# block["parameters", "ssp2"] = solution[1]
+	config["solution"].append(solution)
 
 	flux_model = np.sum(sed * solution[:, np.newaxis], axis=0)
 	# Calculate likelihood-value of the fit
 	like = X2min(dered_flux[mask], flux_model[mask], cov[mask])
-	#TODO: This should be stored as
-	# block["parameters", "ssp1"] = solution[0]
-	# block["parameters", "ssp2"] = solution[1]
 
 	# Final posterior for sampling
 	block[section_names.likelihoods, "KinDust_like"] = like
 	return 0
 
 def cleanup(config):
-	# if "ssp_log" in config:
-	# 	print("Saving SSP log")
-	# 	config['ssp_log'].close()
+	if "solution" in config:
+		np.savetxt(config["solution_output"], config["solution"])
 	return 0
+	
 
 module = cosmosis.FunctionModule("KinDust", setup, execute)
