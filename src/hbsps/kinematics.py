@@ -4,7 +4,7 @@ from scipy.signal import fftconvolve
 from hbsps import specBasics
 
 
-def convolve_ssp(config, los_sigma, los_vel):
+def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     velscale = config["velscale"]
     oversampling = config["oversampling"]
     extra_pixels = config["extra_pixels"]
@@ -13,8 +13,9 @@ def convolve_ssp(config, los_sigma, los_vel):
     # Kinematics
     sigma_pixel = los_sigma / (velscale / oversampling)
     veloffset_pixel = los_vel / (velscale / oversampling)
-    x = np.arange(-8 * sigma_pixel, 8 * sigma_pixel) - veloffset_pixel
-    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel)
+    x = np.arange(-5 * sigma_pixel, 5 * sigma_pixel) - veloffset_pixel
+    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel,
+                                    h3=los_h3, h4=los_h4)
     sed = fftconvolve(ssp_sed, np.atleast_2d(losvd_kernel), mode="same", axes=1)
     # Rebin model spectra to observed grid
     sed = (

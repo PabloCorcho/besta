@@ -1,5 +1,5 @@
 """
-This module contains the tools to build a pipeline
+This module contains the pipeline manager to concatenate multiple modules.
 """
 
 import os
@@ -11,41 +11,77 @@ from matplotlib import pyplot as plt
 
 from hbsps import output
 from hbsps import kinematics, sfh
-from hbsps.dust_extinction import deredden_spectra, redden_ssp
+from hbsps.dust_extinction import deredden_spectra, redden_ssp_model
 
 
 class MainPipeline(object):
-    def __init__(self, pipeline_configuration_list, n_cores_list=None):
-        """Main HBSPS Pipeline.
-
-        Parameters
-        ----------
-        - pipeline_configuration_list: list
-            List of dictionaries containing the configuration parameters for each
+    """PST-HBSPS Pipeline manager.
+    
+    Attributes
+    ----------
+    pipelines_config : list
+        List of dictionaries containing the configuration parameters for each
             subpipeplie.
-        - n_cores_list: list
-            List containing the number of cores is on each run.
-        """
+    n_cores_list : list, optional, default=None
+        List containing the number of cores to be used on each run. If None,
+        every subpipeline will use one single core during runtime.
+    ini_files : list
+        List of .ini filenames
+    ini_values_files : list
+        List of files containing the priors associated to ``ini_files``.
+    """
+    def __init__(self, pipeline_configuration_list, n_cores_list=None,
+                 ini_files=None, ini_values_files=None):
         self.pipelines_config = pipeline_configuration_list
+
         if n_cores_list is None:
             self.n_cores_list = [1] * len(pipeline_configuration_list)
         else:
             self.n_cores_list = n_cores_list
 
+        if ini_files is None:
+            self.ini_files = [ini_files] * len(pipeline_configuration_list)
+        else:
+            self.ini_files = ini_files
+
+        if ini_values_files is None:
+            self.ini_values_files = [ini_values_files] * len(pipeline_configuration_list)
+        else:
+            self.ini_values_files = ini_values_files
+
     def run_command(self, command):
         print(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 
-    def get_cosmosis_result(self, ini_file):
-        return output.Reader(ini_file)
+    def execute_pipeline(self, config, n_cores, ini_filename=None,
+                         ini_values_filename=None):
+        """Execute a sub-pipeline.
+        
+        Parameters
+        ----------
+        config : dict
+            Dictionary containing the configuration parameters for setting up
+            the subpipeline.
+        n_cores : int
+            Number of cores to used during runtime.
+        ini_filename : str, optional, default=None
+            If provided, this file is used to run cosmosis.
+        ini_values_filename : str, optional, default=None
+            If provided, use this file to set the prior values.
+        """
+        if ini_filename is None:
+            ini_filename = os.path.join(
+                os.path.dirname(config["output"]["filename"]),
+                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini")
+            output.make_ini_file(ini_filename, config)
+        else:
+            assert os.path.isfile(ini_filename), f"{ini_filename} not found"
 
-    def execute_pipeline(self, config, n_cores):
-        """Execute a pipeline"""
-        ini_filename = os.path.join(
-            os.path.dirname(config["output"]["filename"]),
-            config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini")
-        output.make_ini_file(ini_filename, config)
-        output.make_values_file(config)
+        if ini_values_filename is None:
+            output.make_values_file(config)
+        else:
+            assert os.path.isfile(ini_values_filename), f"{ini_values_filename} not found"
+            config["pipeline"]["values"] = ini_values_filename
 
         if n_cores > 1:
             command = f"mpiexec -n {n_cores} cosmosis --mpi {ini_filename}"
@@ -53,51 +89,58 @@ class MainPipeline(object):
             command = f"cosmosis {ini_filename}"
         return_code = self.run_command(command)
         if return_code == 0:
+            print("Successful run, return code: ", return_code)
             return ini_filename
         else:
             print("Unsuccessful run, return code: ", return_code)
             return None
 
-    def execute_all(self):
+    def execute_all(self, plot_result=False):
+        """Execute all sub-pipelines."""
         print("Executing all pipelines")
         prev_solution = None
-        for pipeline_config, n_cores in zip(self.pipelines_config, self.n_cores_list):
+        for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
+            self.pipelines_config, self.n_cores_list,
+            self.ini_files, self.ini_values_files):
+
             if prev_solution is not None:
                 print("Updating configuration file with previus run results")
-
                 # Update the input values
-                pipeline_config[pipeline_config["pipeline"]["modules"]].update(
+                subpipe_config[subpipe_config["pipeline"]["modules"]].update(
                     (k, v)
                     for k, v in prev_solution.items()
-                    if k in pipeline_config[pipeline_config["pipeline"]["modules"]]
+                    if k in subpipe_config[subpipe_config["pipeline"]["modules"]]
                 )
             # Execute sub-pipepline
-            ini_filename = self.execute_pipeline(pipeline_config, n_cores)
+            ini_filename = self.execute_pipeline(subpipe_config, n_cores,
+                                                 ini_filename=ini_filename,
+                                                 ini_values_filename=ini_values_filename)
             # Extract best solution
             print("Extracting results from the run")
-            reader = self.get_cosmosis_result(ini_filename)
-            reader.load_observation()
-            reader.load_extinction_model()
-            reader.load_ssp_model()
-            # TODO: remove somehow the if conditional
-            if "SFH" in reader.last_module:
-                reader.load_sfh_model()
-            if "KinDust" in reader.last_module:
-                reader.load_chain(include_ssp_weights=False)
-            else:
-                reader.load_chain()
+            reader = output.Reader(ini_filename)
+            reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
             print("MaxLike solution: ", solution)
-            # Reconstruct best fit
-            flux_model, sol_config = self.reconstruct_solution(
-                pipeline_config, reader.config.copy(), solution)
 
-            if "SFH" in reader.last_module:
-                self.plot_fit(pipeline_config, sol_config, flux_model,
-                              solution=solution)
-            else:
-                self.plot_fit(pipeline_config, sol_config, flux_model)
+            if plot_result:
+                if "SFH" in reader.last_module:
+                    reader.load_sfh_model()
+                elif "KinDust" in reader.last_module:
+                    reader.load_chain(include_ssp_extra_output=True)
+                reader.load_observation()
+                reader.load_extinction_model()
+                reader.load_ssp_model()
+                # Reconstruct best fit
+                # TODO: this should be directly done by the fitting modules
+                flux_model, sol_config = self.reconstruct_solution(
+                    subpipe_config, reader.config.copy(), solution)
+
+                if "SFH" in reader.last_module:
+                    self.plot_fit(subpipe_config, sol_config, flux_model,
+                                solution=solution)
+                else:
+                    self.plot_fit(subpipe_config, sol_config, flux_model)
 
 
     def reconstruct_solution(self, pipeline_config, config, solution):
@@ -121,11 +164,11 @@ class MainPipeline(object):
         # Dust extinction
         if "av" in solution:
             print("Reddening SED with dust solution")
-            redden_ssp(config, solution["av"])
+            redden_ssp_model(config, solution["av"])
         elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
             print("Reddening SED with dust input")
             av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
-            redden_ssp(config, av)
+            redden_ssp_model(config, av)
 
         if 'SFH' in pipeline_config['pipeline']['modules']:
             sfh_model = config['sfh_model']

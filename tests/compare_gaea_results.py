@@ -118,3 +118,48 @@ for ith, (scale, ax) in enumerate(zip(real_ssfrs.keys(), axs)):
     ax.annotate(f"{percentiles[1]:.2f}+/- ({percentiles[1] - percentiles[0]:.2f}, {percentiles[2] - percentiles[1]:.2f})",
                 xy=(.05, .95), xycoords='axes fraction', va='top', ha='left')
     ax.set_xlabel("True - Inferred (dex)")
+
+# %%
+scale = list(real_ssfrs.keys())
+fig, axs = plt.subplots(3, 7, #constrained_layout=True,
+                        figsize=(21, 9), sharex=True, sharey=True)
+axs = axs.flatten()
+ax_idx = 0
+for ith in range(0, 6):
+    for jth in range(ith + 1, 7):
+        idx = ((ith + 1) * (jth + 1))
+        print(ax_idx)
+        real_ratio = all_ssfr[jth, 0]- all_ssfr[ith, 0]
+        inferred_ratio = all_ssfr[jth, 1]- all_ssfr[ith, 1]
+
+        real_ms = (real_ratio > - 0.3) &  (real_ratio < 0.3)
+        real_sb = real_ratio > 0.3
+        real_q = real_ratio < -0.3
+        
+        inferred_ms = (inferred_ratio > - 0.3) &  (inferred_ratio < 0.3)
+        inferred_sb = inferred_ratio > 0.3
+        inferred_q = inferred_ratio < -0.3
+        
+        ms_purity = np.count_nonzero(inferred_ms[real_ms]
+                                     ) / np.count_nonzero(inferred_ms)
+        ms_completeness = np.count_nonzero(real_ms[inferred_ms]
+                                                ) / np.count_nonzero(real_ms)
+
+        # sb_purity = np.count_nonzero(inferred_sb[real_sb]
+        #                              ) / np.count_nonzero(inferred_sb)
+        # sb_completeness = np.count_nonzero(real_sb[inferred_sb]
+        #                                         ) / np.count_nonzero(real_sb)
+
+        q_purity = np.count_nonzero(inferred_q[real_q]
+                                     ) / np.count_nonzero(inferred_q)
+        q_completeness = np.count_nonzero(real_q[inferred_q]
+                                                ) / np.count_nonzero(real_q)
+
+        axs[ax_idx].plot(real_ratio, inferred_ratio, ',')
+        axs[ax_idx].annotate(f"{scale[jth]}/{scale[ith]}"
+                             + f"\nMS(P/C) {ms_purity:.2}/{ms_completeness:.2}"
+                             + f"\nQ(P/C) {q_purity:.2}/{q_completeness:.2}",
+                             xy=(0.05, 0.95), va='top',
+                             xycoords='axes fraction')
+        ax_idx += 1
+fig.savefig("ssfr_ratios.pdf", bbox_inches='tight')

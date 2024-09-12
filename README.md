@@ -1,19 +1,33 @@
-# HBSPS
-HBSPS (Hierarchical Bayesian Stellar Population Synthesis) is a stellar population synthesis code that was designed for inferring the initial mass function (IMF) and other properties from the spectra of unresolved stellar populations.
+# 
 
-For instructions on how to use the HBSPS, please read the manual (manual.pdf).
+This package, inspired by [HBSPS](https://github.com/mdries/HBSPS) 
+(Hierarchical Bayesian Stellar Population Synthesis), is devoted to inferring physical properties from spectroscopic and/or photometric data by performing SED fitting on a hierarchical basis.
 
-If you use this code in your work, please reference the following papers:
-* Dries et al., 2016, MNRAS, 463, 886
-* Dries et al., 2018, MNRAS, 474, 3500
-  
-If you use the stellar templates that come along with HBSPS, please reference the following original papers on which these templates are based:
-* MILES library
-  Sanchez-Blazquez et al., 2006, MNRAS, 371, 703
-* Parsec isochrones
-  Bressan et al., 2012, MNRAS, 427,127
-* stitched isochrones
-  Conroy & van Dokkum, 2012, ApJ, 747, 69
-  Baraffe et al., 1998, A&A, 337, 403
-  Dotter et al., 2008, ApJS, 178, 89
-  Marigo et al., 2008, A&A, 482, 883
+# Package contents
+
+## [Population Synthesis Toolkit](https://github.com/paranoya/population-synthesis-toolkit/tree/main)
+
+Highly-flexible framework for performing stellar population synthetis.
+
+## [Cosmosis](https://cosmosis.readthedocs.io/en/latest/)
+
+A library for parameter estimation via Monte Carlo methods.
+
+## Kinematics and dust extinction
+
+The current version assumes a single dust screen and single LOSVD for all SSP's that contribute to a given SED.
+
+## Star formation histories
+
+The star formation histories used to predict the SED can be divided into two groups.
+
+### Analytic
+
+- Exponential
+- Delayed-tau
+- Lognormal
+
+### Numerical
+
+- Fixed time bins
+- Fixed mass fraction

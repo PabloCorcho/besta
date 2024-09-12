@@ -7,12 +7,10 @@ from astropy import table
 
 import hbsps.specBasics as specBasics
 import hbsps.prepare_fit as prepare_fit
+from hbsps.postprocess import read_results_file
 
-from pst import SSP
 from pst.utils import flux_conserving_interpolation
-
 import extinction
-
 import cosmosis
 
 
@@ -71,29 +69,21 @@ def make_ini_file(filename, config):
         f.write(f"; \(ﾟ▽ﾟ)/")
 
 
-def make_values_file(config, ssp_auto_fill=True):
+def make_values_file(config, overwrite=True):
     """Make a values.ini file from the configuration."""
     values_filename = config["pipeline"]["values"]
     values_section = f"Values"
-
-    if ssp_auto_fill:
-        module = config["pipeline"]["modules"].split(" ")[-1]
-        n_ssp = 1
-        if "ageRange" in config[module]:
-            n_ssp *= len(config[module]["ageRange"]) - 1
-        if "metRange" in config[module]:
-            n_ssp *= len(config[module]["metRange"]) - 1
+    
+    if os.path.isfile(values_filename):
+        print(f"File containing the .ini priors already exists at {values_filename}")
+        if not overwrite:
+            return
         else:
-            ssp_auto_fill = False
-
+            print("Overwritting file")
     if values_section in config:
         print(f"Creating values file: {values_filename}")
         with open(values_filename, "w") as f:
             f.write("[parameters]\n")
-            if ssp_auto_fill:
-                for i in range(n_ssp - 1):
-                    f.write(f"ssp{i+1} = -6 {np.log10(1/n_ssp)} 0\n")
-                return
             for name, lims in config[values_section].items():
                 if type(lims) is str:
                     f.write(f"{name} = {lims}\n")
@@ -103,6 +93,16 @@ def make_values_file(config, ssp_auto_fill=True):
 
 
 class Reader(object):
+    """Cosmosis Data Reader
+    
+    Attributes
+    ----------
+    ini_file : 
+    ini : 
+    ini_data : 
+    config : 
+    last_module : 
+    """
     def __init__(self, ini_file):
         self.ini_file = ini_file
         self.ini, self.ini_data = self.read_ini_file(self.ini_file)
@@ -140,14 +140,17 @@ class Reader(object):
         else:
             return None
 
-    def load_chain(self, include_ssp_weights=False):
+    def load_results(self, include_ssp_extra_output=False):
         path = self.ini["output"]["filename"]
         if ".txt" not in path:
             path += ".txt"
-        self.chain = self.read_chain_file(path)
-        if include_ssp_weights:
-            self.load_ssp_weights()
-        self.table_chain = table.Table(self.chain)
+        results_table = read_results_file(path)
+        if include_ssp_extra_output:
+            data = np.loadtxt(path + "_ssp_sol")
+            assert data.shape[0] != len(results_table), (
+                "SSP solution data has different dimensions than results table")
+            results_table.add_column(table.Column(data, name="SSP"))
+        self.results_table = results_table
 
     def load_observation(self):
         last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
@@ -170,39 +173,6 @@ class Reader(object):
             cosmosis_options=self.ini_data, config=self.config, module=last_module
         )
 
-    def load_ssp_weights(self):
-        """Load the SSP weights used during the fit.
-
-        Description
-        -----------
-        Some modules do not store the SSP weights on the final COSMOSIS file and
-        therefore they have to be stored separatedly. This method provides the
-        tools for reading them.
-        """
-        print("Loading SSP weights from file")
-        path_to_weights_file = os.path.join(
-            os.path.dirname(self.ini["output"]["filename"]), "SSP_weights.dat"
-        )
-        weights = ascii.read(path_to_weights_file)
-        # weights_matrix = np.loadtxt(path_to_weights_file, delimiter=',')
-        # Add the new SSP keys
-        parameters = [k for k in self.chain.keys() if "parameters" in k]
-        chain_params = np.array([self.chain[p] for p in parameters])
-        matching_params = np.array([weights[p].value for p in parameters])
-
-        ssp_params = np.array([weights[p].value for p in weights.keys() if "ssp" in p])
-        for key in weights.keys():
-            if "parameters--ssp" in key:
-                self.chain[key] = np.zeros_like(self.chain["post"], dtype=float)
-
-        # Add the values of each SSP
-        for ith, params in enumerate(chain_params.T):
-            pos = np.argmin(
-                np.sum((params[:, np.newaxis] - matching_params) ** 2, axis=0)
-            )
-            for jth in range(ssp_params.shape[0]):
-                self.chain[f"parameters--ssp{jth + 1}"][ith] = ssp_params[jth, pos]
-
     def load_extinction_model(self):
         last_module = self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
         prepare_fit.prepare_extinction_law(
@@ -210,29 +180,29 @@ class Reader(object):
         )
 
     def get_chain_percentiles(self, pct=[0.5, 0.16, 0.50, 0.84, 0.95]):
-        parameters = [par for par in self.chain.keys() if "parameters" in par]
+        parameters = [par for par in self.results_table.keys() if "parameters" in par]
         pct_resutls = {"percentiles": np.array(pct)}
         for par in parameters:
-            sort_pos = np.argsort(self.chain[par])
-            cum_distrib = np.cumsum(self.chain["weight"][sort_pos])
+            sort_pos = np.argsort(self.results_table[par])
+            cum_distrib = np.cumsum(self.results_table["weight"][sort_pos])
             cum_distrib /= cum_distrib[-1]
-            pct_resutls[par] = np.interp(pct, cum_distrib, self.chain[par][sort_pos])
+            pct_resutls[par] = np.interp(pct, cum_distrib, self.results_table[par][sort_pos])
         return pct_resutls
 
     def get_maxlike_solution(self, log_prob="post"):
-        good_sample = self.chain[log_prob] != 0
-        maxlike_pos = np.argmax(self.chain[log_prob][good_sample])
+        good_sample = self.results_table[log_prob] != 0
+        maxlike_pos = np.nanargmax(self.results_table[log_prob].value)
         solution = {}
-        for k, v in self.chain.items():
+        for k, v in self.results_table.items():
             if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[good_sample][maxlike_pos]
+                solution[k.replace("parameters--", "")] = v[maxlike_pos]
         return solution
 
     def get_pct_solutions(self, pct=99, log_prob="post"):
-        good_sample = self.chain[log_prob] != 0
-        maxlike_pos = np.argmax(self.chain[log_prob][good_sample])
+        good_sample = self.results_table[log_prob] != 0
+        maxlike_pos = np.argmax(self.results_table[log_prob][good_sample])
         # Normalize the weights
-        weights = self.chain[log_prob][good_sample] - self.chain[log_prob][good_sample][maxlike_pos]
+        weights = self.results_table[log_prob][good_sample] - self.results_table[log_prob][good_sample][maxlike_pos]
         weights = np.exp(weights / 2)
         weights /= np.nansum(weights)
         # From the highest to the lowest weight
@@ -241,7 +211,7 @@ class Reader(object):
         last_sample = np.searchsorted(cum_weights, pct / 100)
 
         solution = {'weights': weights[sort][-last_sample:]}    
-        for k, v in self.chain.items():
+        for k, v in self.results_table.items():
             if "parameters" in k:
                 solution[k.replace("parameters--", "")] = v[
                     good_sample][sort][-last_sample:]
@@ -356,25 +326,3 @@ class Reader(object):
                             ini_info[module][name] = np.array(numbers, dtype=int)
         ini = cosmosis.runtime.Inifile(path)
         return ini_info, ini
-
-    @staticmethod
-    def read_chain_file(path):
-        print("Reading chain results: ", path)
-        with open(path, "r") as f:
-            header = f.readline().strip("#")
-            columns = header.replace("\n", "").split("\t")
-        matrix = np.atleast_2d(np.loadtxt(path))
-        results = {}
-        ssp_weights = np.zeros(matrix.shape[0])
-        last_ssp = 0
-        for ith, par in enumerate(columns):
-            results[par] = matrix[:, ith]
-            if "ssp" in par:
-                last_ssp += 1
-                ssp_weights += 10 ** matrix[:, ith]
-        if last_ssp > 0:
-            print(f"Adding extra SSP {last_ssp + 1}")
-            results[f"parameters--ssp{last_ssp + 1}"] = np.log10(
-                np.clip(1 - ssp_weights, a_min=1e-4, a_max=None)
-            )
-        return results
