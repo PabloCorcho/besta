@@ -69,29 +69,21 @@ def make_ini_file(filename, config):
         f.write(f"; \(ﾟ▽ﾟ)/")
 
 
-def make_values_file(config, ssp_auto_fill=True):
+def make_values_file(config, overwrite=True):
     """Make a values.ini file from the configuration."""
     values_filename = config["pipeline"]["values"]
     values_section = f"Values"
-
-    if ssp_auto_fill:
-        module = config["pipeline"]["modules"].split(" ")[-1]
-        n_ssp = 1
-        if "ageRange" in config[module]:
-            n_ssp *= len(config[module]["ageRange"]) - 1
-        if "metRange" in config[module]:
-            n_ssp *= len(config[module]["metRange"]) - 1
+    
+    if os.path.isfile(values_filename):
+        print(f"File containing the .ini priors already exists at {values_filename}")
+        if not overwrite:
+            return
         else:
-            ssp_auto_fill = False
-
+            print("Overwritting file")
     if values_section in config:
         print(f"Creating values file: {values_filename}")
         with open(values_filename, "w") as f:
             f.write("[parameters]\n")
-            if ssp_auto_fill:
-                for i in range(n_ssp - 1):
-                    f.write(f"ssp{i+1} = -6 {np.log10(1/n_ssp)} 0\n")
-                return
             for name, lims in config[values_section].items():
                 if type(lims) is str:
                     f.write(f"{name} = {lims}\n")
@@ -148,7 +140,7 @@ class Reader(object):
         else:
             return None
 
-    def load_chain(self, include_ssp_extra_output=False):
+    def load_results(self, include_ssp_extra_output=False):
         path = self.ini["output"]["filename"]
         if ".txt" not in path:
             path += ".txt"
@@ -188,29 +180,29 @@ class Reader(object):
         )
 
     def get_chain_percentiles(self, pct=[0.5, 0.16, 0.50, 0.84, 0.95]):
-        parameters = [par for par in self.chain.keys() if "parameters" in par]
+        parameters = [par for par in self.results_table.keys() if "parameters" in par]
         pct_resutls = {"percentiles": np.array(pct)}
         for par in parameters:
-            sort_pos = np.argsort(self.chain[par])
-            cum_distrib = np.cumsum(self.chain["weight"][sort_pos])
+            sort_pos = np.argsort(self.results_table[par])
+            cum_distrib = np.cumsum(self.results_table["weight"][sort_pos])
             cum_distrib /= cum_distrib[-1]
-            pct_resutls[par] = np.interp(pct, cum_distrib, self.chain[par][sort_pos])
+            pct_resutls[par] = np.interp(pct, cum_distrib, self.results_table[par][sort_pos])
         return pct_resutls
 
     def get_maxlike_solution(self, log_prob="post"):
-        good_sample = self.chain[log_prob] != 0
-        maxlike_pos = np.nanargmax(self.chain[log_prob].value)
+        good_sample = self.results_table[log_prob] != 0
+        maxlike_pos = np.nanargmax(self.results_table[log_prob].value)
         solution = {}
-        for k, v in self.chain.items():
+        for k, v in self.results_table.items():
             if "parameters" in k:
                 solution[k.replace("parameters--", "")] = v[maxlike_pos]
         return solution
 
     def get_pct_solutions(self, pct=99, log_prob="post"):
-        good_sample = self.chain[log_prob] != 0
-        maxlike_pos = np.argmax(self.chain[log_prob][good_sample])
+        good_sample = self.results_table[log_prob] != 0
+        maxlike_pos = np.argmax(self.results_table[log_prob][good_sample])
         # Normalize the weights
-        weights = self.chain[log_prob][good_sample] - self.chain[log_prob][good_sample][maxlike_pos]
+        weights = self.results_table[log_prob][good_sample] - self.results_table[log_prob][good_sample][maxlike_pos]
         weights = np.exp(weights / 2)
         weights /= np.nansum(weights)
         # From the highest to the lowest weight
@@ -219,7 +211,7 @@ class Reader(object):
         last_sample = np.searchsorted(cum_weights, pct / 100)
 
         solution = {'weights': weights[sort][-last_sample:]}    
-        for k, v in self.chain.items():
+        for k, v in self.results_table.items():
             if "parameters" in k:
                 solution[k.replace("parameters--", "")] = v[
                     good_sample][sort][-last_sample:]
