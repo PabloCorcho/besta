@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.signal import fftconvolve
-
+from astropy import units as u
 from hbsps import specBasics
 
 
@@ -29,7 +29,7 @@ def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     mask[-int(5 * sigma_pixel) :] = False
     return sed, mask
 
-def convolve_ssp_model(config, los_sigma, los_vel):
+def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
     velscale = config["velscale"]
     oversampling = config["oversampling"]
     extra_pixels = config["extra_pixels"]
@@ -39,7 +39,7 @@ def convolve_ssp_model(config, los_sigma, los_vel):
     sigma_pixel = los_sigma / (velscale / oversampling)
     veloffset_pixel = los_vel / (velscale / oversampling)
     x = np.arange(-8 * sigma_pixel, 8 * sigma_pixel) - veloffset_pixel
-    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel)
+    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
     ssp.L_lambda = fftconvolve(ssp.L_lambda.value,
                       losvd_kernel[np.newaxis, np.newaxis], mode="same", axes=2
                       ) * ssp.L_lambda.unit
@@ -52,10 +52,12 @@ def convolve_ssp_model(config, los_sigma, los_vel):
                   wl.size, oversampling))
         .mean(axis=-1)
     )
-    ssp.wavelength = wl * ssp.wavelength.unit
-
+    if not isinstance(wl, u.Quantity):
+        ssp.wavelength = wl * ssp.wavelength.unit
+    else:
+        ssp.wavelength = wl
     ### Mask pixels at the edges with artifacts produced by the convolution
-    mask = np.ones_like(wl, dtype=bool)
+    mask = np.ones(wl.size, dtype=bool)
     mask[: int(5 * sigma_pixel)] = False
     mask[-int(5 * sigma_pixel) :] = False
     return ssp, mask
