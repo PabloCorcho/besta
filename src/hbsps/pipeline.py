@@ -5,14 +5,13 @@ This module contains the pipeline manager to concatenate multiple modules.
 import os
 import subprocess
 import numpy as np
-from scipy.optimize import nnls
 
 from matplotlib import pyplot as plt
 
-from hbsps import output
-from hbsps import kinematics, sfh
-from hbsps.dust_extinction import deredden_spectra, redden_ssp_model
+from cosmosis import DataBlock
 
+from hbsps import output
+from hbsps import pipeline_modules
 
 class MainPipeline(object):
     """PST-HBSPS Pipeline manager.
@@ -124,97 +123,47 @@ class MainPipeline(object):
             print("MaxLike solution: ", solution)
 
             if plot_result:
-                if "SFH" in reader.last_module:
-                    reader.load_sfh_model()
-                elif "KinDust" in reader.last_module:
-                    reader.load_chain(include_ssp_extra_output=True)
-                reader.load_observation()
-                reader.load_extinction_model()
-                reader.load_ssp_model()
-                # Reconstruct best fit
-                # TODO: this should be directly done by the fitting modules
-                flux_model, sol_config = self.reconstruct_solution(
-                    subpipe_config, reader.config.copy(), solution)
+                # Initialise the module to reconstruct the solution
+                module = getattr(pipeline_modules, reader.last_module + "Module")
+                pipeline_module = module(reader.ini_info)
+                solution_datablock = reader.solution_to_datablock(prev_solution)
+                self.plot_fit(pipeline_module, solution_datablock,
+                              pipe_config=subpipe_config)
 
-                if "SFH" in reader.last_module:
-                    self.plot_fit(subpipe_config, sol_config, flux_model,
-                                solution=solution)
-                else:
-                    self.plot_fit(subpipe_config, sol_config, flux_model)
-
-
-    def reconstruct_solution(self, pipeline_config, config, solution):
-        """Reconstruct a fit solution"""
-        if "los_sigma" in solution:
-            print("Convolvind SED with kinematic solution")
-            sed, mask = kinematics.convolve_ssp(
-                config, solution["los_sigma"], solution["los_vel"]
-            )
-        elif "los_sigma" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-            print("Convolvind SED with kinematic input")
-            los_sigma = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_sigma']
-            los_vel = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_vel']
-            sed, mask = kinematics.convolve_ssp(
-                config, los_sigma=los_sigma, los_vel=los_vel
-            )
-        config["ssp_sed"] = sed
-        config["ssp_wl"] = config["wavelength"]
-        config["mask"] = mask
-
-        # Dust extinction
-        if "av" in solution:
-            print("Reddening SED with dust solution")
-            redden_ssp_model(config, solution["av"])
-        elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-            print("Reddening SED with dust input")
-            av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
-            redden_ssp_model(config, av)
-
-        if 'SFH' in pipeline_config['pipeline']['modules']:
-            sfh_model = config['sfh_model']
-            mask = config['mask']
-            valid = sfh_model.parse_free_params(solution)
-            if not valid:
-                print("ERROR PARSING PARAMETERS")
-                return
-            flux_model = sfh_model.model.compute_SED(config['ssp_model'],
-										     t_obs=sfh_model.today,
-											 allow_negative=False).value
-            flux_model *= np.mean(config['flux'][mask] / flux_model[mask])
-        else:
-            solution, rnorm = nnls(config["ssp_sed"].T, config['flux'], maxiter=sed.shape[0] * 10)
-            flux_model = np.sum(config["ssp_sed"] * solution[:, np.newaxis], axis=0)
-        return flux_model, config
-
-    def plot_fit(self, pipe_config, config, flux_model, solution=None):
+    def plot_fit(self, module, solution : DataBlock, pipe_config):
         """Plot the fit."""
+        flux_model = module.make_observable(solution)
+        #TODO: ugly
+        if isinstance(flux_model, tuple):
+            flux_model = flux_model[0]
         fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
-        plt.suptitle(f"Module: {pipe_config['pipeline']['modules']}")
+        plt.suptitle(f"Module: {module.name}")
         ax = axs[0]
         # Plot input spectra
         ax.fill_between(
-            config["wavelength"],
-            config["flux"] - config["cov"] ** 0.5,
-            config["flux"] + config["cov"] ** 0.5,
+            module.config["wavelength"],
+            module.config["flux"] - module.config["cov"] ** 0.5,
+            module.config["flux"] + module.config["cov"] ** 0.5,
             color="k",
             alpha=0.5,
         )
-        ax.plot(config["wavelength"], config["flux"], c="k", label="Observed")
+        ax.plot(module.config["wavelength"], module.config["flux"], c="k",
+                label="Observed")
         # Show masked pixels
         ax.plot(
-            config["wavelength"][~config["mask"]],
-            config["flux"][~config["mask"]],
+            module.config["wavelength"][~module.config["mask"]],
+            module.config["flux"][~module.config["mask"]],
             c="b",
             marker="x",
             lw=0,
             label="Masked",
         )
         # Plot model
-        ax.plot(config["wavelength"], flux_model, c="r", label="Model")
+        ax.plot(module.config["wavelength"], flux_model, c="r", label="Model")
         # Plot residuals
         ax.plot(
-            config["wavelength"],
-            flux_model - config["flux"],
+            module.config["wavelength"],
+            flux_model - module.config["flux"],
             c="lime",
             label="Residuals",
         )
@@ -222,9 +171,9 @@ class MainPipeline(object):
         ax.set_ylabel("Flux")
         ax.legend()
 
-        chi2 = (flux_model - config["flux"]) ** 2 / config["cov"]
+        chi2 = (flux_model - module.config["flux"]) ** 2 / module.config["cov"]
         ax = axs[1]
-        ax.plot(config["wavelength"], chi2, c="k", lw=0.7)
+        ax.plot(module.config["wavelength"], chi2, c="k", lw=0.7)
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
         ax.set_yscale("symlog", linthresh=0.1)
