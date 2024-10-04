@@ -196,7 +196,14 @@ class Reader(object):
         for k, v in self.results_table.items():
             if "parameters" in k:
                 solution[k.replace("parameters--", "")] = v[maxlike_pos]
+                
         return solution
+
+    def solution_to_datablock(self, solution, section="parameters"):
+        datablock =cosmosis.DataBlock()
+        for k, v in solution.items():
+            datablock[section, k] = v
+        return datablock
 
     def get_pct_solutions(self, pct=99, log_prob="post"):
         good_sample = self.results_table[log_prob] != 0
