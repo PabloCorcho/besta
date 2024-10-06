@@ -117,11 +117,11 @@ class FixedTimeSFH(SFHBase, ZPowerLawMixin):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  * u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
 
-    def parse_datablock(self, datablock):
+    def parse_datablock(self, datablock : DataBlock):
         logm_formed = np.array(
             [datablock["parameters", f"logmass_at_{lb:.3f}"] for lb in self.lookback_time[1:-1].to_value("Gyr")],
             dtype=float)
@@ -175,11 +175,11 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  * u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
 
-    def parse_datablock(self, datablock):
+    def parse_datablock(self, datablock : DataBlock):
         lt_yr = self.lookback_time[1:-1].to_value('yr')
         ssfr_over_last = np.array(
             [datablock["parameters", f'logssfr_over_{np.log10(lt):.2f}_yr']
@@ -233,11 +233,11 @@ class FixedMassFracSFH(SFHBase, ZPowerLawMixin):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  * u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
 
-    def parse_datablock(self, datablock):
+    def parse_datablock(self, datablock : DataBlock):
         times = np.array(
             [datablock["parameters", f't_at_frac_{f:.4f}'] for f in self.mass_fractions[1:-1]],
             dtype=float)
@@ -285,11 +285,11 @@ class ExponentialSFH(SFHBase):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  * u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
 
-    def parse_datablock(self, datablock):
+    def parse_datablock(self, datablock : DataBlock):
         self.tau = 10**datablock['parameters', 'logtau']
         m = 1 - np.exp(-self.time.to_value("Gyr") / self.tau)
         self.model.table_mass = m / m[-1] * u.Msun
@@ -329,10 +329,9 @@ class LogNormalSFH(SFHBase):
                                              ) << u.dimensionless_unscaled,
             t0=1., scale=1.)
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
-
 
     def parse_datablock(self, datablock):
         self.model = pst.models.LogNormalZPowerLawCEM(
@@ -389,11 +388,11 @@ class LogNormalQuenchedSFH(SFHBase):
             t0=1., scale=1.,
             t_quench=1., tau_quench=1.)
 
-    def parse_free_params(self, free_params):
+    def parse_free_params(self, free_params : dict):
         return self.parse_datablock(DataBlock.from_dict(
             dict(parameters=free_params)))
 
-    def parse_datablock(self, datablock):
+    def parse_datablock(self, datablock : DataBlock):
         self.model.alpha_powerlaw = datablock['parameters', 'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock['parameters', 'ism_metallicity_today'] * u.dimensionless_unscaled
         self.model.t0 = datablock['parameters', 't0']
