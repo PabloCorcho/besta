@@ -70,3 +70,5 @@ block['parameters', 'los_h3'] = 0
 block['parameters', 'los_h4'] = 0
 
 sfh_module = SFHSpectraModule(config)
+
+print("Path to module ", sfh_module.path)
