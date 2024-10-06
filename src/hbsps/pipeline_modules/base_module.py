@@ -1,5 +1,7 @@
 from abc import abstractmethod
 import os
+import sys
+
 import numpy as np
 from sklearn.decomposition import NMF
 from astropy import units as u
@@ -25,6 +27,11 @@ class BaseModule(ClassModule):
     @abstractmethod
     def execute(self, block, config):
         return super().execute(block, config)
+
+    @classmethod
+    def get_path(cls):
+        """Get the path to the module file."""
+        return sys.modules[cls.__module__].__file__
 
     def parse_options(self, options):
         if isinstance(options, dict):
