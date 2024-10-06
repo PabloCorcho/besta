@@ -7,7 +7,8 @@ from hbsps.pipeline_modules.sfh_spectra import SFHSpectraModule
 
 class TestPipelineModule(unittest.TestCase):
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(self):
         # Setup stuff
         pass
 
