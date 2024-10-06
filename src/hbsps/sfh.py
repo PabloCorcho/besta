@@ -60,7 +60,7 @@ class SFHBase():
 
 class ZPowerLawMixin:
     """Metallicity evolution as a power law in terms of the stellar mass formed."""
-    free_params = {'alpha': [0, 0.5, 3], 'ism_metallicity_today': [0.005, 0.01, 0.08]}
+    free_params = {'alpha_powerlaw': [0, 0.5, 3], 'ism_metallicity_today': [0.005, 0.01, 0.08]}
 
 
 class FixedTimeSFH(SFHBase, ZPowerLawMixin):
@@ -124,7 +124,7 @@ class FixedTimeSFH(SFHBase, ZPowerLawMixin):
         cumulative = np.insert(cumulative, (0, cumulative.size), (0, 1))
         # Update the mass of the tabular model
         self.model.table_mass =  cumulative * u.Msun
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -194,7 +194,7 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin):
             return 0, 1 + np.abs(dm[dm < 0].sum())
         # Update the mass of the tabular model
         self.model.table_mass =  mass_frac * u.Msun
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -211,7 +211,7 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin):
             return 0, 1 + np.abs(dm[dm < 0].sum())
         # Update the mass of the tabular model
         self.model.table_mass =  mass_frac * u.Msun
-        self.model.alpha_powerlaw = datablock["parameters",'alpha']
+        self.model.alpha_powerlaw = datablock["parameters",'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock["parameters",'ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -263,7 +263,7 @@ class FixedMassFracSFH(SFHBase, ZPowerLawMixin):
                           (0, self.today.to_value("Gyr")))
         # Update the mass of the tabular model
         self.model.table_t = times * u.Gyr
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -278,7 +278,7 @@ class FixedMassFracSFH(SFHBase, ZPowerLawMixin):
                           (0, self.today.to_value("Gyr")))
         # Update the mass of the tabular model
         self.model.table_t = times * u.Gyr
-        self.model.alpha_powerlaw = datablock["parameters",'alpha']
+        self.model.alpha_powerlaw = datablock["parameters",'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock["parameters",'ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -297,7 +297,7 @@ class ExponentialSFH(SFHBase):
     lookback_time : astropy.units.Quantity
 
     """
-    free_params = {'alpha': [0, 1, 10], 'ism_metallicity_today': [0.005, 0.01, 0.08],
+    free_params = {'alpha_powerlaw': [0, 1, 10], 'ism_metallicity_today': [0.005, 0.01, 0.08],
                    "logtau": [-1, 0.5, 1.7]}
 
     def __init__(self, *args, **kwargs):
@@ -318,7 +318,7 @@ class ExponentialSFH(SFHBase):
         self.tau = 10**free_params['logtau']
         m = 1 - np.exp(-self.time.to_value("Gyr") / self.tau)
         self.model.table_mass = m / m[-1] * u.Msun
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -326,7 +326,7 @@ class ExponentialSFH(SFHBase):
         self.tau = 10**datablock['parameters', 'logtau']
         m = 1 - np.exp(-self.time.to_value("Gyr") / self.tau)
         self.model.table_mass = m / m[-1] * u.Msun
-        self.model.alpha_powerlaw = datablock['parameters', 'alpha']
+        self.model.alpha_powerlaw = datablock['parameters', 'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock['parameters', 'ism_metallicity_today'] * u.dimensionless_unscaled
         return 1, None
 
@@ -345,7 +345,7 @@ class LogNormalSFH(SFHBase):
     lookback_time : astropy.units.Quantity
 
     """
-    free_params = {'alpha': [0, 1, 10], 'ism_metallicity_today': [0.005, 0.01, 0.08],
+    free_params = {'alpha_powerlaw': [0, 1, 10], 'ism_metallicity_today': [0.005, 0.01, 0.08],
                    "scale": [0.1, 3.0, 50], "t0": [0.1, 3.0, 14.0]}
 
     def __init__(self, *args, **kwargs):
@@ -359,14 +359,14 @@ class LogNormalSFH(SFHBase):
             t0=1., scale=1.)
 
     def parse_free_params(self, free_params):
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         self.model.t0 = free_params['t0']
         self.model.scale = free_params['scale']
         return 1, None
 
     def parse_datablock(self, datablock):
-        self.model.alpha_powerlaw = datablock['parameters', 'alpha']
+        self.model.alpha_powerlaw = datablock['parameters', 'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock['parameters', 'ism_metallicity_today'] * u.dimensionless_unscaled
         self.model.t0 = datablock['parameters', 't0']
         self.model.scale = datablock['parameters', 'scale']
@@ -389,7 +389,7 @@ class LogNormalQuenchedSFH(SFHBase):
     lookback_time : astropy.units.Quantity
 
     """
-    free_params = {'alpha': [0.0, 1.0, 3.0], 'ism_metallicity_today': [0.005, 0.01, 0.08],
+    free_params = {'alpha_powerlaw': [0.0, 1.0, 3.0], 'ism_metallicity_today': [0.005, 0.01, 0.08],
                    "scale": [0.1, 3.0, 50], "t0": [0.1, 3.0, 14.0],
                    "lnt_quench": [0, 1, 10], "lntau_quench": [-1, 0.5, 1.7]}
 
@@ -418,7 +418,7 @@ class LogNormalQuenchedSFH(SFHBase):
             t_quench=1., tau_quench=1.)
 
     def parse_free_params(self, free_params):
-        self.model.alpha_powerlaw = free_params['alpha']
+        self.model.alpha_powerlaw = free_params['alpha_powerlaw']
         self.model.ism_metallicity_today = free_params['ism_metallicity_today'] * u.dimensionless_unscaled
         self.model.t0 = free_params['t0']
         self.model.scale = free_params['scale']
@@ -427,7 +427,7 @@ class LogNormalQuenchedSFH(SFHBase):
         return 1, None
 
     def parse_datablock(self, datablock):
-        self.model.alpha_powerlaw = datablock['parameters', 'alpha']
+        self.model.alpha_powerlaw = datablock['parameters', 'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock['parameters', 'ism_metallicity_today'] * u.dimensionless_unscaled
         self.model.t0 = datablock['parameters', 't0']
         self.model.scale = datablock['parameters', 'scale']
