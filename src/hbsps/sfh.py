@@ -361,7 +361,7 @@ class LogNormalQuenchedSFH(SFHBase, ZPowerLawMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FixedGridSFH model")
+        print("[SFH] Initialising LogNorMalQuenched model")
         self.time = kwargs.get("time")
         if self.time is None:
             self.time = self.today - np.geomspace(1e-5, 1, 200) * self.today
