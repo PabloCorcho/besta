@@ -407,7 +407,7 @@ class LogNormalSFH(SFHBase):
         print("[SFH] Initialising LogNormalSFH model")
         self.free_params['t0'] = [0.1, self.today.to_value("Gyr") / 2,
                                   self.today.to_value("Gyr")]
-        self.model = pst.models.LogNormalCEM(
+        self.model = pst.models.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             alpha_powerlaw=kwargs.get("alpha", 0.0),
