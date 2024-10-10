@@ -420,6 +420,7 @@ class LogNormalSFH(SFHBase):
         self.model.ism_metallicity_today = free_params['z_today'] << u.dimensionless_unscaled
         self.model.t0 = free_params['t0'] << u.Gyr
         self.model.scale = free_params['scale']
+        self.model.mass_norm = self.model.mass_today / self.model.stellar_mass_formed(self.model.today).value
         return 1, None
 
     def parse_datablock(self, datablock):
@@ -427,6 +428,7 @@ class LogNormalSFH(SFHBase):
         self.model.ism_metallicity_today = datablock['parameters', 'z_today'] << u.dimensionless_unscaled
         self.model.t0 = datablock['parameters', 't0'] << u.Gyr
         self.model.scale = datablock['parameters', 'scale']
+        self.model.mass_norm = self.model.mass_today / self.model.stellar_mass_formed(self.model.today).value
         return 1, None
 
 
