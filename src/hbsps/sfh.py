@@ -408,6 +408,7 @@ class LogNormalSFH(SFHBase):
         self.free_params['t0'] = [0.1, self.today.to_value("Gyr") / 2,
                                   self.today.to_value("Gyr")]
         self.model = pst.models.LogNormalCEM(
+            today=self.today,
             alpha_powerlaw=kwargs.get("alpha", 0.0),
             ism_metallicity_today=kwargs.get("z_today", 0.02)  * u.dimensionless_unscaled,
             t0=1., scale=1.)
