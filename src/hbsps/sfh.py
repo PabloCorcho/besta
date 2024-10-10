@@ -409,8 +409,10 @@ class LogNormalSFH(SFHBase):
                                   self.today.to_value("Gyr")]
         self.model = pst.models.LogNormalCEM(
             today=self.today,
+            mass_today=1.0 << u.Msun,
             alpha_powerlaw=kwargs.get("alpha", 0.0),
-            ism_metallicity_today=kwargs.get("z_today", 0.02)  * u.dimensionless_unscaled,
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02
+                                             ) << u.dimensionless_unscaled,
             t0=1., scale=1.)
 
     def parse_free_params(self, free_params):
