@@ -416,19 +416,23 @@ class LogNormalSFH(SFHBase):
             t0=1., scale=1.)
 
     def parse_free_params(self, free_params):
-        self.model.alpha_powerlaw = free_params['alpha']
-        self.model.ism_metallicity_today = free_params['z_today'] << u.dimensionless_unscaled
-        self.model.t0 = free_params['t0'] << u.Gyr
-        self.model.scale = free_params['scale']
-        self.model.mass_norm = self.model.mass_today / self.model.stellar_mass_formed(self.model.today).value
+        self.model = pst.models.LogNormalZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            alpha_powerlaw=free_params['alpha'],
+            ism_metallicity_today=free_params['z_today'] << u.dimensionless_unscaled,
+            t0=free_params['t0'] << u.Gyr,
+            scale=free_params['scale'])
         return 1, None
 
     def parse_datablock(self, datablock):
-        self.model.alpha_powerlaw = datablock['parameters', 'alpha']
-        self.model.ism_metallicity_today = datablock['parameters', 'z_today'] << u.dimensionless_unscaled
-        self.model.t0 = datablock['parameters', 't0'] << u.Gyr
-        self.model.scale = datablock['parameters', 'scale']
-        self.model.mass_norm = self.model.mass_today / self.model.stellar_mass_formed(self.model.today).value
+        self.model = pst.models.LogNormalZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            alpha_powerlaw=datablock['parameters', 'alpha'],
+            ism_metallicity_today=datablock['parameters', 'z_today'] << u.dimensionless_unscaled,
+            t0=datablock['parameters', 't0'] << u.Gyr,
+            scale=datablock['parameters', 'scale'])
         return 1, None
 
 
