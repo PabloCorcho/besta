@@ -418,14 +418,14 @@ class LogNormalSFH(SFHBase):
     def parse_free_params(self, free_params):
         self.model.alpha_powerlaw = free_params['alpha']
         self.model.ism_metallicity_today = free_params['z_today'] * u.dimensionless_unscaled
-        self.model.t0 = free_params['t0']
+        self.model.t0 = free_params['t0'] << u.Gyr
         self.model.scale = free_params['scale']
         return 1, None
 
     def parse_datablock(self, datablock):
         self.model.alpha_powerlaw = datablock['parameters', 'alpha']
         self.model.ism_metallicity_today = datablock['parameters', 'z_today'] * u.dimensionless_unscaled
-        self.model.t0 = datablock['parameters', 't0']
+        self.model.t0 = datablock['parameters', 't0'] << u.Gyr
         self.model.scale = datablock['parameters', 'scale']
         return 1, None
 
