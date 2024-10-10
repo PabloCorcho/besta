@@ -67,6 +67,14 @@ class TestSFH(unittest.TestCase):
         model_parameters = {**model_parameters, **self.metallicity_params}
         value, penalty = model_fitter.parse_free_params(model_parameters)
         self.assertEqual(value, 1)
+    
+    def test_lognormal_quenched_sfh(self):
+        model_fitter = sfh.LogNormalQuenchedSFH()
+        model_parameters = {"scale": 0.5, "t0": 10.0, "quenching_time" : 10.0}
+        model_parameters = {**model_parameters, **self.metallicity_params}
+        value, penalty = model_fitter.parse_free_params(model_parameters)
+        self.assertEqual(value, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
