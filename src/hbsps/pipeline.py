@@ -125,7 +125,7 @@ class MainPipeline(object):
             if plot_result:
                 # Initialise the module to reconstruct the solution
                 module = getattr(pipeline_modules, reader.last_module + "Module")
-                pipeline_module = module(reader.ini_info)
+                pipeline_module = module(reader.ini)
                 solution_datablock = reader.solution_to_datablock(prev_solution)
                 self.plot_fit(pipeline_module, solution_datablock,
                               pipe_config=subpipe_config)
@@ -205,5 +205,6 @@ class MainPipeline(object):
         fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
                     f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
                     bbox_inches='tight', dpi=200)
+        plt.close()
         #plt.show()
 
