@@ -31,8 +31,8 @@ def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
 
 def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
     velscale = config["velscale"]
-    oversampling = config["oversampling"]
-    extra_pixels = config["extra_pixels"]
+    oversampling = int(config["oversampling"])
+    extra_pixels = int(config["extra_pixels"])
     ssp = config["ssp_model"]
     wl = config['wavelength']
     # Kinematics
@@ -46,12 +46,10 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
 
     # Rebin model spectra to observed grid
     pixels = slice(extra_pixels * oversampling,  -(extra_pixels * oversampling + 1))
-    ssp.L_lambda = (
-        ssp.L_lambda[:, :, pixels]
-        .reshape((ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
-                  wl.size, oversampling))
-        .mean(axis=-1)
-    )
+    print(pixels)
+    new_sed = ssp.L_lambda[:, :, pixels].reshape((ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
+                                                  wl.size, oversampling)).mean(axis=-1)
+    ssp.L_lambda = new_sed
     if not isinstance(wl, u.Quantity):
         ssp.wavelength = wl * ssp.wavelength.unit
     else:
