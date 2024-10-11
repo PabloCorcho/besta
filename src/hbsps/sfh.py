@@ -327,10 +327,6 @@ class LogNormalSFH(SFHBase, ZPowerLawMixin):
                                              ) << u.dimensionless_unscaled,
             t0=1., scale=1.)
 
-    def parse_free_params(self, free_params : dict):
-        return self.parse_datablock(DataBlock.from_dict(
-            dict(parameters=free_params)))
-
     def parse_datablock(self, datablock):
         self.model = pst.models.LogNormalZPowerLawCEM(
             today=self.today,
