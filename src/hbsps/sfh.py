@@ -400,7 +400,7 @@ class LogNormalSFH(SFHBase):
 
     """
     free_params = {'alpha': [0, 1, 10], 'z_today': [0.005, 0.01, 0.08],
-                   "scale": [0.1, 3.0, 50], "t0": [0.1, 3.0, 14.0]}
+                   "scale": [0.1, 0.5, 3.0], "t0": [0.1, 3.0, 30.0]}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
