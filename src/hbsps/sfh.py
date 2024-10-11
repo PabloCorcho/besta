@@ -364,6 +364,7 @@ class ExponentialSFH(SFHBase):
 
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
+            mass_today = 1 << u.Msun,
             masses=np.ones(self.time.size) * u.Msun,
             ism_metallicity_today=kwargs.get("z_today", 0.02)  * u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
@@ -371,7 +372,7 @@ class ExponentialSFH(SFHBase):
     def parse_free_params(self, free_params):
         self.tau = 10**free_params['logtau']
         m = 1 - np.exp(-self.time.to_value("Gyr") / self.tau)
-        self.model.table_mass = m / m[-1] * u.Msun
+        self.model.table_mass = m / m[-1] << u.Msun
         self.model.alpha_powerlaw = free_params['alpha']
         self.model.ism_metallicity_today = free_params['z_today'] * u.dimensionless_unscaled
         return 1, None
