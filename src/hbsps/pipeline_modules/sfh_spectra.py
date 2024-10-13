@@ -6,7 +6,7 @@ from cosmosis.datablock import SectionOptions
 from hbsps import kinematics
 
 class SFHSpectraModule(BaseModule):
-    name = "SFH_spectra"
+    name = "SFHSpectra"
     def __init__(self, options):
         """Set-up the COSMOSIS sampler.
             Args:
@@ -65,7 +65,7 @@ class SFHSpectraModule(BaseModule):
         valid, penalty = self.config['sfh_model'].parse_datablock(block)
         if not valid:
             print("Invalid")
-            block[section_names.likelihoods, "SFH_spectra_like"] = -1e20 * penalty
+            block[section_names.likelihoods, "SFHSpectra_like"] = -1e20 * penalty
             block['parameters', 'normalization'] = 0.0
             return 0
         flux_model = self.make_observable(block)
@@ -73,7 +73,7 @@ class SFHSpectraModule(BaseModule):
                           flux_model * self.config["weights"],
                           self.config['cov'])
         # Final posterior for sampling
-        block[section_names.likelihoods, "SFH_spectra_like"] = like
+        block[section_names.likelihoods, "SFHSpectra_like"] = like
         return 0
 
 def setup(options):

@@ -8,7 +8,7 @@ from cosmosis.datablock import SectionOptions
 from hbsps import kinematics
 
 class SFHPhotometryModule(BaseModule):
-    name = "SFH_photometry"
+    name = "SFHPhotometry"
     def __init__(self, options):
         """Set-up the COSMOSIS sampler.
             Args:
@@ -105,7 +105,7 @@ class SFHPhotometryModule(BaseModule):
         # Final posterior for sampling
         like = self.X2min(
 		self.config['photometry_flux'], flux_model, self.config['photometry_flux_var'])
-        block[section_names.likelihoods, "SFH_photometry_like"] = like
+        block[section_names.likelihoods, "SFHPhotometry_like"] = like
         return 0
 
 def setup(options):
