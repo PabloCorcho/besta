@@ -133,15 +133,16 @@ class MainPipeline(object):
     def plot_fit(self, module, solution : DataBlock, pipe_config):
         """Plot the fit."""
         flux_model = module.make_observable(solution)
-        #TODO: ugly
         if isinstance(flux_model, tuple):
             flux_model = flux_model[0]
-        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
+
+        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True,
+                                constrained_layout=True)
         plt.suptitle(f"Module: {module.name}")
         ax = axs[0]
         # Plot input spectra
         ax.fill_between(
-            module.config["wavelength"],
+            module.config["wavelength"].value,
             module.config["flux"] - module.config["cov"] ** 0.5,
             module.config["flux"] + module.config["cov"] ** 0.5,
             color="k",
@@ -150,26 +151,30 @@ class MainPipeline(object):
         ax.plot(module.config["wavelength"], module.config["flux"], c="k",
                 label="Observed")
         # Show masked pixels
+        mask = module.config["weights"] == 0
         ax.plot(
-            module.config["wavelength"][~module.config["mask"]],
-            module.config["flux"][~module.config["mask"]],
-            c="b",
-            marker="x",
-            lw=0,
+            module.config["wavelength"][mask],
+            module.config["flux"][mask],
+            c="r", marker="x", lw=0,
             label="Masked",
         )
         # Plot model
-        ax.plot(module.config["wavelength"], flux_model, c="r", label="Model")
+        ax.plot(module.config["wavelength"], flux_model, c="b", label="Model")
         # Plot residuals
+        residuals = flux_model - module.config["flux"]
         ax.plot(
             module.config["wavelength"],
-            flux_model - module.config["flux"],
-            c="lime",
+            residuals,
+            c="orange",
             label="Residuals",
         )
         ax.axhline(0, ls="--", color="k", alpha=0.2)
         ax.set_ylabel("Flux")
         ax.legend()
+
+        p5, p95 = np.nanpercentile(module.config["flux"], [5, 95])
+        p_residuals = np.nanpercentile(residuals, 5) * 0.95
+        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
 
         chi2 = (flux_model - module.config["flux"]) ** 2 / module.config["cov"]
         ax = axs[1]
@@ -190,17 +195,15 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        if solution is not None:
-            # Include the solution
-            sol_text = "Solution\n"
-            for k, v in solution.items():
-                if "ssp" in k:
-                    #sol_text += f"{k}={v:.3f}\n"
-                    continue
-                else:
-                    sol_text += f"{k}={v:.3f}\n"
-            ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
-                        va='top', ha='right', fontsize=7, color='Grey')
+        # if solution is not None:
+        #     # Include the solution
+        #     DataBlock.to_string
+        #     sol_text = "Solution\n"
+        #     for k, v in solution.items():
+        #         else:
+        #             sol_text += f"{k}={v:.3f}\n"
+        #     ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
+        #                 va='top', ha='right', fontsize=7, color='Grey')
 
         fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
                     f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
