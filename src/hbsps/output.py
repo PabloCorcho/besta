@@ -106,6 +106,8 @@ class Reader(object):
     def __init__(self, ini_file):
         self.ini_file = ini_file
         self.ini, self.ini_data = self.read_ini_file(self.ini_file)
+        self.ini_values = self.read_ini_values_file(
+            self.ini["pipeline"]["values"])
         self.config = {}
 
         self.last_module = (
@@ -200,6 +202,21 @@ class Reader(object):
         return solution
 
     def solution_to_datablock(self, solution, section="parameters"):
+        keys = list(solution.keys())
+        values = list(solution.values())
+        strip_keys = []
+        for k in keys:
+            if section in k:
+                strip_keys.append(k.replace(f"{section}--", ""))
+            else:
+                strip_keys.append(k)
+        solution = {k : v for k, v in zip(strip_keys, values)}
+
+        for parameter in self.ini_values["parameters"].keys():
+            if parameter not in solution:
+                print(f"Parameter {parameter} was set constant, adding default value")
+                solution[parameter] = self.ini_values["parameters"][parameter]
+
         datablock =cosmosis.DataBlock()
         for k, v in solution.items():
             datablock[section, k] = v
@@ -325,11 +342,61 @@ class Reader(object):
                         ini_info[module][name] = components[1].strip(" ")
                     else:
                         numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                        if ("." in components[1]) or ("e" in components[1]):
-                            # Float number
-                            ini_info[module][name] = np.array(numbers, dtype=float)
+                        if len(numbers) == 1:
+                            if ("." in components[1]) or ("e" in components[1]):
+                                # Float number
+                                ini_info[module][name] = float(numbers[0])
+                            else:
+                                # int number
+                                ini_info[module][name] = int(numbers[0])
                         else:
-                            # int number
-                            ini_info[module][name] = np.array(numbers, dtype=int)
+                            if ("." in components[1]) or ("e" in components[1]):
+                                # Float number
+                                ini_info[module][name] = np.array(numbers, dtype=float)
+                            else:
+                                # int number
+                                ini_info[module][name] = np.array(numbers, dtype=int)
+
         ini = cosmosis.runtime.Inifile(path)
         return ini_info, ini
+    
+    @staticmethod
+    def read_ini_values_file(path):
+        print("Reading ini values file: ", path)
+        ini_info = {}
+        with open(path, "r") as f:
+            for line in f.readlines():
+                line = line.replace("\n", "")
+                if (len(line) == 0) or (line[0] == ";"):
+                    continue
+                if line[0] == "[":
+                    module = line.strip("[]")
+                    ini_info[module] = {}
+                else:
+                    components = line.split("=")
+                    name = components[0].strip(" ")
+                    str_value = components[1].replace(" ", "")
+                    str_value = str_value.replace(".", "")
+                    str_value = str_value.replace("e", "")
+                    str_value = str_value.replace("-", "")
+                    if not str_value.isnumeric():
+                        ini_info[module][name] = components[1].strip(" ")
+                    else:
+                        numbers = [n for n in components[1].split(" ") if len(n) > 0]
+                        if len(numbers) == 1:
+                            if ("." in components[1]) or ("e" in components[1]):
+                                # Float number
+                                ini_info[module][name] = float(numbers[0])
+                            else:
+                                # int number
+                                ini_info[module][name] = int(numbers[0])
+                        else:
+                            if ("." in components[1]) or ("e" in components[1]):
+                                # Float number
+                                ini_info[module][name] = np.array(numbers, dtype=float)
+                            else:
+                                # int number
+                                ini_info[module][name] = np.array(numbers, dtype=int)
+        return ini_info
+
+
