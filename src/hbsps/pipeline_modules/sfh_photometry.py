@@ -47,9 +47,8 @@ class SFHPhotometryModule(BaseModule):
         else:
             print("No kinematic information was provided")
 
-        if options.has_value("ExtinctionLaw"):
+        if options.has_value("av"):
             av = options["av"]
-            self.prepare_extinction_law(options)
             print(f"Reddening SSP models using Av={av}")
             self.config['ssp_model'] = self.config["extinction_law"].redden_ssp_model(
                 self.config['ssp_model'], av)
@@ -84,7 +83,6 @@ class SFHPhotometryModule(BaseModule):
         flux_model = sfh_model.model.compute_photometry(
             self.config['ssp_model'],
             t_obs=sfh_model.today,
-            allow_negative=False,
             photometry=photometry)
         flux_model = flux_model.to_value("3631e-9 Jy")
         normalization = np.mean(self.config['photometry_flux'] / flux_model)
@@ -95,13 +93,10 @@ class SFHPhotometryModule(BaseModule):
         valid, penalty = self.config['sfh_model'].parse_datablock(block)
         if not valid:
             print("Invalid")
-            block[section_names.likelihoods, "SFH_spectra_like"] = -1e5 * penalty
+            block[section_names.likelihoods, "SFHPhotometry_like"] = -1e5 * penalty
             block['parameters', 'normalization'] = 0.0
             return 0
         flux_model = self.make_observable(block)
-        like = self.X2min(self.config['flux'] * self.config["weights"],
-                          flux_model * self.config["weights"],
-                          self.config['cov'])
         # Final posterior for sampling
         like = self.X2min(
 		self.config['photometry_flux'], flux_model, self.config['photometry_flux_var'])
