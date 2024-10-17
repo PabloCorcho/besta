@@ -218,7 +218,6 @@ class BaseModule(ClassModule):
             self.config["extinction_law"] = None
             return
         ext_law = options.get_string("ExtinctionLaw")
-        wl_norm_range = options["wlNormRange"]
         print("Extinction law: ", ext_law)
         self.config["extinction_law"] = dust.DustScreen(ext_law)
         print("-> Configuration is done.")
