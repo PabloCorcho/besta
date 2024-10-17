@@ -127,7 +127,8 @@ class FixedTimeSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
         # Initialise PST 
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
-            masses=np.ones(self.time.size) * u.Msun,
+            masses=np.ones(self.time.size) << u.Msun,
+            mass_today = 1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
@@ -138,7 +139,7 @@ class FixedTimeSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
             return 0, cumulative[-1]
         cumulative = np.insert(cumulative, (0, cumulative.size), (0, 1))
         # Update the mass of the tabular model
-        self.model.table_mass =  cumulative * u.Msun
+        self.model.table_mass =  cumulative << u.Msun
         self.model.alpha_powerlaw = datablock["parameters", "alpha_powerlaw"]
         self.model.ism_metallicity_today = datablock[
             "parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
@@ -182,7 +183,8 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
 
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
-            masses=np.ones(self.time.size) * u.Msun,
+            masses=np.ones(self.time.size) << u.Msun,
+            mass_today = 1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02
                                              )  << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
@@ -196,7 +198,7 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
             dm = mass_frac[1:] - mass_frac[:-1]
             return 0, 1 + np.abs(dm[dm < 0].sum())
         # Update the mass of the tabular model
-        self.model.table_mass =  mass_frac * u.Msun
+        self.model.table_mass =  mass_frac << u.Msun
         self.model.alpha_powerlaw = datablock["parameters",'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock["parameters",'ism_metallicity_today'] << u.dimensionless_unscaled
         return 1, None
@@ -234,8 +236,9 @@ class FixedMassFracSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
                                    self.today.to_value("Gyr")]
 
         self.model = pst.models.TabularCEM_ZPowerLaw(
-            times=np.ones(self.mass_fractions.size) * u.Gyr,
-            masses=self.mass_fractions * u.Msun,
+            times=np.ones(self.mass_fractions.size) << u.Gyr,
+            masses=self.mass_fractions << u.Msun,
+            mass_today = 1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02
                                              )  << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
@@ -284,14 +287,14 @@ class ExponentialSFH(SFHBase, ZPowerLawMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
             mass_today = 1 << u.Msun,
-            masses=np.ones(self.time.size) * u.Msun,
+            masses=np.ones(self.time.size) << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha", 0.0))
 
     def parse_datablock(self, datablock : DataBlock):
         self.tau = 10**datablock['parameters', 'logtau']
         m = 1 - np.exp(-self.time.to_value("Gyr") / self.tau)
-        self.model.table_mass = m / m[-1] * u.Msun
+        self.model.table_mass = m / m[-1] << u.Msun
         self.model.alpha_powerlaw = datablock['parameters', 'alpha_powerlaw']
         self.model.ism_metallicity_today = datablock['parameters', 'ism_metallicity_today'] << u.dimensionless_unscaled
         return 1, None
