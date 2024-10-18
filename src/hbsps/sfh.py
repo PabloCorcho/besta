@@ -79,6 +79,7 @@ class PieceWiseSFHMixin:
         return np.array([datablock["parameters", key] for key in self.sfh_bin_keys],
                         dtype=dtype)
 
+
 class FixedTimeSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
     
@@ -138,6 +139,81 @@ class FixedTimeSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
         if cumulative[-1] > 1.0:
             return 0, cumulative[-1]
         cumulative = np.insert(cumulative, (0, cumulative.size), (0, 1))
+        # Update the mass of the tabular model
+        self.model.table_mass =  cumulative << u.Msun
+        self.model.alpha_powerlaw = datablock["parameters", "alpha_powerlaw"]
+        self.model.ism_metallicity_today = datablock[
+            "parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
+        return 1, None
+
+
+class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+    """A SFH model with fixed time bins.
+    
+    Description
+    -----------
+    The SFH of a galaxy is modelled as a stepwise function where the free
+    parameters correspond to ... #TODO
+
+    Attributes
+    ----------
+    lookback_time : astropy.units.Quantity
+        Lookback time bin edges.
+
+    """
+
+    def __init__(self, lookback_time_bins, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print("[SFH] Initialising FixedGridSFH model")
+        # From the begining of the Universe to the present date
+        self.lookback_time = pst.utils.check_unit(
+            np.sort(lookback_time_bins)[::-1], u.Gyr)
+
+        # Lookbacktime [T_univ, t1, ... tn, 0]
+        self.lookback_time = np.insert(
+            self.lookback_time, (0, self.lookback_time.size),
+            (self.today.to(self.lookback_time.unit),
+             0 << self.lookback_time.unit))
+
+        self.time = self.today - self.lookback_time
+        # Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]
+        self.bin_masses = np.zeros(self.time.size - 2)
+
+        if (self.time < 0).any():
+            print("[SFH] Warning: lookback time bin larger the age of the Universe")
+
+        print("[SFH] Setting up free parameters")
+        self.sfh_bin_keys = []
+        for lb in self.lookback_time[1:-1].to_value("Gyr"):
+            # Initialise parameters assuming a constant star formation history
+            k = f'coeff_at_{lb:.3f}'
+            self.sfh_bin_keys.append(k)
+            self.free_params[k] = [0.0, 0.5, 1.0]
+
+        # Initialise PST 
+        self.model = pst.models.TabularCEM_ZPowerLaw(
+            times=self.time,
+            masses=np.ones(self.time.size) << u.Msun,
+            mass_today = 1 << u.Msun,
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)  << u.dimensionless_unscaled,
+            alpha_powerlaw=kwargs.get("alpha", 0.0))
+
+    def update_mass(self, i, coeff):
+        """Update a bin of the stellar mass fraction formed."""
+        self.bin_masses[i] = coeff * (1 - np.sum(self.bin_masses[:i]))
+        return
+
+    def parse_datablock(self, datablock : DataBlock):
+        coefficients = self.get_sfh_parameters_array(datablock)
+        # The first coefficient correspond to the mass fraction between
+        # the origin of the universe and the first input time (largest lookback time)
+        self.bin_masses[0] = coefficients[0]
+        # Update the rest of the elements
+        _ = [self.update_mass(i, coefficients[i]) for i in range(
+            1, self.bin_masses.size)]
+        # Mass formation history. The last bin uses the remanining fraction)
+        cumulative = np.insert(np.cumsum(self.bin_masses),
+                               (0, cumulative.size), (0, 1))
         # Update the mass of the tabular model
         self.model.table_mass =  cumulative << u.Msun
         self.model.alpha_powerlaw = datablock["parameters", "alpha_powerlaw"]
