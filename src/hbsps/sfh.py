@@ -80,7 +80,7 @@ class PieceWiseSFHMixin:
                         dtype=dtype)
 
 
-class FixedTimeSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
+class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
     
     Description
@@ -222,7 +222,7 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return 1, None
 
 
-class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
+class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
     
     Description
@@ -280,7 +280,7 @@ class FixedTime_sSFR_SFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
         return 1, None
 
 
-class FixedMassFracSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
+class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed mass fraction bins.
     
     Description
@@ -334,7 +334,7 @@ class FixedMassFracSFH(SFHBase, ZPowerLawMixin, PieceWiseSFHMixin):
 
 # Analytical star formation histories
 
-class ExponentialSFH(SFHBase, ZPowerLawMixin):
+class ExponentialSFH(ZPowerLawMixin, SFHBase):
     """An analytical exponentially declining SFH model.
     
     Description
@@ -376,7 +376,7 @@ class ExponentialSFH(SFHBase, ZPowerLawMixin):
         return 1, None
 
 
-class LogNormalSFH(SFHBase, ZPowerLawMixin):
+class LogNormalSFH(ZPowerLawMixin, SFHBase):
     """An analytical log-normal declining SFH model.
     
     Description
@@ -417,7 +417,7 @@ class LogNormalSFH(SFHBase, ZPowerLawMixin):
         return 1, None
 
 
-class LogNormalQuenchedSFH(SFHBase, ZPowerLawMixin):
+class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
     """An analytical log-normal declining SFH model including a quenching event.
     
     Description
