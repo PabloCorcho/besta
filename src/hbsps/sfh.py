@@ -213,7 +213,7 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             1, self.bin_masses.size)]
         # Mass formation history. The last bin uses the remanining fraction)
         cumulative = np.insert(np.cumsum(self.bin_masses),
-                               (0, cumulative.size), (0, 1))
+                               (0, self.bin_masses.size), (0, 1))
         # Update the mass of the tabular model
         self.model.table_mass =  cumulative << u.Msun
         self.model.alpha_powerlaw = datablock["parameters", "alpha_powerlaw"]
