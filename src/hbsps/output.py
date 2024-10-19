@@ -223,23 +223,28 @@ class Reader(object):
         return datablock
 
     def get_pct_solutions(self, pct=99, log_prob="post"):
+        """Return the top percentile solutions."""
         good_sample = self.results_table[log_prob] != 0
         maxlike_pos = np.argmax(self.results_table[log_prob][good_sample])
         # Normalize the weights
         weights = self.results_table[log_prob][good_sample] - self.results_table[log_prob][good_sample][maxlike_pos]
-        weights = np.exp(weights / 2)
+        weights = np.exp(weights)
         weights /= np.nansum(weights)
         # From the highest to the lowest weight
         sort = np.argsort(weights)
         cum_weights = np.cumsum(weights[sort][::-1])
         last_sample = np.searchsorted(cum_weights, pct / 100)
-
-        solution = {'weights': weights[sort][-last_sample:]}    
-        for k, v in self.results_table.items():
-            if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[
-                    good_sample][sort][-last_sample:]
-        return solution
+        print(f"Selecting solutions from {last_sample}")
+        all_solutions = []
+        for i in range(-last_sample, 0):
+            print(i)
+            solution = {'weights': weights[sort][i]}
+            for k, v in self.results_table.items():
+                if "parameters" in k:
+                    solution[k.replace("parameters--", "")] = v[
+                        good_sample][sort][i]
+            all_solutions.append(solution)
+        return all_solutions
 
     def compute_solution_from_pct(self, pct_results, pct=0.5):
         print("Computing solution from percentiles")
