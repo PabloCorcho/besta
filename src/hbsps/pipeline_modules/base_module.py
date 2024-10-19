@@ -230,8 +230,9 @@ class BaseModule(ClassModule):
         key = "SFHArgs1"
         while options.has_value(key):
             value = options[key]
-            if "," in value:
-                value = np.array(value.split(","), dtype=float)
+            if isinstance(value, str):
+                if "," in value:
+                    value = np.array(value.split(","), dtype=float)
             sfh_args.append(value)
             key = key.replace(key[-1], str(int(key[-1]) + 1))
         print("SFH model name: ", sfh_model_name)
@@ -246,8 +247,6 @@ class BaseModule(ClassModule):
         residual1 = recSp - spectrum
         residual2 = np.copy(residual1)
         residual1 /= cov
-            
         # Determine likelihood term (i.e. X2-value)
         chiSq = -0.5 * np.dot(residual1, residual2)
-        
         return chiSq
