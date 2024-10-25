@@ -237,7 +237,6 @@ class Reader(object):
         print(f"Selecting solutions from {last_sample}")
         all_solutions = []
         for i in range(-last_sample, 0):
-            print(i)
             solution = {'weights': weights[sort][i]}
             for k, v in self.results_table.items():
                 if "parameters" in k:
