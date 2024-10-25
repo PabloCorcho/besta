@@ -1,8 +1,106 @@
 import numpy as np
+import re
 from scipy.signal import fftconvolve
+from astropy.modeling import Fittable1DModel
+from astropy.modeling.models import Gaussian1D, Hermite1D
+from astropy.convolution.kernels import Model1DKernel
+
 from astropy import units as u
+from astropy.convolution import convolve, convolve_fft
+
 from hbsps import specBasics
 
+
+class GaussHermite(Fittable1DModel):
+    _param_names = ()
+
+    def __init__(self, order, *args, **kwargs):
+
+        self._order = int(order)
+        if self._order < 3:
+            self._order = 0
+
+        self._gaussian = Gaussian1D()
+        # Hermite series
+        if self._order:
+            self._hermite = Hermite1D(self._order)
+        else:
+            self._hermite = None
+
+        # Hermite series
+        if self._order:
+            self._hermite = Hermite1D(self._order)
+        else:
+            self._hermite = None
+
+        self._param_names = self._generate_coeff_names()
+        super(GaussHermite, self).__init__(*args, **kwargs)
+
+    def _generate_coeff_names(self):
+
+        names = list(self._gaussian.param_names)  # Gaussian parameters
+        names += [ 'h{}'.format(i)
+                   for i in range(3, self._order + 1) ] # Hermite coeffs
+
+    def _hi_order(self, name):
+        # One could store the compiled regex, but it will crash the deepcopy:
+        # "cannot deepcopy this pattern object"
+
+        match = re.match('h(?P<order>\d+)', name)  # h3, h4, etc.
+        order = int(match.groupdict()['order']) if match else 0
+
+        return order
+
+    def _generate_coeff_names(self):
+
+        names = list(self._gaussian.param_names)  # Gaussian parameters
+        names += [ 'h{}'.format(i)
+                   for i in range(3, self._order + 1) ] # Hermite coeffs
+
+        return tuple(names)
+
+    def __getattr__(self, attr):
+
+        if attr[0] == '_':
+            super(GaussHermite, self).__getattr__(attr)
+        elif attr in self._gaussian.param_names:
+            return self._gaussian.__getattribute__(attr)
+        elif self._order and self._hi_order(attr) >= 3:
+            return self._hermite.__getattr__(attr.replace('h', 'c'))
+        else:
+            super(GaussHermite, self).__getattr__(attr)
+
+    def __setattr__(self, attr, value):
+
+        if attr[0] == '_':
+            super(GaussHermite, self).__setattr__(attr, value)
+        elif attr in self._gaussian.param_names:
+            self._gaussian.__setattr__(attr, value)
+        elif self._order and self._hi_order(attr) >= 3:
+            self._hermite.__setattr__(attr.replace('h', 'c'), value)
+        else:
+            super(GaussHermite, self).__setattr__(attr, value)
+
+    @property
+    def param_names(self):
+
+        return self._param_names
+
+    def evaluate(self, x, *params):
+
+        a, m, s = params[:3]                      # amplitude, mean, stddev
+        f = self._gaussian.evaluate(x, a, m, s)
+        if self._order:
+            f *= (1 + self._hermite.evaluate((x - m)/s, 0, 0, 0, *params[3:]))
+
+        return f
+
+
+def get_losvd_kernel(kernel=GaussHermite(4, mean=0, stddev=1, h3=0, h4=0)):
+    return Model1DKernel(kernel)
+
+def convolve_spectra_with_kernel(spectra, kernel):
+    return convolve(spectra, kernel)
 
 def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     velscale = config["velscale"]
@@ -59,11 +157,3 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
     mask[: int(5 * sigma_pixel)] = False
     mask[-int(5 * sigma_pixel) :] = False
     return ssp, mask
-
-
-def convolve_spectra(spectra, los_vel, los_sigma):
-    x = np.arange(-8 * los_sigma, 8 * los_sigma) - los_vel
-    losvd_kernel = specBasics.losvd(x, sigma_pixel=los_sigma)
-
-    conv_spectra = fftconvolve(spectra, losvd_kernel, mode="same")
-    return conv_spectra
