@@ -27,12 +27,6 @@ class GaussHermite(Fittable1DModel):
         else:
             self._hermite = None
 
-        # Hermite series
-        if self._order:
-            self._hermite = Hermite1D(self._order)
-        else:
-            self._hermite = None
-
         self._param_names = self._generate_coeff_names()
         super(GaussHermite, self).__init__(*args, **kwargs)
 
@@ -66,7 +60,7 @@ class GaussHermite(Fittable1DModel):
         elif attr in self._gaussian.param_names:
             return self._gaussian.__getattribute__(attr)
         elif self._order and self._hi_order(attr) >= 3:
-            return self._hermite.__getattr__(attr.replace('h', 'c'))
+            return self._hermite.__getattribute__(attr.replace('h', 'c'))
         else:
             super(GaussHermite, self).__getattr__(attr)
 
@@ -96,8 +90,8 @@ class GaussHermite(Fittable1DModel):
         return f
 
 
-def get_losvd_kernel(kernel=GaussHermite(4, mean=0, stddev=1, h3=0, h4=0)):
-    return Model1DKernel(kernel)
+def get_losvd_kernel(kernel_model, x_size):
+    return Model1DKernel(kernel_model, x_size=x_size)
 
 def convolve_spectra_with_kernel(spectra, kernel):
     return convolve(spectra, kernel)
