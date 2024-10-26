@@ -41,18 +41,19 @@ class FullSpectralFitModule(BaseModule):
         veloffset_pixel = block["parameters", "los_vel"] / (velscale / oversampling)
 
         # Build the kernel. TOO SLOW? Initialise only once?
+        print(sigma_pixel)
         kernel = kinematics.get_losvd_kernel(
-            kernel_function = kinematics.GaussHermite(
+            kernel_model = kinematics.GaussHermite(
             4,
             mean=veloffset_pixel,
             stddev=sigma_pixel,
             h3=block["parameters", "los_h3"],
-            h4=block["parameters", "los_h4"])
+            h4=block["parameters", "los_h4"]),
+            x_size=8 * int(np.round(sigma_pixel)) + 1
         )
         # Perform the convolution
         flux_model = kinematics.convolve_spectra_with_kernel(
             flux_model, kernel)
-
         # Sample to observed resolution
         if oversampling > 1:
             extra_pixels = self.config["extra_pixels"]
@@ -65,11 +66,16 @@ class FullSpectralFitModule(BaseModule):
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         flux_model = dust_model.apply_extinction(
-            self.config['ssp_model'].wavelength, flux_model,
-            a_v=block["parameters", "av"])
+            self.config['wavelength'], flux_model,
+            a_v=block["parameters", "av"]).value
 
         weights = self.config["weights"] * (flux_model > 0)
-        return flux_model, weights
+        normalization = np.sum(
+            self.config['flux'] / flux_model * self.config["weights"]
+            ) / np.sum(self.config["weights"])
+        block['parameters', 'normalization'] = normalization
+        return flux_model * normalization, weights
+
 
     def execute(self, block):
         """Function executed by sampler
@@ -84,6 +90,7 @@ class FullSpectralFitModule(BaseModule):
         like = self.X2min(self.config["flux"] * weights,
                           flux_model * weights, cov)
         # Final posterior for sampling
+        print(like)
         block[section_names.likelihoods, f"{self.name}_like"] = like
         return 0
 
