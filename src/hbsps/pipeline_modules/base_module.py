@@ -173,7 +173,9 @@ class BaseModule(ClassModule):
         else:
             ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
             extra_offset_pixel = 0
-
+        # TODO
+        if oversampling < 2:
+            extra_offset_pixel = 0.0
         lnlam_bin_edges = np.arange(
             ln_wl_edges[0]
             - dlnlam * extra_offset_pixel * oversampling
