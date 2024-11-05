@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.155.g3652d07.dirty documentation</title>
+  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.165.g807eeef documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=b5c805cb"></script>
+      <script src="_static/documentation_options.js?v=870387f6"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -69,7 +69,6 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#module-hbsps.masking">hbsps.masking module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#module-hbsps.output">hbsps.output module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.output.save_ssp"><code class="docutils literal notranslate"><span class="pre">save_ssp()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.output.make_ini_file"><code class="docutils literal notranslate"><span class="pre">make_ini_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.output.make_values_file"><code class="docutils literal notranslate"><span class="pre">make_values_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.output.Reader"><code class="docutils literal notranslate"><span class="pre">Reader</span></code></a></li>
@@ -83,18 +82,11 @@
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.postprocess.read_results_file"><code class="docutils literal notranslate"><span class="pre">read_results_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.postprocess.compute_fraction_from_map"><code class="docutils literal notranslate"><span class="pre">compute_fraction_from_map()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.postprocess.compute_pdf_from_results"><code class="docutils literal notranslate"><span class="pre">compute_pdf_from_results()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hbsps.postprocess.make_plot_chains"><code class="docutils literal notranslate"><span class="pre">make_plot_chains()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hbsps.postprocess.compute_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">compute_chain_percentiles()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="#module-hbsps.prepare_fit">hbsps.prepare_fit module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_observed_spectra"><code class="docutils literal notranslate"><span class="pre">prepare_observed_spectra()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_observed_photometry"><code class="docutils literal notranslate"><span class="pre">prepare_observed_photometry()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_ssp_from_fits"><code class="docutils literal notranslate"><span class="pre">prepare_ssp_from_fits()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_ssp_model"><code class="docutils literal notranslate"><span class="pre">prepare_ssp_model()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_ssp_model_preprocessing"><code class="docutils literal notranslate"><span class="pre">prepare_ssp_model_preprocessing()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_extinction_law"><code class="docutils literal notranslate"><span class="pre">prepare_extinction_law()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.prepare_fit.prepare_sfh_model"><code class="docutils literal notranslate"><span class="pre">prepare_sfh_model()</span></code></a></li>
-</ul>
-</li>
+<li class="toctree-l3"><a class="reference internal" href="#hbsps-prepare-fit-module">hbsps.prepare_fit module</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#module-hbsps.sfh">hbsps.sfh module</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.SFHBase"><code class="docutils literal notranslate"><span class="pre">SFHBase</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin"><code class="docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a></li>
@@ -120,7 +112,6 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#module-hbsps.utils">hbsps.utils module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.read_ini_file"><code class="docutils literal notranslate"><span class="pre">read_ini_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.read_chain_file"><code class="docutils literal notranslate"><span class="pre">read_chain_file()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.make_plot_chains"><code class="docutils literal notranslate"><span class="pre">make_plot_chains()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.compute_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">compute_chain_percentiles()</span></code></a></li>
@@ -365,19 +356,28 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 <section id="module-hbsps.output">
 <span id="hbsps-output-module"></span><h2>hbsps.output module<a class="headerlink" href="#module-hbsps.output" title="Link to this heading"></a></h2>
 <dl class="py function">
-<dt class="sig sig-object py" id="hbsps.output.save_ssp">
-<span class="sig-prename descclassname"><span class="pre">hbsps.output.</span></span><span class="sig-name descname"><span class="pre">save_ssp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">extra_args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#save_ssp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.save_ssp" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="hbsps.output.make_ini_file">
 <span class="sig-prename descclassname"><span class="pre">hbsps.output.</span></span><span class="sig-name descname"><span class="pre">make_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#make_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.make_ini_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create a .ini file from an input configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filename</strong> (<em>str</em>) – Output file name.</p></li>
+<li><p><strong>config</strong> (<em>dict</em>) – Dictionary containing the configuration parameters.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.output.make_values_file">
 <span class="sig-prename descclassname"><span class="pre">hbsps.output.</span></span><span class="sig-name descname"><span class="pre">make_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#make_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.make_values_file" title="Link to this definition"></a></dt>
 <dd><p>Make a values.ini file from the configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>config</strong> (<em>dict</em>) – Configuration parameters</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py class">
@@ -410,72 +410,143 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 <span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#hbsps.output.Reader.last_module" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_processed_file">
-<span class="sig-name descname"><span class="pre">load_processed_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'medians'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_processed_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_processed_file" title="Link to this definition"></a></dt>
+<dl class="py property">
+<dt class="sig sig-object py" id="id0">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd><p>Last module used in the pipeline.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hbsps.output.Reader.results_table">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">results_table</span></span><a class="headerlink" href="#hbsps.output.Reader.results_table" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_results">
-<span class="sig-name descname"><span class="pre">load_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_ssp_extra_output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_results" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="id1">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_file</span></span><a class="headerlink" href="#id1" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis configuration file path.</p>
+</dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_observation">
-<span class="sig-name descname"><span class="pre">load_observation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_observation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_observation" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="id2">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini</span></span><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis .ini configuration file</p>
+</dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_ssp_model">
-<span class="sig-name descname"><span class="pre">load_ssp_model</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_ssp_model" title="Link to this definition"></a></dt>
-<dd><p>Load an SSP model from a file</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="hbsps.output.Reader.ini_values">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_values</span></span><a class="headerlink" href="#hbsps.output.Reader.ini_values" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis configuration values.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id3">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
+<dd><p>Pipeline configuration.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_sfh_model">
-<span class="sig-name descname"><span class="pre">load_sfh_model</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_sfh_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_sfh_model" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.load_extinction_model">
-<span class="sig-name descname"><span class="pre">load_extinction_model</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_extinction_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_extinction_model" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dt class="sig sig-object py" id="hbsps.output.Reader.load_results">
+<span class="sig-name descname"><span class="pre">load_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.load_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.load_results" title="Link to this definition"></a></dt>
+<dd><p>Load the cosmosis run results associated to the <code class="docutils literal notranslate"><span class="pre">ini</span></code> file.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.get_chain_percentiles">
 <span class="sig-name descname"><span class="pre">get_chain_percentiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.get_chain_percentiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.get_chain_percentiles" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Compute the percentile values of the parameter chains.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>pct</strong> (<em>list</em>) – List of input percentiles.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>pct_results</strong> (<em>dict</em>) – Dictionary containing the percentiles associated to each parameter.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.get_maxlike_solution">
 <span class="sig-name descname"><span class="pre">get_maxlike_solution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.get_maxlike_solution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.get_maxlike_solution" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Get the maximum likelihood solution.</p>
+<p>Obtain the maximum likelihood solution from the <code class="docutils literal notranslate"><span class="pre">results_table</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>solution</strong> (<em>dict</em>) – Dictionary containing the solution with the maximum likelihood.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.solution_to_datablock">
 <span class="sig-name descname"><span class="pre">solution_to_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">solution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.solution_to_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.solution_to_datablock" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Convert a solution into a DataBlock.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>solution</strong> (<em>dict</em>) – A dictionary containing the parameter values.</p></li>
+<li><p><strong>section</strong> (<em>str, optional</em>) – Name of the DataBlock section where to store the solution. Default
+is <code class="docutils literal notranslate"><span class="pre">parameters</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>datablock</strong> (<em>DataBlock</em>) – The DataBlock containing the input solution.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.get_pct_solutions">
 <span class="sig-name descname"><span class="pre">get_pct_solutions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.get_pct_solutions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.get_pct_solutions" title="Link to this definition"></a></dt>
 <dd><p>Return the top percentile solutions.</p>
+<p>This method sorts all solutions based on their posterior probablity
+and returns a given fraction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pct</strong> (<em>float, optional</em>) – Fraction of the solutions to return, e.g. <code class="docutils literal notranslate"><span class="pre">pct=99</span></code> will return
+the 1 per cent with the highest probability.</p></li>
+<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>all_solutions</strong> (<em>list</em>) – A list containing the solutions in the form of dictionaries.</p>
+</dd>
+</dl>
 </dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hbsps.output.Reader.compute_solution_from_pct">
-<span class="sig-name descname"><span class="pre">compute_solution_from_pct</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.compute_solution_from_pct"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.compute_solution_from_pct" title="Link to this definition"></a></dt>
-<dd></dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.read_ini_file">
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.read_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.read_ini_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Read the cosmosis configuration .ini file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ini</strong> (<em>dict</em>) – Dictionary containing the information from the ini file.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.output.Reader.read_ini_values_file">
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/output.html#Reader.read_ini_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.output.Reader.read_ini_values_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Read the cosmosis configuration .ini file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ini_values</strong> (<em>dict</em>) – Dictionary containing the ini_values information.</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -578,61 +649,70 @@ the subpipeline.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.postprocess.read_results_file">
 <span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">read_results_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#read_results_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.read_results_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Read the results produced during a cosmosis run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file containing the cosmosis results</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>table</strong> (<a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.table.Table.html#astropy.table.Table" title="(in Astropy v6.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">astropy.table.Table</span></code></a>) – Table containing the results.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.postprocess.compute_fraction_from_map">
-<span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_fraction_from_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">H</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xedges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yedges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#compute_fraction_from_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.compute_fraction_from_map" title="Link to this definition"></a></dt>
-<dd><p>…</p>
+<span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_fraction_from_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distribution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xedges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yedges</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#compute_fraction_from_map"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.compute_fraction_from_map" title="Link to this definition"></a></dt>
+<dd><p>Compute the enclosed probability map associated to a given 2D distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>distribution</strong> (<em>np.ndarray</em>) – Input 2D probability distribution.</p></li>
+<li><p><strong>xedges</strong> (<em>np.ndarray</em>) – Edges along the second axis (columns)</p></li>
+<li><p><strong>yedges</strong> (<em>np.ndarray</em>) – Edges along the first axis (rows)</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.postprocess.compute_pdf_from_results">
 <span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_pdf_from_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">posterior_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_keys</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_1d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">percentiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.05,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_2d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_key_pairs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">real_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_info</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#compute_pdf_from_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.compute_pdf_from_results" title="Link to this definition"></a></dt>
+<dd><p>Compute the PDF from a given results table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_filename</strong> (<em>str</em>) – Filename of the output FITS file.</p></li>
+<li><p><strong>parameter_prefix</strong> (<em>str, optional</em>)</p></li>
+<li><p><strong>posterior_key</strong> (<em>str, optional</em>)</p></li>
+<li><p><strong>weights_key</strong> (<em>str, optional</em>)</p></li>
+<li><p><strong>parameter_keys</strong> (<em>list, optional</em>)</p></li>
+<li><p><strong>pdf_1d</strong> (<em>bool, optional</em>)</p></li>
+<li><p><strong>percentiles</strong> (<em>list, optional</em>)</p></li>
+<li><p><strong>pdf_2d</strong> (<em>bool, optional</em>)</p></li>
+<li><p><strong>parameter_key_pairs</strong> (<em>list, optional</em>)</p></li>
+<li><p><strong>pdf_size</strong> (<em>int, optional</em>)</p></li>
+<li><p><strong>plot</strong> (<em>bool, optional</em>)</p></li>
+<li><p><strong>real_values</strong> (<em>dict, optional</em>)</p></li>
+<li><p><strong>extra_info</strong> (<em>dict, optional</em>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hbsps.postprocess.make_plot_chains">
+<span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">make_plot_chains</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chain_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truth_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#make_plot_chains"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.make_plot_chains" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hbsps.postprocess.compute_chain_percentiles">
+<span class="sig-prename descclassname"><span class="pre">hbsps.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_chain_percentiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chain_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/postprocess.html#compute_chain_percentiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.postprocess.compute_chain_percentiles" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </section>
-<section id="module-hbsps.prepare_fit">
-<span id="hbsps-prepare-fit-module"></span><h2>hbsps.prepare_fit module<a class="headerlink" href="#module-hbsps.prepare_fit" title="Link to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_observed_spectra">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_observed_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">luminosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_observed_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_observed_spectra" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_observed_photometry">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_observed_photometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_observed_photometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_observed_photometry" title="Link to this definition"></a></dt>
-<dd><p>Prepare the Photometric Data.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_ssp_from_fits">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_ssp_from_fits</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_ssp_from_fits"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_ssp_from_fits" title="Link to this definition"></a></dt>
-<dd><p>Load the SSP from a FITS file.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_ssp_model">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_ssp_model" title="Link to this definition"></a></dt>
-<dd><p>Prepare the SSP data.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_ssp_model_preprocessing">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_ssp_model_preprocessing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_ssp_model_preprocessing"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_ssp_model_preprocessing" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_extinction_law">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_extinction_law</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_extinction_law"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_extinction_law" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.prepare_fit.prepare_sfh_model">
-<span class="sig-prename descclassname"><span class="pre">hbsps.prepare_fit.</span></span><span class="sig-name descname"><span class="pre">prepare_sfh_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cosmosis_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/prepare_fit.html#prepare_sfh_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.prepare_fit.prepare_sfh_model" title="Link to this definition"></a></dt>
-<dd><p>Prepare the SFH model.</p>
-</dd></dl>
-
+<section id="hbsps-prepare-fit-module">
+<h2>hbsps.prepare_fit module<a class="headerlink" href="#hbsps-prepare-fit-module" title="Link to this heading"></a></h2>
 </section>
 <section id="module-hbsps.sfh">
 <span id="hbsps-sfh-module"></span><h2>hbsps.sfh module<a class="headerlink" href="#module-hbsps.sfh" title="Link to this heading"></a></h2>
@@ -681,8 +761,8 @@ it is computed using the default cosmology and the value of <code class="docutil
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id0">
-<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="id4">
+<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -758,8 +838,8 @@ it is computed using the default cosmology and the value of <code class="docutil
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#FixedTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.FixedTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#hbsps.sfh.PieceWiseSFHMixin" title="hbsps.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id1">
-<h3>Description<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
+<section id="id5">
+<h3>Description<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the mass fraction formed on each bin.</p>
 <p>Upon initializaiton, the free parameters are set between -8 to 0 in terms
@@ -790,8 +870,8 @@ assuming a constant star formation history.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#FixedCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.FixedCosmicTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#hbsps.sfh.PieceWiseSFHMixin" title="hbsps.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id2">
-<h3>Description<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
+<section id="id6">
+<h3>Description<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to … #TODO</p>
 <dl class="py attribute">
@@ -825,8 +905,8 @@ parameters correspond to … #TODO</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">FlexibleCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_times</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#FlexibleCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.FlexibleCosmicTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#hbsps.sfh.PieceWiseSFHMixin" title="hbsps.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id3">
-<h3>Description<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<section id="id7">
+<h3>Description<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to … #TODO</p>
 <dl class="py attribute">
@@ -860,8 +940,8 @@ parameters correspond to … #TODO</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTime_sSFR_SFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#FixedTime_sSFR_SFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.FixedTime_sSFR_SFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#hbsps.sfh.PieceWiseSFHMixin" title="hbsps.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id4">
-<h3>Description<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
+<section id="id8">
+<h3>Description<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the average sSFR over the last <code class="docutils literal notranslate"><span class="pre">lookback_time</span></code>.</p>
 <dl class="py attribute">
@@ -889,8 +969,8 @@ parameters correspond to the average sSFR over the last <code class="docutils li
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedMassFracSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mass_fraction</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#FixedMassFracSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.FixedMassFracSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#hbsps.sfh.PieceWiseSFHMixin" title="hbsps.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed mass fraction bins.</p>
-<section id="id5">
-<h3>Description<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
+<section id="id9">
+<h3>Description<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the time at which a given fraction of the total stellar mass was
 formed.</p>
@@ -930,8 +1010,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">ExponentialSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#ExponentialSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.ExponentialSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical exponentially declining SFH model.</p>
-<section id="id6">
-<h3>Description<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<section id="id10">
+<h3>Description<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hbsps.sfh.ExponentialSFH.time">
@@ -968,8 +1048,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#LogNormalSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.LogNormalSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model.</p>
-<section id="id7">
-<h3>Description<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
+<section id="id11">
+<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hbsps.sfh.LogNormalSFH.time">
@@ -1011,8 +1091,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#LogNormalQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.LogNormalQuenchedSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model including a quenching event.</p>
-<section id="id8">
-<h3>Description<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
+<section id="id12">
+<h3>Description<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function. A quenching
 event is modelled as an additional exponentially declining function that is
 applied after the time of quenching.</p>
@@ -1196,11 +1276,6 @@ sigmaPixel: smoothing scale in pixel space.</p>
 </section>
 <section id="module-hbsps.utils">
 <span id="hbsps-utils-module"></span><h2>hbsps.utils module<a class="headerlink" href="#module-hbsps.utils" title="Link to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.utils.read_ini_file">
-<span class="sig-prename descclassname"><span class="pre">hbsps.utils.</span></span><span class="sig-name descname"><span class="pre">read_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/utils.html#read_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.utils.read_ini_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.utils.read_chain_file">
 <span class="sig-prename descclassname"><span class="pre">hbsps.utils.</span></span><span class="sig-name descname"><span class="pre">read_chain_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/utils.html#read_chain_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.utils.read_chain_file" title="Link to this definition"></a></dt>
