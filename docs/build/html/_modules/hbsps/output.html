@@ -1,0 +1,559 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hbsps.output &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.155.g3652d07.dirty documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=b5c805cb"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Bayesian Estimator for Stellar Population Analysis
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">hbsps</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Bayesian Estimator for Stellar Population Analysis</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hbsps.output</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hbsps.output</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+
+<span class="kn">from</span> <span class="nn">astropy.io</span> <span class="kn">import</span> <span class="n">fits</span><span class="p">,</span> <span class="n">ascii</span>
+<span class="kn">from</span> <span class="nn">astropy</span> <span class="kn">import</span> <span class="n">table</span>
+
+<span class="kn">import</span> <span class="nn">hbsps.specBasics</span> <span class="k">as</span> <span class="nn">specBasics</span>
+<span class="kn">import</span> <span class="nn">hbsps.prepare_fit</span> <span class="k">as</span> <span class="nn">prepare_fit</span>
+<span class="kn">from</span> <span class="nn">hbsps.postprocess</span> <span class="kn">import</span> <span class="n">read_results_file</span>
+
+<span class="kn">from</span> <span class="nn">pst.utils</span> <span class="kn">import</span> <span class="n">flux_conserving_interpolation</span>
+<span class="kn">import</span> <span class="nn">extinction</span>
+<span class="kn">import</span> <span class="nn">cosmosis</span>
+
+
+<div class="viewcode-block" id="save_ssp">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.save_ssp">[docs]</a>
+<span class="k">def</span> <span class="nf">save_ssp</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="o">**</span><span class="n">extra_args</span><span class="p">):</span>
+    <span class="c1"># Create a header</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saving SSP model to FITS file: </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">p_header</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">Header</span><span class="p">()</span>
+    <span class="n">p_header</span><span class="p">[</span><span class="s2">&quot;hierarch velscale&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;velscale&quot;</span><span class="p">],</span> <span class="s2">&quot;pixel resolution in km/s&quot;</span><span class="p">)</span>
+    <span class="n">p_header</span><span class="p">[</span><span class="s2">&quot;hierarch oversampling&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;oversampling&quot;</span><span class="p">],</span> <span class="s2">&quot;oversampling factor&quot;</span><span class="p">)</span>
+    <span class="n">p_header</span><span class="p">[</span><span class="s2">&quot;hierarch extra_pixels&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;extra_pixels&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;extra pixels at edges&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">extra_args</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">list</span><span class="p">:</span>
+            <span class="n">p_header</span><span class="p">[</span><span class="s2">&quot;hierarch  &quot;</span> <span class="o">+</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">p_header</span><span class="p">[</span><span class="s2">&quot;hierarch  &quot;</span> <span class="o">+</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+    <span class="n">metal_edges</span><span class="p">,</span> <span class="n">age_edges</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;ssp_model&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get_ssp_logedges</span><span class="p">()</span>
+    <span class="n">hdul</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">HDUList</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">fits</span><span class="o">.</span><span class="n">PrimaryHDU</span><span class="p">(</span><span class="n">header</span><span class="o">=</span><span class="n">p_header</span><span class="p">),</span>
+            <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;WAVE&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_wl&quot;</span><span class="p">]),</span>
+            <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;SED&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_sed&quot;</span><span class="p">]),</span>
+            <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;METALS_EDGES&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">metal_edges</span><span class="o">.</span><span class="n">value</span><span class="p">),</span>
+            <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;AGES_EDGES&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">age_edges</span><span class="o">.</span><span class="n">value</span><span class="p">),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">hdul</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">hdul</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="make_ini_file">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.make_ini_file">[docs]</a>
+<span class="k">def</span> <span class="nf">make_ini_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing .ini file: </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;; File generated automatically</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">section</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="c1"># Ignore the Values section</span>
+            <span class="k">if</span> <span class="n">section</span> <span class="o">==</span> <span class="s1">&#39;Values&#39;</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">]</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">config</span><span class="p">[</span><span class="n">section</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2"> = &quot;</span>
+                <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+                    <span class="n">content</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">value</span>
+                <span class="k">elif</span> <span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">list</span><span class="p">:</span>
+                    <span class="n">content</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">value</span><span class="p">])</span>
+                <span class="c1"># elif (type(value) is float) or (type(value) is int):</span>
+                <span class="c1">#     content += str(value)</span>
+                <span class="k">elif</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">content</span> <span class="o">+=</span> <span class="s2">&quot;None&quot;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">content</span> <span class="o">+=</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">content</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;; \(ﾟ▽ﾟ)/&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="make_values_file">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.make_values_file">[docs]</a>
+<span class="k">def</span> <span class="nf">make_values_file</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Make a values.ini file from the configuration.&quot;&quot;&quot;</span>
+    <span class="n">values_filename</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;values&quot;</span><span class="p">]</span>
+    <span class="n">values_section</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Values&quot;</span>
+    
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">values_filename</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File containing the .ini priors already exists at </span><span class="si">{</span><span class="n">values_filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">overwrite</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Overwritting file&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">values_section</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Creating values file: </span><span class="si">{</span><span class="n">values_filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">values_filename</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;[parameters]</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">lims</span> <span class="ow">in</span> <span class="n">config</span><span class="p">[</span><span class="n">values_section</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">lims</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">lims</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">lims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="p">(</span><span class="n">lims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">lims</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">lims</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span></div>
+
+
+
+<div class="viewcode-block" id="Reader">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader">[docs]</a>
+<span class="k">class</span> <span class="nc">Reader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cosmosis Data Reader</span>
+<span class="sd">    </span>
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ini_file : </span>
+<span class="sd">    ini : </span>
+<span class="sd">    ini_data : </span>
+<span class="sd">    config : </span>
+<span class="sd">    last_module : </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ini_file</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ini_file</span> <span class="o">=</span> <span class="n">ini_file</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_ini_file</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_file</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ini_values</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_ini_values_file</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;values&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_module</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="Reader.load_processed_file">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_processed_file">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_processed_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;medians&quot;</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]),</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">.txt&quot;</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+            <span class="n">parameters</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">():</span>
+                    <span class="n">line_content</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;  &quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;  &quot;</span><span class="p">)</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">line_content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;#&quot;</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">line_content</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                        <span class="n">name</span> <span class="o">=</span> <span class="n">line_content</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;parameters--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;maxlike&quot;</span><span class="p">:</span>
+                            <span class="n">parameters</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">line_content</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+                            <span class="p">}</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">parameters</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">line_content</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+                                <span class="s2">&quot;sigma&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">line_content</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span>
+                            <span class="p">}</span>
+            <span class="k">return</span> <span class="n">parameters</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="Reader.load_results">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_results">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">include_ssp_extra_output</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="s2">&quot;.txt&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">path</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">+=</span> <span class="s2">&quot;.txt&quot;</span>
+        <span class="n">results_table</span> <span class="o">=</span> <span class="n">read_results_file</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">include_ssp_extra_output</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">path</span> <span class="o">+</span> <span class="s2">&quot;_ssp_sol&quot;</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">results_table</span><span class="p">),</span> <span class="p">(</span>
+                <span class="s2">&quot;SSP solution data has different dimensions than results table&quot;</span><span class="p">)</span>
+            <span class="n">results_table</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;SSP&quot;</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span> <span class="o">=</span> <span class="n">results_table</span></div>
+
+
+<div class="viewcode-block" id="Reader.load_observation">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_observation">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_observation</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">last_module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">prepare_fit</span><span class="o">.</span><span class="n">prepare_observed_spectra</span><span class="p">(</span>
+            <span class="n">cosmosis_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">last_module</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Reader.load_ssp_model">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_ssp_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_ssp_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load an SSP model from a file&quot;&quot;&quot;</span>
+        <span class="n">last_module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">prepare_fit</span><span class="o">.</span><span class="n">prepare_ssp_model</span><span class="p">(</span>
+                <span class="n">cosmosis_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">last_module</span>
+            <span class="p">)</span>
+        <span class="n">prepare_fit</span><span class="o">.</span><span class="n">prepare_ssp_model_preprocessing</span><span class="p">(</span>
+            <span class="n">cosmosis_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">last_module</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Reader.load_sfh_model">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_sfh_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_sfh_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">last_module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">prepare_fit</span><span class="o">.</span><span class="n">prepare_sfh_model</span><span class="p">(</span>
+            <span class="n">cosmosis_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">last_module</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Reader.load_extinction_model">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.load_extinction_model">[docs]</a>
+    <span class="k">def</span> <span class="nf">load_extinction_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">last_module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">prepare_fit</span><span class="o">.</span><span class="n">prepare_extinction_law</span><span class="p">(</span>
+            <span class="n">cosmosis_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ini_data</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">module</span><span class="o">=</span><span class="n">last_module</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Reader.get_chain_percentiles">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.get_chain_percentiles">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_chain_percentiles</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">]):</span>
+        <span class="n">parameters</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span> <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">par</span><span class="p">]</span>
+        <span class="n">pct_resutls</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;percentiles&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pct</span><span class="p">)}</span>
+        <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="n">parameters</span><span class="p">:</span>
+            <span class="n">sort_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">par</span><span class="p">])</span>
+            <span class="n">cum_distrib</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="s2">&quot;weight&quot;</span><span class="p">][</span><span class="n">sort_pos</span><span class="p">])</span>
+            <span class="n">cum_distrib</span> <span class="o">/=</span> <span class="n">cum_distrib</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">pct_resutls</span><span class="p">[</span><span class="n">par</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">pct</span><span class="p">,</span> <span class="n">cum_distrib</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">par</span><span class="p">][</span><span class="n">sort_pos</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">pct_resutls</span></div>
+
+
+<div class="viewcode-block" id="Reader.get_maxlike_solution">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.get_maxlike_solution">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_maxlike_solution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_prob</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">):</span>
+        <span class="n">good_sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span>
+        <span class="n">maxlike_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanargmax</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">]</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+        <span class="n">solution</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">k</span><span class="p">:</span>
+                <span class="n">solution</span><span class="p">[</span><span class="n">k</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;parameters--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">maxlike_pos</span><span class="p">]</span>
+                
+        <span class="k">return</span> <span class="n">solution</span></div>
+
+
+<div class="viewcode-block" id="Reader.solution_to_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.solution_to_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">solution_to_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">solution</span><span class="p">,</span> <span class="n">section</span><span class="o">=</span><span class="s2">&quot;parameters&quot;</span><span class="p">):</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">solution</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">solution</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">strip_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">section</span> <span class="ow">in</span> <span class="n">k</span><span class="p">:</span>
+                <span class="n">strip_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">strip_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+        <span class="n">solution</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span> <span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">strip_keys</span><span class="p">,</span> <span class="n">values</span><span class="p">)}</span>
+
+        <span class="k">for</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini_values</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">parameter</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">solution</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Parameter </span><span class="si">{</span><span class="n">parameter</span><span class="si">}</span><span class="s2"> was set constant, adding default value&quot;</span><span class="p">)</span>
+                <span class="n">solution</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini_values</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">][</span><span class="n">parameter</span><span class="p">]</span>
+
+        <span class="n">datablock</span> <span class="o">=</span><span class="n">cosmosis</span><span class="o">.</span><span class="n">DataBlock</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">solution</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="n">section</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+        <span class="k">return</span> <span class="n">datablock</span></div>
+
+
+<div class="viewcode-block" id="Reader.get_pct_solutions">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.get_pct_solutions">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_pct_solutions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="mi">99</span><span class="p">,</span> <span class="n">log_prob</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the top percentile solutions.&quot;&quot;&quot;</span>
+        <span class="n">good_sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span>
+        <span class="n">maxlike_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">][</span><span class="n">good_sample</span><span class="p">])</span>
+        <span class="c1"># Normalize the weights</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">][</span><span class="n">good_sample</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="p">[</span><span class="n">log_prob</span><span class="p">][</span><span class="n">good_sample</span><span class="p">][</span><span class="n">maxlike_pos</span><span class="p">]</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">weights</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="c1"># From the highest to the lowest weight</span>
+        <span class="n">sort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">cum_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">sort</span><span class="p">][::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">last_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">cum_weights</span><span class="p">,</span> <span class="n">pct</span> <span class="o">/</span> <span class="mi">100</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Selecting solutions from </span><span class="si">{</span><span class="n">last_sample</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">all_solutions</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">-</span><span class="n">last_sample</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">solution</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;weights&#39;</span><span class="p">:</span> <span class="n">weights</span><span class="p">[</span><span class="n">sort</span><span class="p">][</span><span class="n">i</span><span class="p">]}</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_table</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">k</span><span class="p">:</span>
+                    <span class="n">solution</span><span class="p">[</span><span class="n">k</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;parameters--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span>
+                        <span class="n">good_sample</span><span class="p">][</span><span class="n">sort</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">all_solutions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">solution</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">all_solutions</span></div>
+
+
+<div class="viewcode-block" id="Reader.compute_solution_from_pct">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.compute_solution_from_pct">[docs]</a>
+    <span class="k">def</span> <span class="nf">compute_solution_from_pct</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pct_results</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Computing solution from percentiles&quot;</span><span class="p">)</span>
+        <span class="n">column</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">pct_results</span><span class="p">[</span><span class="s2">&quot;percentiles&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">pct</span><span class="p">))</span>
+        <span class="n">los_vel</span> <span class="o">=</span> <span class="n">pct_results</span><span class="p">[</span><span class="s2">&quot;parameters--los_vel&quot;</span><span class="p">][</span><span class="n">column</span><span class="p">]</span>
+        <span class="n">redshift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">los_vel</span> <span class="o">/</span> <span class="n">specBasics</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s2">&quot;km/s&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">los_sigma</span> <span class="o">=</span> <span class="n">pct_results</span><span class="p">[</span><span class="s2">&quot;parameters--sigma&quot;</span><span class="p">][</span><span class="n">column</span><span class="p">]</span>
+
+        <span class="n">ssp_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_ssp</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_ssp</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">ssp_weights</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="n">pct_results</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;parameters--ssp</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">][</span><span class="n">column</span><span class="p">]</span>
+        <span class="n">ssp_weights</span> <span class="o">/=</span> <span class="n">ssp_weights</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">syn_spectra</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+            <span class="n">ssp_weights</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])[:,</span> <span class="p">:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+            <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="p">,</span>
+            <span class="n">axis</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">sigma_pix</span> <span class="o">=</span> <span class="n">los_sigma</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;HBSPS_SFH&quot;</span><span class="p">][</span><span class="s2">&quot;velscale&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;HBSPS_SFH&quot;</span><span class="p">][</span><span class="s2">&quot;oversampling&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">syn_spectra</span> <span class="o">=</span> <span class="n">specBasics</span><span class="o">.</span><span class="n">smoothSpectrumFast</span><span class="p">(</span><span class="n">syn_spectra</span><span class="p">,</span> <span class="n">sigma_pix</span><span class="p">)</span>
+        <span class="n">syn_spectra</span> <span class="o">=</span> <span class="n">flux_conserving_interpolation</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssp</span><span class="o">.</span><span class="n">wavelength</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">redshift</span><span class="p">),</span>
+            <span class="n">syn_spectra</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;ExtinctionLaw&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;HBSPS_SFH&quot;</span><span class="p">]:</span>
+            <span class="n">av</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="n">pct_results</span><span class="p">[</span><span class="s2">&quot;parameters--av&quot;</span><span class="p">][</span><span class="n">column</span><span class="p">]</span>
+            <span class="n">extinction_law</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">extinction</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;HBSPS_SFH&quot;</span><span class="p">][</span><span class="s2">&quot;ExtinctionLaw&quot;</span><span class="p">])</span>
+            <span class="n">syn_spectra</span> <span class="o">*=</span> <span class="mi">10</span> <span class="o">**</span> <span class="p">(</span>
+                <span class="o">-</span><span class="mf">0.4</span> <span class="o">*</span> <span class="n">extinction_law</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span> <span class="n">av</span><span class="p">)</span>
+            <span class="p">)</span> <span class="o">/</span> <span class="mi">10</span> <span class="o">**</span> <span class="p">(</span>
+                <span class="o">-</span><span class="mf">0.4</span>
+                <span class="o">*</span> <span class="n">extinction_law</span><span class="p">(</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;HBSPS_SFH&quot;</span><span class="p">][</span><span class="s2">&quot;wlNormRange&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()]),</span> <span class="n">av</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">av</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;flux_fit&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;cov_fit&quot;</span><span class="p">]</span> <span class="o">**</span> <span class="mf">0.5</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;flux_fit&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;cov_fit&quot;</span><span class="p">]</span> <span class="o">**</span> <span class="mf">0.5</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">&quot;k&quot;</span><span class="p">,</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;flux_fit&quot;</span><span class="p">],</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Obs&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span> <span class="n">syn_spectra</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">&quot;lime&quot;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Synth&quot;</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;v=</span><span class="si">{</span><span class="n">los_vel</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> (km/s)&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="sa">r</span><span class="s2">&quot;$\sigma=$&quot;</span>
+            <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">los_sigma</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> (km/s)&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;Av=</span><span class="si">{</span><span class="n">av</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> (mag)&quot;</span><span class="p">,</span>
+            <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">),</span>
+            <span class="n">xycoords</span><span class="o">=</span><span class="s2">&quot;axes fraction&quot;</span><span class="p">,</span>
+            <span class="n">va</span><span class="o">=</span><span class="s2">&quot;top&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;wavelength_fit&quot;</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">observation</span><span class="p">[</span><span class="s2">&quot;flux_fit&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">syn_spectra</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">&quot;orange&quot;</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Residual&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">ncol</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">bbox_to_anchor</span><span class="o">=</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.01</span><span class="p">),</span> <span class="n">loc</span><span class="o">=</span><span class="s2">&quot;lower center&quot;</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="Reader.read_ini_file">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.read_ini_file">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">read_ini_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Reading ini file: &quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">ini_info</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">():</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;;&quot;</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;[&quot;</span><span class="p">:</span>
+                    <span class="n">module</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;[]&quot;</span><span class="p">)</span>
+                    <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">components</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;=&quot;</span><span class="p">)</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;e&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">str_value</span><span class="o">.</span><span class="n">isnumeric</span><span class="p">():</span>
+                        <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">numbers</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="s2">&quot;e&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                                <span class="c1"># Float number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">numbers</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="c1"># int number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">numbers</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="s2">&quot;e&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                                <span class="c1"># Float number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">numbers</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="c1"># int number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">numbers</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="n">ini</span> <span class="o">=</span> <span class="n">cosmosis</span><span class="o">.</span><span class="n">runtime</span><span class="o">.</span><span class="n">Inifile</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ini_info</span><span class="p">,</span> <span class="n">ini</span></div>
+
+    
+<div class="viewcode-block" id="Reader.read_ini_values_file">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.output.Reader.read_ini_values_file">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">read_ini_values_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Reading ini values file: &quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">ini_info</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">():</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;;&quot;</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                <span class="k">if</span> <span class="n">line</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;[&quot;</span><span class="p">:</span>
+                    <span class="n">module</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;[]&quot;</span><span class="p">)</span>
+                    <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">components</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;=&quot;</span><span class="p">)</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;e&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="n">str_value</span> <span class="o">=</span> <span class="n">str_value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="n">str_value</span><span class="o">.</span><span class="n">isnumeric</span><span class="p">():</span>
+                        <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">numbers</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="s2">&quot;e&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                                <span class="c1"># Float number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">numbers</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="c1"># int number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">numbers</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span> <span class="p">(</span><span class="s2">&quot;e&quot;</span> <span class="ow">in</span> <span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+                                <span class="c1"># Float number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">numbers</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="c1"># int number</span>
+                                <span class="n">ini_info</span><span class="p">[</span><span class="n">module</span><span class="p">][</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">numbers</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ini_info</span></div>
+</div>
+
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Corcho-Caballero P..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

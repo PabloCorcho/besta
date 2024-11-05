@@ -1,0 +1,886 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hbsps.sfh &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.155.g3652d07.dirty documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=b5c805cb"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Bayesian Estimator for Stellar Population Analysis
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">hbsps</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Bayesian Estimator for Stellar Population Analysis</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">hbsps.sfh</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for hbsps.sfh</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Star formation history fitting module</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">abc</span> <span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">astropy</span> <span class="kn">import</span> <span class="n">units</span> <span class="k">as</span> <span class="n">u</span>
+
+<span class="kn">from</span> <span class="nn">cosmosis</span> <span class="kn">import</span> <span class="n">DataBlock</span>
+<span class="kn">import</span> <span class="nn">pst</span>
+
+<span class="kn">from</span> <span class="nn">hbsps.utils</span> <span class="kn">import</span> <span class="n">cosmology</span>
+
+
+<span class="c1"># Star formation history models</span>
+
+
+<div class="viewcode-block" id="SFHBase">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.SFHBase">[docs]</a>
+<span class="k">class</span> <span class="nc">SFHBase</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Star formation history model.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    This class serves as an interface between the sampler and PST SFH models.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    free_params : dict</span>
+<span class="sd">        Dictionary containing the free parameters of the model and their</span>
+<span class="sd">        respective range of validity.</span>
+<span class="sd">    redshift : float, optional, default=0.0</span>
+<span class="sd">        Cosmological redshift at the time of the observation.</span>
+<span class="sd">    today : astropy.units.Quantity</span>
+<span class="sd">        Age of the universe at the time of observation. If not provided,</span>
+<span class="sd">        it is computed using the default cosmology and the value of ``redshift``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">free_params</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">redshift</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;redshift&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;today&quot;</span><span class="p">,</span> <span class="n">cosmology</span><span class="o">.</span><span class="n">age</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">redshift</span><span class="p">))</span>
+
+<div class="viewcode-block" id="SFHBase.make_ini">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.SFHBase.make_ini">[docs]</a>
+    <span class="k">def</span> <span class="nf">make_ini</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ini_file</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a cosmosis .ini file.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ini_file : str</span>
+<span class="sd">            Path to the output .ini file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Making ini file: &quot;</span><span class="p">,</span> <span class="n">ini_file</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">ini_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;[parameters]</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">val</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">val</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">val</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SFHBase.parse_free_params">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.SFHBase.parse_free_params">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_free_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">free_params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse the SFH model free parameters from a dictionary.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        free_params : dict</span>
+<span class="sd">            Dictionary containing the SFH model free parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">DataBlock</span><span class="o">.</span><span class="n">from_dict</span><span class="p">({</span><span class="s2">&quot;parameters&quot;</span><span class="p">:</span> <span class="n">free_params</span><span class="p">})</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_datablock</span><span class="p">(</span><span class="n">db</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SFHBase.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.SFHBase.parse_datablock">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse the SFH model free parameters from a DataBlock.&quot;&quot;&quot;</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="ZPowerLawMixin">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.ZPowerLawMixin">[docs]</a>
+<span class="k">class</span> <span class="nc">ZPowerLawMixin</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Metallicity evolution as a power law in terms of the stellar mass formed.&quot;&quot;&quot;</span>
+
+    <span class="n">free_params</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+        <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.005</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.08</span><span class="p">],</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="PieceWiseSFHMixin">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.PieceWiseSFHMixin">[docs]</a>
+<span class="k">class</span> <span class="nc">PieceWiseSFHMixin</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Piece-wise star formation history model mixin.</span>
+
+<span class="sd">    This mixing provides the common properties of piece-wise SFH models.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">sfh_bin_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Keys associated to the bins of the SFH model.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sfh_bin_keys</span>
+
+    <span class="nd">@sfh_bin_keys</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span> <span class="nf">sfh_bin_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sfh_bin_keys</span> <span class="o">=</span> <span class="n">value</span>
+
+<div class="viewcode-block" id="PieceWiseSFHMixin.get_sfh_parameters_array">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.PieceWiseSFHMixin.get_sfh_parameters_array">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_sfh_parameters_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get an array containing the values of each bin of the SFH.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        databloc : DataBlock</span>
+<span class="sd">            The datablock containing the values of each parameter of the SFH.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="n">key</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FixedTimeSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedTimeSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">FixedTimeSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">,</span> <span class="n">PieceWiseSFHMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A SFH model with fixed time bins.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="sd">    parameters correspond to the mass fraction formed on each bin.</span>
+
+<span class="sd">    Upon initializaiton, the free parameters are set between -8 to 0 in terms</span>
+<span class="sd">    of log(M/Msun). The starting point corresponds to the mass fraction formed</span>
+<span class="sd">    assuming a constant star formation history.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+<span class="sd">        Lookback time bin edges.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookback_time_bins</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising FixedGridSFH model&quot;</span><span class="p">)</span>
+        <span class="c1"># From the begining of the Universe to the present date</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">check_unit</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">lookback_time_bins</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">,</span>
+            <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span> <span class="mi">0</span> <span class="o">&lt;&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Warning: lookback time bin larger the age of the Universe&quot;</span><span class="p">)</span>
+
+        <span class="n">logm_min</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logmass_min&quot;</span><span class="p">,</span> <span class="o">-</span><span class="mi">6</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Setting up free parameters&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[SFH] Minimum log(M/Msun)=</span><span class="si">{</span><span class="n">logm_min</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">lbt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">):</span>
+            <span class="c1"># Initialise parameters assuming a constant star formation history</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;logmass_at_</span><span class="si">{</span><span class="n">lbt</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">logm_min</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">_to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="n">lbt</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]</span>
+
+        <span class="c1"># Initialise PST</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="FixedTimeSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedTimeSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">logm_formed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sfh_parameters_array</span><span class="p">(</span><span class="n">datablock</span><span class="p">)</span>
+        <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="mi">10</span><span class="o">**</span><span class="n">logm_formed</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cumulative</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="n">cumulative</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">cumulative</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cumulative</span><span class="o">.</span><span class="n">size</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="c1"># Update the mass of the tabular model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_mass</span> <span class="o">=</span> <span class="n">cumulative</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FixedCosmicTimeSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedCosmicTimeSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">FixedCosmicTimeSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">,</span> <span class="n">PieceWiseSFHMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A SFH model with fixed time bins.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="sd">    parameters correspond to ... #TODO</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+<span class="sd">        Lookback time bin edges.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookback_time_bins</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising FixedGridSFH model&quot;</span><span class="p">)</span>
+        <span class="c1"># From the begining of the Universe to the present date</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">check_unit</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">lookback_time_bins</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Lookbacktime [T_univ, t1, ... tn, 0]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">,</span>
+            <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span> <span class="mi">0</span> <span class="o">&lt;&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span>
+        <span class="c1"># Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Warning: lookback time bin larger the age of the Universe&quot;</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Setting up free parameters&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">lbt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">):</span>
+            <span class="c1"># Initialise parameters assuming a constant star formation history</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;coeff_at_</span><span class="si">{</span><span class="n">lbt</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+
+        <span class="c1"># Initialise PST</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="FixedCosmicTimeSFH.update_mass">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedCosmicTimeSFH.update_mass">[docs]</a>
+    <span class="k">def</span> <span class="nf">update_mass</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">coeff</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update a bin of the stellar mass fraction formed.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">coeff</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[:</span><span class="n">i</span><span class="p">]))</span></div>
+
+
+<div class="viewcode-block" id="FixedCosmicTimeSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedCosmicTimeSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">coefficients</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sfh_parameters_array</span><span class="p">(</span><span class="n">datablock</span><span class="p">)</span>
+        <span class="c1"># The first coefficient correspond to the mass fraction between</span>
+        <span class="c1"># the origin of the universe and the first input time (largest lookback time)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">coefficients</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># Update the rest of the elements</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">update_mass</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">coefficients</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="c1"># Mass formation history. The last bin uses the remanining fraction)</span>
+        <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="o">.</span><span class="n">size</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="c1"># Update the mass of the tabular model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_mass</span> <span class="o">=</span> <span class="n">cumulative</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FlexibleCosmicTimeSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FlexibleCosmicTimeSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">FlexibleCosmicTimeSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">,</span> <span class="n">PieceWiseSFHMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A SFH model with fixed time bins.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="sd">    parameters correspond to ... #TODO</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+<span class="sd">        Lookback time bin edges.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_times</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising FixedGridSFH model&quot;</span><span class="p">)</span>
+        <span class="c1"># From the begining of the Universe to the present date</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">5e-2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">),</span> <span class="n">n_times</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Lookbacktime [T_univ, t1, ... tn, 0]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="mi">0</span> <span class="o">&lt;&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Automatic choice of lookback times: &quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span>
+        <span class="c1"># Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Warning: lookback time bin larger the age of the Universe&quot;</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Setting up free parameters&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">lbt</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)):</span>
+            <span class="c1"># Initialise parameters assuming a constant star formation history</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Lookback time: &quot;</span><span class="p">,</span> <span class="n">lbt</span><span class="p">,</span> <span class="s2">&quot; --&gt; coeff :&quot;</span><span class="p">,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;coeff_</span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+
+        <span class="c1"># Initialise PST</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="FlexibleCosmicTimeSFH.update_mass">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FlexibleCosmicTimeSFH.update_mass">[docs]</a>
+    <span class="k">def</span> <span class="nf">update_mass</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">coeff</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update a bin of the stellar mass fraction formed.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">coeff</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[:</span><span class="n">i</span><span class="p">]))</span></div>
+
+
+<div class="viewcode-block" id="FlexibleCosmicTimeSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FlexibleCosmicTimeSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">coefficients</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sfh_parameters_array</span><span class="p">(</span><span class="n">datablock</span><span class="p">)</span>
+        <span class="c1"># The first coefficient correspond to the mass fraction between</span>
+        <span class="c1"># the origin of the universe and the first input time (largest lookback time)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">coefficients</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># Update the rest of the elements</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">update_mass</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">coefficients</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="c1"># Mass formation history. The last bin uses the remanining fraction)</span>
+        <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bin_masses</span><span class="o">.</span><span class="n">size</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="c1"># Update the mass of the tabular model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_mass</span> <span class="o">=</span> <span class="n">cumulative</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FixedTime_sSFR_SFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedTime_sSFR_SFH">[docs]</a>
+<span class="k">class</span> <span class="nc">FixedTime_sSFR_SFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">,</span> <span class="n">PieceWiseSFHMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A SFH model with fixed time bins.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="sd">    parameters correspond to the average sSFR over the last ``lookback_time``.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+<span class="sd">        Lookback time bin edges.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lookback_time</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising FixedGrid-sSFR-SFH model&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">check_unit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">lookback_time</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">,</span>
+            <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">size</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span> <span class="mi">0</span> <span class="o">&lt;&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="o">.</span><span class="n">unit</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">lbt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;yr&quot;</span><span class="p">):</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;logssfr_over_</span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">lbt</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">_logyr&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="n">max_logssfr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">lbt</span><span class="p">),</span> <span class="o">-</span><span class="mf">8.0</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="o">-</span><span class="mf">14.0</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;yr&quot;</span><span class="p">)),</span>
+                <span class="n">max_logssfr</span><span class="p">,</span>
+            <span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="FixedTime_sSFR_SFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedTime_sSFR_SFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">lt_yr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lookback_time</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;yr&quot;</span><span class="p">)</span>
+        <span class="n">ssfr_over_last</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sfh_parameters_array</span><span class="p">(</span><span class="n">datablock</span><span class="p">)</span>
+        <span class="n">mass_frac</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">lt_yr</span> <span class="o">*</span> <span class="mi">10</span><span class="o">**</span><span class="n">ssfr_over_last</span>
+        <span class="n">mass_frac</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">mass_frac</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">mass_frac</span><span class="o">.</span><span class="n">size</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">mass_frac</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">mass_frac</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">delta_m</span> <span class="o">=</span> <span class="n">mass_frac</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">mass_frac</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">delta_m</span><span class="p">[</span><span class="n">delta_m</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="c1"># Update the mass of the tabular model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_mass</span> <span class="o">=</span> <span class="n">mass_frac</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="FixedMassFracSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedMassFracSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">FixedMassFracSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">,</span> <span class="n">PieceWiseSFHMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A SFH model with fixed mass fraction bins.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="sd">    parameters correspond to the time at which a given fraction of the total stellar mass was</span>
+<span class="sd">    formed.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mass_fractions : np.ndarray</span>
+<span class="sd">        SFH mass fractions.</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+<span class="sd">        Lookback time bin edges.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mass_fraction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising FixedMassFracSFH model&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">mass_fraction</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span><span class="o">.</span><span class="n">size</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">frc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;t_at_frac_</span><span class="si">{</span><span class="n">frc</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfh_bin_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="mi">0</span><span class="p">,</span>
+                <span class="n">frc</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">),</span>
+            <span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mass_fractions</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="FixedMassFracSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.FixedMassFracSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">times</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_sfh_parameters_array</span><span class="p">(</span><span class="n">datablock</span><span class="p">)</span>
+        <span class="n">delta_t</span> <span class="o">=</span> <span class="n">times</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">times</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">delta_t</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">delta_t</span><span class="p">[</span><span class="n">delta_t</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+        <span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">times</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)))</span>
+        <span class="c1"># Update the mass of the tabular model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_t</span> <span class="o">=</span> <span class="n">times</span> <span class="o">*</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<span class="c1"># class FixedMassFracLinSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):</span>
+<span class="c1">#     &quot;&quot;&quot;A SFH model with fixed mass fraction bins.</span>
+
+<span class="c1">#     Description</span>
+<span class="c1">#     -----------</span>
+<span class="c1">#     The SFH of a galaxy is modelled as a stepwise function where the free</span>
+<span class="c1">#     parameters correspond to the time at which a given fraction of the total stellar mass was</span>
+<span class="c1">#     formed.</span>
+
+<span class="c1">#     Attributes</span>
+<span class="c1">#     ----------</span>
+<span class="c1">#     mass_fractions : np.ndarray</span>
+<span class="c1">#         SFH mass fractions.</span>
+<span class="c1">#     lookback_time : astropy.units.Quantity</span>
+<span class="c1">#         Lookback time bin edges.</span>
+
+<span class="c1">#     &quot;&quot;&quot;</span>
+
+<span class="c1">#     def __init__(self, mass_fraction, *args, **kwargs):</span>
+<span class="c1">#         super().__init__(*args, **kwargs)</span>
+<span class="c1">#         print(&quot;[SFH] Initialising FixedMassFracSFH model&quot;)</span>
+<span class="c1">#         # Convert from mass fraction formed in the last t to mass fraction</span>
+<span class="c1">#         # at time (today - t)</span>
+<span class="c1">#         self.mass_fractions = 1 - np.sort(mass_fraction)[::-1]</span>
+<span class="c1">#         self.mass_fractions = np.insert(</span>
+<span class="c1">#             self.mass_fractions, [0, self.mass_fractions.size], [0, 1]</span>
+<span class="c1">#         )</span>
+
+<span class="c1">#         self.bin_times_frac = np.zeros(self.mass_fractions.size - 2)</span>
+<span class="c1">#         for m in self.mass_fractions[1:-1]:</span>
+<span class="c1">#             # Initialise parameters assuming a constant star formation history</span>
+<span class="c1">#             k = f&quot;coeff_at_{m:.3f}&quot;</span>
+<span class="c1">#             self.sfh_bin_keys.append(k)</span>
+<span class="c1">#             self.free_params[k] = [0.0, 0.5, 1.0]</span>
+
+<span class="c1">#         self.model = pst.models.TabularCEM_ZPowerLaw(</span>
+<span class="c1">#             times=np.ones(self.mass_fractions.size) &lt;&lt; u.Gyr,</span>
+<span class="c1">#             masses=self.mass_fractions &lt;&lt; u.Msun,</span>
+<span class="c1">#             mass_today=1 &lt;&lt; u.Msun,</span>
+<span class="c1">#             ism_metallicity_today=kwargs.get(&quot;ism_metallicity_today&quot;, 0.02)</span>
+<span class="c1">#             &lt;&lt; u.dimensionless_unscaled,</span>
+<span class="c1">#             alpha_powerlaw=kwargs.get(&quot;alpha&quot;, 0.0),</span>
+<span class="c1">#         )</span>
+
+<span class="c1">#     def update_time_fraction(self, i, coeff):</span>
+<span class="c1">#         &quot;&quot;&quot;Update a bin of the stellar mass fraction formed.&quot;&quot;&quot;</span>
+<span class="c1">#         self.bin_times_frac[i] = coeff * (1 - np.sum(self.bin_times_frac[:i]))</span>
+
+<span class="c1">#     def parse_datablock(self, datablock: DataBlock):</span>
+<span class="c1">#         coefficients = self.get_sfh_parameters_array(datablock)</span>
+<span class="c1">#         # The first coefficient correspond to the mass fraction between</span>
+<span class="c1">#         # the origin of the universe and the first input time (largest lookback time)</span>
+<span class="c1">#         self.bin_times_frac[0] = coefficients[0]</span>
+<span class="c1">#         # Update the rest of the elements</span>
+<span class="c1">#         _ = [</span>
+<span class="c1">#             self.update_time_fraction(i, coefficients[i])</span>
+<span class="c1">#             for i in range(1, self.bin_times_frac.size)</span>
+<span class="c1">#         ]</span>
+<span class="c1">#         # Update the mass of the tabular model</span>
+<span class="c1">#         t_frac = np.isert(</span>
+<span class="c1">#             np.cumsum(self.bin_times_frac), (0, self.bin_times_frac.size), (0, 1)</span>
+<span class="c1">#         )</span>
+<span class="c1">#         self.model.table_t = t_frac * self.today</span>
+<span class="c1">#         self.model.alpha_powerlaw = datablock[&quot;parameters&quot;, &quot;alpha_powerlaw&quot;]</span>
+<span class="c1">#         self.model.ism_metallicity_today = (</span>
+<span class="c1">#             datablock[&quot;parameters&quot;, &quot;ism_metallicity_today&quot;] &lt;&lt; u.dimensionless_unscaled</span>
+<span class="c1">#         )</span>
+<span class="c1">#         return 1, None</span>
+
+<span class="c1">#     def parse_datablock(self, datablock: DataBlock):</span>
+<span class="c1">#         times = self.get_sfh_parameters_array(datablock)</span>
+<span class="c1">#         dt = times[1:] - times[:-1]</span>
+<span class="c1">#         if (dt &lt; 0).any():</span>
+<span class="c1">#             return 0, 1 + np.abs(dt[dt &lt; 0].sum())</span>
+<span class="c1">#         times = np.insert(times, (0, times.size), (0, self.today.to_value(&quot;Gyr&quot;)))</span>
+<span class="c1">#         # Update the mass of the tabular model</span>
+<span class="c1">#         self.model.table_t = times * u.Gyr</span>
+<span class="c1">#         self.model.alpha_powerlaw = datablock[&quot;parameters&quot;, &quot;alpha_powerlaw&quot;]</span>
+<span class="c1">#         self.model.ism_metallicity_today = (</span>
+<span class="c1">#             datablock[&quot;parameters&quot;, &quot;ism_metallicity_today&quot;] &lt;&lt; u.dimensionless_unscaled</span>
+<span class="c1">#         )</span>
+<span class="c1">#         return 1, None</span>
+
+
+<span class="c1"># Analytical star formation histories</span>
+
+
+<div class="viewcode-block" id="ExponentialSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.ExponentialSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">ExponentialSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An analytical exponentially declining SFH model.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as an exponentially declining function.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    time : astropy.units.Quantity</span>
+<span class="sd">        Time bins to evaluate the SFH.</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising ExponentialSFH model&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;time&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-5</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">)</span>
+
+        <span class="c1"># Initialise the free parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;logtau&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logtau&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.7</span><span class="p">])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">TabularCEM_ZPowerLaw</span><span class="p">(</span>
+            <span class="n">times</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">masses</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="ExponentialSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.ExponentialSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="n">tau</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">**</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;logtau&quot;</span><span class="p">]</span>
+        <span class="n">mass</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="n">tau</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">table_mass</span> <span class="o">=</span> <span class="n">mass</span> <span class="o">/</span> <span class="n">mass</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="LogNormalSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.LogNormalSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">LogNormalSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An analytical log-normal declining SFH model.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as an log-normal declining function.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    time : astropy.units.Quantity</span>
+<span class="sd">        Time bins to evaluate the SFH.</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">free_params</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span>
+        <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.005</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.08</span><span class="p">],</span>
+        <span class="s2">&quot;scale&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">],</span>
+        <span class="s2">&quot;t0&quot;</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">],</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising LogNormalSFH model&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">LogNormalZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">t0</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="LogNormalSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.LogNormalSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">LogNormalZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">],</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">t0</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;t0&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;scale&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="LogNormalQuenchedSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.LogNormalQuenchedSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">LogNormalQuenchedSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An analytical log-normal declining SFH model including a quenching event.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as an log-normal declining function. A quenching</span>
+<span class="sd">    event is modelled as an additional exponentially declining function that is</span>
+<span class="sd">    applied after the time of quenching.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    time : astropy.units.Quantity</span>
+<span class="sd">        Time bins to evaluate the SFH.</span>
+<span class="sd">    lookback_time : astropy.units.Quantity</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising LogNorMalQuenched model&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;time&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-5</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;scale&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scale&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mi">50</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;t0&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s2">&quot;t0&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)]</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;quenching_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="s2">&quot;quenching_time&quot;</span><span class="p">,</span>
+            <span class="p">[</span><span class="mf">0.3</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">),</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="o">.</span><span class="n">to_value</span><span class="p">(</span><span class="s2">&quot;Gyr&quot;</span><span class="p">)],</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">LogNormalQuenchedCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">t0</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">quenching_time</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="LogNormalQuenchedSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.LogNormalQuenchedSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">LogNormalQuenchedCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">],</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">t0</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;t0&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;scale&quot;</span><span class="p">],</span>
+            <span class="n">quenching_time</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;quenching_time&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<span class="c1"># Mr Krtxo \(ﾟ▽ﾟ)/</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Corcho-Caballero P..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
