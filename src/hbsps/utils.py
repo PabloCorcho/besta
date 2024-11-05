@@ -7,36 +7,6 @@ from astropy.table import Table
 
 cosmology = FlatLambdaCDM(H0=70., Om0=0.28)
 
-def read_ini_file(path):
-    ini_info = {}
-    with open(path, "r") as f:
-        for line in f.readlines():
-            line = line.replace("\n", "")
-            if len(line) == 0:
-                continue
-            if line[0] == "[":
-                module = line.strip("[]")
-                ini_info[module] = {}
-            else:
-                components = line.split("=")
-                name = components[0].strip(" ")
-                str_value = components[1].replace(" ", "")
-                str_value = str_value.replace(".", "")
-                str_value = str_value.replace("e", "")
-                str_value = str_value.replace("-", "")
-                if not str_value.isnumeric():
-                    ini_info[module][name] = components[1].strip(" ")
-                else:
-                    numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                    if ("." in components[1]) or ("e" in components[1]):
-                        # Float number
-                        ini_info[module][name] = np.array(numbers, dtype=float)
-                    else:
-                        # int number
-                        ini_info[module][name] = np.array(numbers, dtype=int)
-    return ini_info
-
-
 def read_chain_file(path):
     with open(path, "r") as f:
         header = f.readline().strip("#")
