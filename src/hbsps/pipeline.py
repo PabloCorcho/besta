@@ -216,23 +216,14 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        # if solution is not None:
-        #     # Include the solution
-        #     DataBlock.to_string
-        #     sol_text = "Solution\n"
-        #     for k, v in solution.items():
-        #         else:
-        #             sol_text += f"{k}={v:.3f}\n"
-        #     ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
-        #                 va='top', ha='right', fontsize=7, color='Grey')
-
-        fig.savefig(
-            os.path.join(
+        output_file = os.path.join(
                 os.path.dirname(pipe_config["output"]["filename"]),
                 f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png",
-            ),
+            )
+        fig.savefig(
+            output_file,
             bbox_inches="tight",
             dpi=200,
         )
+        print(f"Fit plot saved at: {output_file}")
         plt.close()
-        # plt.show()
