@@ -13,9 +13,10 @@ from cosmosis import DataBlock
 from hbsps import output
 from hbsps import pipeline_modules
 
+
 class MainPipeline(object):
     """PST-HBSPS Pipeline manager.
-    
+
     Attributes
     ----------
     pipelines_config : list
@@ -29,8 +30,14 @@ class MainPipeline(object):
     ini_values_files : list
         List of files containing the priors associated to ``ini_files``.
     """
-    def __init__(self, pipeline_configuration_list, n_cores_list=None,
-                 ini_files=None, ini_values_files=None):
+
+    def __init__(
+        self,
+        pipeline_configuration_list,
+        n_cores_list=None,
+        ini_files=None,
+        ini_values_files=None,
+    ):
         self.pipelines_config = pipeline_configuration_list
 
         if n_cores_list is None:
@@ -44,7 +51,9 @@ class MainPipeline(object):
             self.ini_files = ini_files
 
         if ini_values_files is None:
-            self.ini_values_files = [ini_values_files] * len(pipeline_configuration_list)
+            self.ini_values_files = [ini_values_files] * len(
+                pipeline_configuration_list
+            )
         else:
             self.ini_values_files = ini_values_files
 
@@ -52,10 +61,11 @@ class MainPipeline(object):
         print(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 
-    def execute_pipeline(self, config, n_cores, ini_filename=None,
-                         ini_values_filename=None):
+    def execute_pipeline(
+        self, config, n_cores, ini_filename=None, ini_values_filename=None
+    ):
         """Execute a sub-pipeline.
-        
+
         Parameters
         ----------
         config : dict
@@ -71,7 +81,8 @@ class MainPipeline(object):
         if ini_filename is None:
             ini_filename = os.path.join(
                 os.path.dirname(config["output"]["filename"]),
-                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini")
+                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini",
+            )
             output.make_ini_file(ini_filename, config)
         else:
             assert os.path.isfile(ini_filename), f"{ini_filename} not found"
@@ -79,7 +90,9 @@ class MainPipeline(object):
         if ini_values_filename is None:
             output.make_values_file(config)
         else:
-            assert os.path.isfile(ini_values_filename), f"{ini_values_filename} not found"
+            assert os.path.isfile(
+                ini_values_filename
+            ), f"{ini_values_filename} not found"
             config["pipeline"]["values"] = ini_values_filename
 
         if n_cores > 1:
@@ -99,9 +112,11 @@ class MainPipeline(object):
         print("Executing all pipelines")
         prev_solution = None
         for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
-            self.pipelines_config, self.n_cores_list,
-            self.ini_files, self.ini_values_files):
-
+            self.pipelines_config,
+            self.n_cores_list,
+            self.ini_files,
+            self.ini_values_files,
+        ):
             if prev_solution is not None:
                 print("Updating configuration file with previus run results")
                 # Update the input values
@@ -111,9 +126,12 @@ class MainPipeline(object):
                     if k in subpipe_config[subpipe_config["pipeline"]["modules"]]
                 )
             # Execute sub-pipepline
-            ini_filename = self.execute_pipeline(subpipe_config, n_cores,
-                                                 ini_filename=ini_filename,
-                                                 ini_values_filename=ini_values_filename)
+            ini_filename = self.execute_pipeline(
+                subpipe_config,
+                n_cores,
+                ini_filename=ini_filename,
+                ini_values_filename=ini_values_filename,
+            )
             # Extract best solution
             print("Extracting results from the run")
             reader = output.Reader(ini_filename)
@@ -127,17 +145,17 @@ class MainPipeline(object):
                 module = getattr(pipeline_modules, reader.last_module + "Module")
                 pipeline_module = module(reader.ini)
                 solution_datablock = reader.solution_to_datablock(prev_solution)
-                self.plot_fit(pipeline_module, solution_datablock,
-                              pipe_config=subpipe_config)
+                self.plot_fit(
+                    pipeline_module, solution_datablock, pipe_config=subpipe_config
+                )
 
-    def plot_fit(self, module, solution : DataBlock, pipe_config):
+    def plot_fit(self, module, solution: DataBlock, pipe_config):
         """Plot the fit."""
         flux_model = module.make_observable(solution)
         if isinstance(flux_model, tuple):
             flux_model = flux_model[0]
 
-        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True,
-                                constrained_layout=True)
+        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
         plt.suptitle(f"Module: {module.name}")
         ax = axs[0]
         # Plot input spectra
@@ -148,14 +166,17 @@ class MainPipeline(object):
             color="k",
             alpha=0.5,
         )
-        ax.plot(module.config["wavelength"], module.config["flux"], c="k",
-                label="Observed")
+        ax.plot(
+            module.config["wavelength"], module.config["flux"], c="k", label="Observed"
+        )
         # Show masked pixels
         mask = module.config["weights"] == 0
         ax.plot(
             module.config["wavelength"][mask],
             module.config["flux"][mask],
-            c="r", marker="x", lw=0,
+            c="r",
+            marker="x",
+            lw=0,
             label="Masked",
         )
         # Plot model
@@ -205,9 +226,13 @@ class MainPipeline(object):
         #     ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
         #                 va='top', ha='right', fontsize=7, color='Grey')
 
-        fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
-                    f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
-                    bbox_inches='tight', dpi=200)
+        fig.savefig(
+            os.path.join(
+                os.path.dirname(pipe_config["output"]["filename"]),
+                f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png",
+            ),
+            bbox_inches="tight",
+            dpi=200,
+        )
         plt.close()
-        #plt.show()
-
+        # plt.show()
