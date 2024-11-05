@@ -1,5 +1,5 @@
 import unittest
-
+import os
 from cosmosis import DataBlock
 
 from hbsps.pipeline_modules.kin_dust import KinDustModule
@@ -17,7 +17,7 @@ class TestPipelineModule(unittest.TestCase):
         kin_configuration = {
             "KinDust": {
                 "save_ssp": "/path/to/ssp_output.txt",
-                "file": "/home/pcorchoc/Develop/HBSPS/KinDust.py",
+                "file": KinDustModule.get_path(),
                 "redshift": 0.0,
                 "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-hbsps/generate_mock_data/exponential/input_spectra.dat",
                 "SSPModel": "PyPopStar",
@@ -47,8 +47,8 @@ class TestPipelineModule(unittest.TestCase):
         kindust_module.execute(block)
 
     def test_sfh_spectra(self):
-        config = {"SFH_spectra": {
-                "file": "/home/pcorchoc/Develop/HBSPS/SFH_stellar_mass.py",
+        config = {"SFHSpectra": {
+                "file": SFHSpectraModule.get_path(),
                 "redshift": 0.0,
                 "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-hbsps/generate_mock_data/exponential/input_spectra.dat",
                 "SSPModel": "PyPopStar",
