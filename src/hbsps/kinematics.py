@@ -12,6 +12,7 @@ from hbsps import specBasics
 
 
 class GaussHermite(Fittable1DModel):
+    """Gauss-Hermite model."""
     _param_names = ()
 
     def __init__(self, order, *args, **kwargs):
@@ -91,9 +92,37 @@ class GaussHermite(Fittable1DModel):
 
 
 def get_losvd_kernel(kernel_model, x_size):
+    """Create a ``Model1DKernel`` from an input ``Model``.
+    
+    Parameters
+    ----------
+    kernel_model : :class:`astropy.models.FittableModel`
+        Model used to build the kernel.
+    x_size : int
+        Kernel size
+    
+    Returns
+    -------
+    kernel : :class:`Model1DKernel`
+        Kernel model
+    """
     return Model1DKernel(kernel_model, x_size=x_size)
 
 def convolve_spectra_with_kernel(spectra, kernel):
+    """Convolve an input spectra with a given kernel.
+    
+    Parameters
+    ----------
+    kernel_model : :class:`Model1DKernel`
+        Kernel model
+    spectra : np.ndarray
+        Target spectra to convolve with the kernel
+    
+    Returns
+    -------
+    convolved_spectra : np.ndarray
+        Spectra convolved with the input kernel.
+    """
     return convolve(spectra, kernel)
 
 def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):

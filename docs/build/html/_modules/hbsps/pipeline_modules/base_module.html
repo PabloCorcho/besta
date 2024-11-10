@@ -344,9 +344,9 @@
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;-&gt; Configuration done&quot;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="BaseModule.X2min">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.X2min">[docs]</a>
-    <span class="k">def</span> <span class="nf">X2min</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">,</span> <span class="n">recSp</span><span class="p">,</span> <span class="n">cov</span><span class="p">):</span>
+<div class="viewcode-block" id="BaseModule.log_like">
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.log_like">[docs]</a>
+    <span class="k">def</span> <span class="nf">log_like</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">,</span> <span class="n">recSp</span><span class="p">,</span> <span class="n">cov</span><span class="p">):</span>
         <span class="c1"># Determine residual, divide first residual vector by </span>
         <span class="c1"># diagonal elements covariance matrix.</span>
         <span class="n">residual1</span> <span class="o">=</span> <span class="n">recSp</span> <span class="o">-</span> <span class="n">spectrum</span>

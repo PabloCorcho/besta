@@ -180,7 +180,7 @@
             <span class="k">return</span> <span class="mi">0</span>
         <span class="n">flux_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">make_observable</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
         <span class="c1"># Final posterior for sampling</span>
-        <span class="n">like</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">X2min</span><span class="p">(</span>
+        <span class="n">like</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_like</span><span class="p">(</span>
 		<span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;photometry_flux&#39;</span><span class="p">],</span> <span class="n">flux_model</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;photometry_flux_var&#39;</span><span class="p">])</span>
         <span class="n">block</span><span class="p">[</span><span class="n">section_names</span><span class="o">.</span><span class="n">likelihoods</span><span class="p">,</span> <span class="s2">&quot;SFHPhotometry_like&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">like</span>
         <span class="k">return</span> <span class="mi">0</span></div>

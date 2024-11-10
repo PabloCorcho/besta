@@ -98,7 +98,7 @@ class SFHPhotometryModule(BaseModule):
             return 0
         flux_model = self.make_observable(block)
         # Final posterior for sampling
-        like = self.X2min(
+        like = self.log_like(
 		self.config['photometry_flux'], flux_model, self.config['photometry_flux_var'])
         block[section_names.likelihoods, "SFHPhotometry_like"] = like
         return 0

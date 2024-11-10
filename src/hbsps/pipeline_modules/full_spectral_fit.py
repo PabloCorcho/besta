@@ -86,7 +86,7 @@ class FullSpectralFitModule(BaseModule):
         cov = self.config['cov']
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
-        like = self.X2min(self.config["flux"] * weights,
+        like = self.log_like(self.config["flux"] * weights,
                           flux_model * weights, cov)
         # Final posterior for sampling
         print(like)
