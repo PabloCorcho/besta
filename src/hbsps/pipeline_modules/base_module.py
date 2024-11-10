@@ -1,3 +1,7 @@
+"""
+Base pipeline module. This module contains the base class for creating new
+pipeline modules in BESTA.
+"""
 from abc import abstractmethod
 import os
 import sys
@@ -19,12 +23,15 @@ from hbsps.utils import cosmology
 
 
 class BaseModule(ClassModule):
+    """BESTA Pipeline module base class."""
+
     @abstractmethod
-    def make_observable():
-        pass
+    def make_observable(*args, **kwargs):
+        """Create an observable from an input set of model parameters."""
 
     @abstractmethod
     def execute(self, block, config):
+        """Execute the pipeline."""
         return super().execute(block, config)
 
     @classmethod
@@ -55,9 +62,11 @@ class BaseModule(ClassModule):
             options = SectionOptions(options)
         return options
 
-    def prepare_observed_spectra(self, options : DataBlock, normalize=True, luminosity=False):
+    def prepare_observed_spectra(
+        self, options: DataBlock, normalize=True, luminosity=False
+    ):
         """Prepare the input spectra data.
-        
+
         Parameters
         ----------
         options : :class:`DataBlock`
@@ -67,10 +76,10 @@ class BaseModule(ClassModule):
             If ``True``, converts the input flux to luminosities.
         """
         print("\n-> Configuring input observed spectra")
-        fileName = options["inputSpectrum"]
+        filename = options["inputSpectrum"]
         # Read wavelength and spectra
-        print("Loading observed spectra from input file: ", fileName)
-        wavelength, flux, error = np.loadtxt(fileName, unpack=True)
+        print("Loading observed spectra from input file: ", filename)
+        wavelength, flux, error = np.loadtxt(filename, unpack=True)
         print("Wavelength coverage: ", wavelength[[0, -1]])
         print("Size: ", wavelength.size)
         # Wavelegth range to include in the fit
@@ -98,12 +107,12 @@ class BaseModule(ClassModule):
         print(f"Setting to restframe with respect to input redshift: {redshift}")
         wavelength /= 1.0 + redshift
         print("Constraining fit to wavelength range: ", wl_range)
-        goodIdx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
-        wavelength = wavelength[goodIdx]
-        flux = flux[goodIdx]
-        cov = error[goodIdx] ** 2
-        weights = weights[goodIdx]
-        print("Number of selected pixels: ", goodIdx.size)
+        good_idx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
+        wavelength = wavelength[good_idx]
+        flux = flux[good_idx]
+        cov = error[good_idx] ** 2
+        weights = weights[good_idx]
+        print("Number of selected pixels: ", good_idx.size)
         if options.has_value("velscale"):
             velscale = options["velscale"]
         else:
@@ -111,18 +120,19 @@ class BaseModule(ClassModule):
             velscale = None
         print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
         # Update the value of velscale
-        flux, ln_wave, velscale = specBasics.log_rebin(wavelength, flux,
-                                                       velscale=velscale)
+        flux, ln_wave, velscale = specBasics.log_rebin(
+            wavelength, flux, velscale=velscale
+        )
         cov, _, _ = specBasics.log_rebin(wavelength, cov, velscale=velscale)
-        weights, _, _ = specBasics.log_rebin(wavelength, weights,
-                                             velscale=velscale)
+        weights, _, _ = specBasics.log_rebin(wavelength, weights, velscale=velscale)
         wavelength = np.exp(ln_wave)
         # Normalize spectra
         if normalize:
             print("Spectra normalized using wavelength range: ", wl_norm_range)
-            normIdx = np.where(
-            (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1]))[0]
-            norm_flux = np.nanmedian(flux[normIdx])
+            norm_idx = np.where(
+                (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1])
+            )[0]
+            norm_flux = np.nanmedian(flux[norm_idx])
             flux /= norm_flux
             cov /= norm_flux**2
         else:
@@ -147,7 +157,7 @@ class BaseModule(ClassModule):
 
     def prepare_observed_photometry(self, options):
         """Prepare the Photometric Data.
-        
+
         Parameters
         ----------
         options : :class:`DataBlock`
@@ -169,14 +179,14 @@ class BaseModule(ClassModule):
         for filter_name in filter_names:
             print(f"Loading photometric filter: {filter_name}")
             if os.path.exists(filter_name):
-                f = Filter.from_text_file(filter_name)
+                filt = Filter.from_text_file(filter_name)
             else:
-                f = Filter.from_svo(filter_name)
-            photometric_filters.append(f)
+                filt = Filter.from_svo(filter_name)
+            photometric_filters.append(filt)
         self.config["filters"] = photometric_filters
         print("-> Configuration done.")
 
-    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=300.):
+    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=300.0):
         """Prepare the SSP data.
 
         Parameters
@@ -192,7 +202,7 @@ class BaseModule(ClassModule):
             SSP spectra.
         """
         print("\n-> Configuring SSP model")
-        
+
         ssp_name = options["SSPModel"]
         ssp_dir = options["SSPDir"]
 
@@ -251,10 +261,12 @@ class BaseModule(ClassModule):
 
         # Define the wavelength edges of the resampled SSP SED
         lnlam_bin_edges = np.arange(
-            ln_wl_edges[0] - dlnlam * extra_offset_pixel * oversampling
-            - 0.5 * dlnlam,
-            ln_wl_edges[-1] + dlnlam * (1 + extra_offset_pixel) * oversampling
-            + 0.5 * dlnlam, dlnlam)
+            ln_wl_edges[0] - dlnlam * extra_offset_pixel * oversampling - 0.5 * dlnlam,
+            ln_wl_edges[-1]
+            + dlnlam * (1 + extra_offset_pixel) * oversampling
+            + 0.5 * dlnlam,
+            dlnlam,
+        )
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bin_edges))
         print("SSP Model SED shape (met, age, lambda): ", ssp.L_lambda.shape)
@@ -295,7 +307,7 @@ class BaseModule(ClassModule):
 
     def prepare_extinction_law(self, options):
         """Prepare an dust extinction model.
-        
+
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
@@ -310,7 +322,7 @@ class BaseModule(ClassModule):
 
     def prepare_sfh_model(self, options):
         """Prepare the SFH model.
-        
+
         Parameters
         ----------
         options : :class:`DataBlock`
@@ -335,7 +347,7 @@ class BaseModule(ClassModule):
 
     def log_like(self, data, model, cov):
         """Compute the likelihood between an input data set and a model.
-        
+
         Parameters
         ----------
         data : np.ndarray
@@ -344,7 +356,7 @@ class BaseModule(ClassModule):
             Input model
         cov : np.ndarray
             Covariance matrix.
-        
+
         Returns
         -------
         loglike : np.ndarray
