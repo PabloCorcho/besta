@@ -333,10 +333,23 @@ class BaseModule(ClassModule):
         self.config["sfh_model"] = sfh_model
         print("-> Configuration done")
 
-    def log_like(self, spectrum, model, cov):
-        # Determine residual, divide first residual vector by
-        # diagonal elements covariance matrix.
-        residual = model - spectrum
-        # Determine likelihood term (i.e. X2-value)
+    def log_like(self, data, model, cov):
+        """Compute the likelihood between an input data set and a model.
+        
+        Parameters
+        ----------
+        data : np.ndarray
+            Input data array
+        model : np.ndarray
+            Input model
+        cov : np.ndarray
+            Covariance matrix.
+        
+        Returns
+        -------
+        loglike : np.ndarray
+            The log-likelihood associated to the model given the data.
+        """
+        residual = model - data
         loglike = -0.5 * np.dot(residual / cov, residual)
         return loglike
