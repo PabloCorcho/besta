@@ -1,33 +1,43 @@
-# 
+# Bayesian Estimator for Stellar Population Analysis (BESTA)
 
-This package, inspired by [HBSPS](https://github.com/mdries/HBSPS) 
-(Hierarchical Bayesian Stellar Population Synthesis), is devoted to inferring physical properties from spectroscopic and/or photometric data by performing SED fitting on a hierarchical basis.
+This package provides a set of tools devoted to inferring physical properties from spectroscopic and/or photometric data by means of Bayesian inference and Monte Carlo techniques.
 
-# Package contents
+At the moment, its use is primarily focused on deriving the properties of the underlying stellar populations in unresolved spectroscopic or photometric data.
 
-## [Population Synthesis Toolkit](https://github.com/paranoya/population-synthesis-toolkit/tree/main)
+# Introduction
 
-Highly-flexible framework for performing stellar population synthetis.
+## The framework
 
-## [Cosmosis](https://cosmosis.readthedocs.io/en/latest/)
+BESTA leverages on two main libraries.
+
+### [Population Synthesis Toolkit](https://github.com/paranoya/population-synthesis-toolkit/tree/main)
+
+A highly-flexible framework for performing stellar population synthetis.
+
+### [Cosmosis](https://cosmosis.readthedocs.io/en/latest/)
 
 A library for parameter estimation via Monte Carlo methods.
 
-## Kinematics and dust extinction
+## The philosophy
+
+BESTA is designed for building arbitrary SED-fitting pipelines, with different fitting strategies, and complex models.
+
+
+### Kinematics and dust extinction
 
 The current version assumes a single dust screen and single LOSVD for all SSP's that contribute to a given SED.
 
-## Star formation histories
+### Star formation histories
 
 The star formation histories used to predict the SED can be divided into two groups.
 
-### Analytic
+Analytic SFHs
 
 - Exponential
 - Delayed-tau
 - Lognormal
 
-### Numerical
+Piece-wise SFHs
 
 - Fixed time bins
 - Fixed mass fraction
