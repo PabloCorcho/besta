@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.pipeline_modules package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.165.g807eeef documentation</title>
+  <title>hbsps.pipeline_modules package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.170.gb4f908f documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=870387f6"></script>
+      <script src="_static/documentation_options.js?v=5d1d4861"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -99,15 +99,18 @@
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.pipeline_modules.</span></span><span class="sig-name descname"><span class="pre">BaseModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ClassModule</span></code></p>
+<p>BESTA Pipeline module base class.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.make_observable">
-<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.make_observable" title="Link to this definition"></a></dt>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.execute">
 <em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.get_path">
@@ -117,41 +120,101 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.parse_options">
-<span class="sig-name descname"><span class="pre">parse_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.parse_options"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.parse_options" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">parse_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.parse_options"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.parse_options" title="Link to this definition"></a></dt>
+<dd><p>Parse the input setup options.</p>
+<p>Convert the input options into a <code class="xref py py-class docutils literal notranslate"><span class="pre">SectionOptions</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (dict or <code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Module setup options.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.prepare_observed_spectra">
-<span class="sig-name descname"><span class="pre">prepare_observed_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">luminosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_observed_spectra" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">prepare_observed_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">luminosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_observed_spectra" title="Link to this definition"></a></dt>
+<dd><p>Prepare the input spectra data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p></li>
+<li><p><strong>normalize</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, normalizes the spectra using the given wavelength range.</p></li>
+<li><p><strong>luminosity</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, converts the input flux to luminosities.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.prepare_observed_photometry">
 <span class="sig-name descname"><span class="pre">prepare_observed_photometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_photometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_observed_photometry" title="Link to this definition"></a></dt>
 <dd><p>Prepare the Photometric Data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.prepare_ssp_model">
-<span class="sig-name descname"><span class="pre">prepare_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_ssp_model" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">prepare_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">velocity_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">300.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_ssp_model" title="Link to this definition"></a></dt>
 <dd><p>Prepare the SSP data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Input options to initialise the model.</p></li>
+<li><p><strong>normalize</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, normalizes the spectra using the given wavelength range.</p></li>
+<li><p><strong>velocity_buffer</strong> (<em>float</em>) – Buffer offset (in terms of velocity) to keep extra wavelength
+elements. This reduced the corruption of the spectra at the edges
+during convolution. The buffer is applied to both sides of the
+SSP spectra.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.prepare_extinction_law">
 <span class="sig-name descname"><span class="pre">prepare_extinction_law</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_extinction_law"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_extinction_law" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Prepare an dust extinction model.</p>
+<dl>
+<dt>options<span class="classifier"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code></span></dt><dd><p>Input options to initialise the model.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.prepare_sfh_model">
 <span class="sig-name descname"><span class="pre">prepare_sfh_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_sfh_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.prepare_sfh_model" title="Link to this definition"></a></dt>
 <dd><p>Prepare the SFH model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Input options to initialise the model.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.BaseModule.log_like">
-<span class="sig-name descname"><span class="pre">log_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spectrum</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recSp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.log_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.log_like" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">log_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.log_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.BaseModule.log_like" title="Link to this definition"></a></dt>
+<dd><p>Compute the likelihood between an input data set and a model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>np.ndarray</em>) – Input data array</p></li>
+<li><p><strong>model</strong> (<em>np.ndarray</em>) – Input model</p></li>
+<li><p><strong>cov</strong> (<em>np.ndarray</em>) – Covariance matrix.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>loglike</strong> (<em>np.ndarray</em>) – The log-likelihood associated to the model given the data.</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -232,12 +295,14 @@ Args:</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.SFHSpectraModule.make_observable">
 <span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_spectra.html#SFHSpectraModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.SFHSpectraModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.SFHSpectraModule.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_spectra.html#SFHSpectraModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.SFHSpectraModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -270,12 +335,14 @@ Args:</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.SFHPhotometryModule.make_observable">
 <span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_photometry.html#SFHPhotometryModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.SFHPhotometryModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.SFHPhotometryModule.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_photometry.html#SFHPhotometryModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.SFHPhotometryModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -332,19 +399,24 @@ of which the parameter space is sampled.</p>
 </section>
 <section id="module-hbsps.pipeline_modules.base_module">
 <span id="hbsps-pipeline-modules-base-module-module"></span><h2>hbsps.pipeline_modules.base_module module<a class="headerlink" href="#module-hbsps.pipeline_modules.base_module" title="Link to this heading"></a></h2>
+<p>Base pipeline module. This module contains the base class for creating new
+pipeline modules in BESTA.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.pipeline_modules.base_module.</span></span><span class="sig-name descname"><span class="pre">BaseModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ClassModule</span></code></p>
+<p>BESTA Pipeline module base class.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.make_observable">
-<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.make_observable" title="Link to this definition"></a></dt>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.execute">
 <em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.get_path">
@@ -354,41 +426,101 @@ of which the parameter space is sampled.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.parse_options">
-<span class="sig-name descname"><span class="pre">parse_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.parse_options"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.parse_options" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">parse_options</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.parse_options"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.parse_options" title="Link to this definition"></a></dt>
+<dd><p>Parse the input setup options.</p>
+<p>Convert the input options into a <code class="xref py py-class docutils literal notranslate"><span class="pre">SectionOptions</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (dict or <code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Module setup options.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.prepare_observed_spectra">
-<span class="sig-name descname"><span class="pre">prepare_observed_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">luminosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_observed_spectra" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">prepare_observed_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">luminosity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_observed_spectra" title="Link to this definition"></a></dt>
+<dd><p>Prepare the input spectra data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p></li>
+<li><p><strong>normalize</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, normalizes the spectra using the given wavelength range.</p></li>
+<li><p><strong>luminosity</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, converts the input flux to luminosities.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.prepare_observed_photometry">
 <span class="sig-name descname"><span class="pre">prepare_observed_photometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_observed_photometry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_observed_photometry" title="Link to this definition"></a></dt>
 <dd><p>Prepare the Photometric Data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.prepare_ssp_model">
-<span class="sig-name descname"><span class="pre">prepare_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_ssp_model" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">prepare_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">velocity_buffer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">300.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_ssp_model" title="Link to this definition"></a></dt>
 <dd><p>Prepare the SSP data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Input options to initialise the model.</p></li>
+<li><p><strong>normalize</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, normalizes the spectra using the given wavelength range.</p></li>
+<li><p><strong>velocity_buffer</strong> (<em>float</em>) – Buffer offset (in terms of velocity) to keep extra wavelength
+elements. This reduced the corruption of the spectra at the edges
+during convolution. The buffer is applied to both sides of the
+SSP spectra.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.prepare_extinction_law">
 <span class="sig-name descname"><span class="pre">prepare_extinction_law</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_extinction_law"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_extinction_law" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Prepare an dust extinction model.</p>
+<dl>
+<dt>options<span class="classifier"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code></span></dt><dd><p>Input options to initialise the model.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.prepare_sfh_model">
 <span class="sig-name descname"><span class="pre">prepare_sfh_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">options</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.prepare_sfh_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.prepare_sfh_model" title="Link to this definition"></a></dt>
 <dd><p>Prepare the SFH model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>options</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>) – Input options to initialise the model.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.base_module.BaseModule.log_like">
-<span class="sig-name descname"><span class="pre">log_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spectrum</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recSp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.log_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.log_like" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">log_like</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/base_module.html#BaseModule.log_like"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.base_module.BaseModule.log_like" title="Link to this definition"></a></dt>
+<dd><p>Compute the likelihood between an input data set and a model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<em>np.ndarray</em>) – Input data array</p></li>
+<li><p><strong>model</strong> (<em>np.ndarray</em>) – Input model</p></li>
+<li><p><strong>cov</strong> (<em>np.ndarray</em>) – Covariance matrix.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>loglike</strong> (<em>np.ndarray</em>) – The log-likelihood associated to the model given the data.</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -556,12 +688,14 @@ Args:</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.sfh_photometry.SFHPhotometryModule.make_observable">
 <span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_photometry.html#SFHPhotometryModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.sfh_photometry.SFHPhotometryModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.sfh_photometry.SFHPhotometryModule.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_photometry.html#SFHPhotometryModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.sfh_photometry.SFHPhotometryModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -612,12 +746,14 @@ Args:</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.sfh_spectra.SFHSpectraModule.make_observable">
 <span class="sig-name descname"><span class="pre">make_observable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_spectra.html#SFHSpectraModule.make_observable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.sfh_spectra.SFHSpectraModule.make_observable" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create an observable from an input set of model parameters.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hbsps.pipeline_modules.sfh_spectra.SFHSpectraModule.execute">
 <span class="sig-name descname"><span class="pre">execute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/pipeline_modules/sfh_spectra.html#SFHSpectraModule.execute"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.pipeline_modules.sfh_spectra.SFHSpectraModule.execute" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Execute the pipeline.</p>
+</dd></dl>
 
 </dd></dl>
 

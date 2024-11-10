@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.165.g807eeef documentation</title>
+  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.170.gb4f908f documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=870387f6"></script>
+      <script src="_static/documentation_options.js?v=5d1d4861"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -113,8 +113,6 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#module-hbsps.utils">hbsps.utils module</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.read_chain_file"><code class="docutils literal notranslate"><span class="pre">read_chain_file()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.make_plot_chains"><code class="docutils literal notranslate"><span class="pre">make_plot_chains()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#hbsps.utils.compute_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">compute_chain_percentiles()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -312,6 +310,7 @@
 <dt class="sig sig-object py" id="hbsps.kinematics.GaussHermite">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.kinematics.</span></span><span class="sig-name descname"><span class="pre">GaussHermite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">order</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/kinematics.html#GaussHermite"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.kinematics.GaussHermite" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.modeling.Fittable1DModel.html#astropy.modeling.Fittable1DModel" title="(in Astropy v6.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Fittable1DModel</span></code></a></p>
+<p>Gauss-Hermite model.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="hbsps.kinematics.GaussHermite.param_names">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">param_names</span></span><a class="headerlink" href="#hbsps.kinematics.GaussHermite.param_names" title="Link to this definition"></a></dt>
@@ -332,12 +331,36 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.kinematics.get_losvd_kernel">
 <span class="sig-prename descclassname"><span class="pre">hbsps.kinematics.</span></span><span class="sig-name descname"><span class="pre">get_losvd_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kernel_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_size</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/kinematics.html#get_losvd_kernel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.kinematics.get_losvd_kernel" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Create a <code class="docutils literal notranslate"><span class="pre">Model1DKernel</span></code> from an input <code class="docutils literal notranslate"><span class="pre">Model</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>kernel_model</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">astropy.models.FittableModel</span></code>) – Model used to build the kernel.</p></li>
+<li><p><strong>x_size</strong> (<em>int</em>) – Kernel size</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>kernel</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Model1DKernel</span></code>) – Kernel model</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.kinematics.convolve_spectra_with_kernel">
 <span class="sig-prename descclassname"><span class="pre">hbsps.kinematics.</span></span><span class="sig-name descname"><span class="pre">convolve_spectra_with_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spectra</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kernel</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/kinematics.html#convolve_spectra_with_kernel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.kinematics.convolve_spectra_with_kernel" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Convolve an input spectra with a given kernel.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>kernel_model</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Model1DKernel</span></code>) – Kernel model</p></li>
+<li><p><strong>spectra</strong> (<em>np.ndarray</em>) – Target spectra to convolve with the kernel</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>convolved_spectra</strong> (<em>np.ndarray</em>) – Spectra convolved with the input kernel.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.kinematics.convolve_ssp">
@@ -352,6 +375,7 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 </section>
 <section id="module-hbsps.masking">
 <span id="hbsps-masking-module"></span><h2>hbsps.masking module<a class="headerlink" href="#module-hbsps.masking" title="Link to this heading"></a></h2>
+<p>Module dedicated to data masking</p>
 </section>
 <section id="module-hbsps.output">
 <span id="hbsps-output-module"></span><h2>hbsps.output module<a class="headerlink" href="#module-hbsps.output" title="Link to this heading"></a></h2>
@@ -1279,16 +1303,6 @@ sigmaPixel: smoothing scale in pixel space.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="hbsps.utils.read_chain_file">
 <span class="sig-prename descclassname"><span class="pre">hbsps.utils.</span></span><span class="sig-name descname"><span class="pre">read_chain_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/utils.html#read_chain_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.utils.read_chain_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.utils.make_plot_chains">
-<span class="sig-prename descclassname"><span class="pre">hbsps.utils.</span></span><span class="sig-name descname"><span class="pre">make_plot_chains</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chain_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truth_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/utils.html#make_plot_chains"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.utils.make_plot_chains" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hbsps.utils.compute_chain_percentiles">
-<span class="sig-prename descclassname"><span class="pre">hbsps.utils.</span></span><span class="sig-name descname"><span class="pre">compute_chain_percentiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chain_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/utils.html#compute_chain_percentiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.utils.compute_chain_percentiles" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </section>
