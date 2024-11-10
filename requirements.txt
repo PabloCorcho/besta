@@ -1,0 +1,6 @@
+cosmosis>=3.12
+pst
+numpy>=1.2
+matplotlib>=3.9
+scipy>=1.13
+astropy>=6.1
