@@ -5,18 +5,18 @@ This module contains the pipeline manager to concatenate multiple modules.
 import os
 import subprocess
 import numpy as np
-from scipy.optimize import nnls
 
 from matplotlib import pyplot as plt
 
+from cosmosis import DataBlock
+
 from hbsps import output
-from hbsps import kinematics, sfh
-from hbsps.dust_extinction import deredden_spectra, redden_ssp_model
+from hbsps import pipeline_modules
 
 
 class MainPipeline(object):
     """PST-HBSPS Pipeline manager.
-    
+
     Attributes
     ----------
     pipelines_config : list
@@ -30,8 +30,14 @@ class MainPipeline(object):
     ini_values_files : list
         List of files containing the priors associated to ``ini_files``.
     """
-    def __init__(self, pipeline_configuration_list, n_cores_list=None,
-                 ini_files=None, ini_values_files=None):
+
+    def __init__(
+        self,
+        pipeline_configuration_list,
+        n_cores_list=None,
+        ini_files=None,
+        ini_values_files=None,
+    ):
         self.pipelines_config = pipeline_configuration_list
 
         if n_cores_list is None:
@@ -45,7 +51,9 @@ class MainPipeline(object):
             self.ini_files = ini_files
 
         if ini_values_files is None:
-            self.ini_values_files = [ini_values_files] * len(pipeline_configuration_list)
+            self.ini_values_files = [ini_values_files] * len(
+                pipeline_configuration_list
+            )
         else:
             self.ini_values_files = ini_values_files
 
@@ -53,10 +61,11 @@ class MainPipeline(object):
         print(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 
-    def execute_pipeline(self, config, n_cores, ini_filename=None,
-                         ini_values_filename=None):
+    def execute_pipeline(
+        self, config, n_cores, ini_filename=None, ini_values_filename=None
+    ):
         """Execute a sub-pipeline.
-        
+
         Parameters
         ----------
         config : dict
@@ -72,7 +81,8 @@ class MainPipeline(object):
         if ini_filename is None:
             ini_filename = os.path.join(
                 os.path.dirname(config["output"]["filename"]),
-                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini")
+                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini",
+            )
             output.make_ini_file(ini_filename, config)
         else:
             assert os.path.isfile(ini_filename), f"{ini_filename} not found"
@@ -80,7 +90,9 @@ class MainPipeline(object):
         if ini_values_filename is None:
             output.make_values_file(config)
         else:
-            assert os.path.isfile(ini_values_filename), f"{ini_values_filename} not found"
+            assert os.path.isfile(
+                ini_values_filename
+            ), f"{ini_values_filename} not found"
             config["pipeline"]["values"] = ini_values_filename
 
         if n_cores > 1:
@@ -100,9 +112,11 @@ class MainPipeline(object):
         print("Executing all pipelines")
         prev_solution = None
         for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
-            self.pipelines_config, self.n_cores_list,
-            self.ini_files, self.ini_values_files):
-
+            self.pipelines_config,
+            self.n_cores_list,
+            self.ini_files,
+            self.ini_values_files,
+        ):
             if prev_solution is not None:
                 print("Updating configuration file with previus run results")
                 # Update the input values
@@ -112,9 +126,12 @@ class MainPipeline(object):
                     if k in subpipe_config[subpipe_config["pipeline"]["modules"]]
                 )
             # Execute sub-pipepline
-            ini_filename = self.execute_pipeline(subpipe_config, n_cores,
-                                                 ini_filename=ini_filename,
-                                                 ini_values_filename=ini_values_filename)
+            ini_filename = self.execute_pipeline(
+                subpipe_config,
+                n_cores,
+                ini_filename=ini_filename,
+                ini_values_filename=ini_values_filename,
+            )
             # Extract best solution
             print("Extracting results from the run")
             reader = output.Reader(ini_filename)
@@ -124,107 +141,65 @@ class MainPipeline(object):
             print("MaxLike solution: ", solution)
 
             if plot_result:
-                if "SFH" in reader.last_module:
-                    reader.load_sfh_model()
-                elif "KinDust" in reader.last_module:
-                    reader.load_chain(include_ssp_extra_output=True)
-                reader.load_observation()
-                reader.load_extinction_model()
-                reader.load_ssp_model()
-                # Reconstruct best fit
-                # TODO: this should be directly done by the fitting modules
-                flux_model, sol_config = self.reconstruct_solution(
-                    subpipe_config, reader.config.copy(), solution)
+                # Initialise the module to reconstruct the solution
+                module = getattr(pipeline_modules, reader.last_module + "Module")
+                pipeline_module = module(reader.ini)
+                solution_datablock = reader.solution_to_datablock(prev_solution)
+                self.plot_fit(
+                    pipeline_module, solution_datablock, pipe_config=subpipe_config
+                )
 
-                if "SFH" in reader.last_module:
-                    self.plot_fit(subpipe_config, sol_config, flux_model,
-                                solution=solution)
-                else:
-                    self.plot_fit(subpipe_config, sol_config, flux_model)
-
-
-    def reconstruct_solution(self, pipeline_config, config, solution):
-        """Reconstruct a fit solution"""
-        if "los_sigma" in solution:
-            print("Convolvind SED with kinematic solution")
-            sed, mask = kinematics.convolve_ssp(
-                config, solution["los_sigma"], solution["los_vel"]
-            )
-        elif "los_sigma" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-            print("Convolvind SED with kinematic input")
-            los_sigma = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_sigma']
-            los_vel = pipeline_config[pipeline_config["pipeline"]["modules"]]['los_vel']
-            sed, mask = kinematics.convolve_ssp(
-                config, los_sigma=los_sigma, los_vel=los_vel
-            )
-        config["ssp_sed"] = sed
-        config["ssp_wl"] = config["wavelength"]
-        config["mask"] = mask
-
-        # Dust extinction
-        if "av" in solution:
-            print("Reddening SED with dust solution")
-            redden_ssp_model(config, solution["av"])
-        elif "av" in pipeline_config[pipeline_config["pipeline"]["modules"]]:
-            print("Reddening SED with dust input")
-            av = pipeline_config[pipeline_config["pipeline"]["modules"]]['av']
-            redden_ssp_model(config, av)
-
-        if 'SFH' in pipeline_config['pipeline']['modules']:
-            sfh_model = config['sfh_model']
-            mask = config['mask']
-            valid = sfh_model.parse_free_params(solution)
-            if not valid:
-                print("ERROR PARSING PARAMETERS")
-                return
-            flux_model = sfh_model.model.compute_SED(config['ssp_model'],
-										     t_obs=sfh_model.today,
-											 allow_negative=False).value
-            flux_model *= np.mean(config['flux'][mask] / flux_model[mask])
-        else:
-            solution, rnorm = nnls(config["ssp_sed"].T, config['flux'], maxiter=sed.shape[0] * 10)
-            flux_model = np.sum(config["ssp_sed"] * solution[:, np.newaxis], axis=0)
-        return flux_model, config
-
-    def plot_fit(self, pipe_config, config, flux_model, solution=None):
+    def plot_fit(self, module, solution: DataBlock, pipe_config):
         """Plot the fit."""
+        flux_model = module.make_observable(solution)
+        if isinstance(flux_model, tuple):
+            flux_model = flux_model[0]
+
         fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
-        plt.suptitle(f"Module: {pipe_config['pipeline']['modules']}")
+        plt.suptitle(f"Module: {module.name}")
         ax = axs[0]
         # Plot input spectra
         ax.fill_between(
-            config["wavelength"],
-            config["flux"] - config["cov"] ** 0.5,
-            config["flux"] + config["cov"] ** 0.5,
+            module.config["wavelength"].value,
+            module.config["flux"] - module.config["cov"] ** 0.5,
+            module.config["flux"] + module.config["cov"] ** 0.5,
             color="k",
             alpha=0.5,
         )
-        ax.plot(config["wavelength"], config["flux"], c="k", label="Observed")
-        # Show masked pixels
         ax.plot(
-            config["wavelength"][~config["mask"]],
-            config["flux"][~config["mask"]],
-            c="b",
+            module.config["wavelength"], module.config["flux"], c="k", label="Observed"
+        )
+        # Show masked pixels
+        mask = module.config["weights"] == 0
+        ax.plot(
+            module.config["wavelength"][mask],
+            module.config["flux"][mask],
+            c="r",
             marker="x",
             lw=0,
             label="Masked",
         )
         # Plot model
-        ax.plot(config["wavelength"], flux_model, c="r", label="Model")
+        ax.plot(module.config["wavelength"], flux_model, c="b", label="Model")
         # Plot residuals
+        residuals = flux_model - module.config["flux"]
         ax.plot(
-            config["wavelength"],
-            flux_model - config["flux"],
-            c="lime",
+            module.config["wavelength"],
+            residuals,
+            c="orange",
             label="Residuals",
         )
         ax.axhline(0, ls="--", color="k", alpha=0.2)
         ax.set_ylabel("Flux")
         ax.legend()
 
-        chi2 = (flux_model - config["flux"]) ** 2 / config["cov"]
+        p5, p95 = np.nanpercentile(module.config["flux"], [5, 95])
+        p_residuals = np.nanpercentile(residuals, 5) * 0.95
+        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
+
+        chi2 = (flux_model - module.config["flux"]) ** 2 / module.config["cov"]
         ax = axs[1]
-        ax.plot(config["wavelength"], chi2, c="k", lw=0.7)
+        ax.plot(module.config["wavelength"], chi2, c="k", lw=0.7)
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
         ax.set_yscale("symlog", linthresh=0.1)
@@ -241,20 +216,14 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        if solution is not None:
-            # Include the solution
-            sol_text = "Solution\n"
-            for k, v in solution.items():
-                if "ssp" in k:
-                    #sol_text += f"{k}={v:.3f}\n"
-                    continue
-                else:
-                    sol_text += f"{k}={v:.3f}\n"
-            ax.annotate(sol_text, xy=(.95, .95), xycoords='axes fraction',
-                        va='top', ha='right', fontsize=7, color='Grey')
-
-        fig.savefig(os.path.join(os.path.dirname(pipe_config['output']['filename']),
-                    f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png"),
-                    bbox_inches='tight', dpi=200)
-        #plt.show()
-
+        output_file = os.path.join(
+                os.path.dirname(pipe_config["output"]["filename"]),
+                f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png",
+            )
+        fig.savefig(
+            output_file,
+            bbox_inches="tight",
+            dpi=200,
+        )
+        print(f"Fit plot saved at: {output_file}")
+        plt.close()

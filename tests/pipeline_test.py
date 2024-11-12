@@ -41,7 +41,7 @@ kin_configuration = {
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,
-        "SSP-NMF": "T", 
+        "SSP-NMF": "F", 
         "SSP-NMF-N": 10,
         "SSPSave": "T",
         "wlRange": "3700.0 8000.0",
