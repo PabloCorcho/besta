@@ -206,6 +206,9 @@ class BaseModule(ClassModule):
         ssp_name = options["SSPModel"]
         ssp_dir = options["SSPDir"]
 
+        if "none" in ssp_dir.lower():
+            ssp_dir = None
+
         # Additional arguments to be passed to the SSP model
         if options.has_value("SSPModelArgs"):
             ssp_args = options.get_string("SSPModelArgs")
