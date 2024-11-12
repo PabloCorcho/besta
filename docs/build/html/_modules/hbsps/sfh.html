@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.sfh &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.173.gd857a60.dirty documentation</title>
+  <title>hbsps.sfh &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=f53082dd"></script>
+      <script src="../../_static/documentation_options.js?v=394d8e05"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -28,8 +28,9 @@
 
           
           
-          <a href="../../index.html" class="icon icon-home">
-            Bayesian Estimator for Stellar Population Analysis
+          <a href="../../index.html">
+            
+              <img src="../../_static/besta.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -809,10 +810,13 @@
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising ExponentialSFH model&quot;</span><span class="p">)</span>
         <span class="c1"># Initialise the free parameter</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;logtau&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logtau&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.7</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;quenching_time&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;quenching_time&quot;</span><span class="p">,</span>
+                                                <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">])</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">ExponentialDelayedZPowerLawCEM</span><span class="p">(</span>
             <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
             <span class="n">tau</span><span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">quenching_time</span> <span class="o">=</span> <span class="mi">0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
             <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
             <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
             <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
@@ -825,6 +829,7 @@
             <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
             <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
             <span class="n">tau</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;logtau&quot;</span><span class="p">],</span>
+            <span class="n">quenching_time</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;quenching_time&quot;</span><span class="p">],</span>
             <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">],</span>
             <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span>
             <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
