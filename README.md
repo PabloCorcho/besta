@@ -4,6 +4,9 @@ This package provides a set of tools devoted to inferring physical properties fr
 
 At the moment, its use is primarily focused on deriving the properties of the underlying stellar populations in unresolved spectroscopic or photometric data.
 
+## Status
+[![Documentation Status](https://readthedocs.org/projects/besta/badge/?version=latest)](https://besta.readthedocs.io/en/latest/?badge=latest)
+
 # Introduction
 
 ## The framework
