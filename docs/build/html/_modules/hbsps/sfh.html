@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.sfh &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.155.g3652d07.dirty documentation</title>
+  <title>hbsps.sfh &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.173.gd857a60.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=b5c805cb"></script>
+      <script src="../../_static/documentation_options.js?v=f53082dd"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -728,6 +728,106 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">alpha_powerlaw</span> <span class="o">=</span> <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ism_metallicity_today</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="DelayedTauSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.DelayedTauSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">DelayedTauSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;An exponentially declining delayed-tau SFH model.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as an exponentially declining function.</span>
+
+<span class="sd">    .. math::</span>
+<span class="sd">        M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    time : astropy.units.Quantity</span>
+<span class="sd">        Time bins to evaluate the SFH.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising ExponentialSFH model&quot;</span><span class="p">)</span>
+        <span class="c1"># Initialise the free parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;logtau&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logtau&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.7</span><span class="p">])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">ExponentialDelayedZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">tau</span><span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="DelayedTauSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.DelayedTauSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">ExponentialDelayedZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">tau</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;logtau&quot;</span><span class="p">],</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">],</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="DelayedTauQuenchedSFH">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.DelayedTauQuenchedSFH">[docs]</a>
+<span class="k">class</span> <span class="nc">DelayedTauQuenchedSFH</span><span class="p">(</span><span class="n">ZPowerLawMixin</span><span class="p">,</span> <span class="n">SFHBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;An exponentially declining delayed-tau SFH model with a quenching event.</span>
+
+<span class="sd">    Description</span>
+<span class="sd">    -----------</span>
+<span class="sd">    The SFH of a galaxy is modelled as an exponentially declining function.</span>
+
+<span class="sd">    .. math::</span>
+<span class="sd">        M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})</span>
+
+<span class="sd">    After the quenching event, taking place at :math:`t_{quench}`, the</span>
+<span class="sd">    stellas mass will be :math:`M_\star(t)=M_\star(t_{quench})` for all times</span>
+<span class="sd">    larget than :math:`t_{quench}`.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    time : astropy.units.Quantity</span>
+<span class="sd">        Time bins to evaluate the SFH.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[SFH] Initialising ExponentialSFH model&quot;</span><span class="p">)</span>
+        <span class="c1"># Initialise the free parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_params</span><span class="p">[</span><span class="s2">&quot;logtau&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logtau&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.7</span><span class="p">])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">ExponentialDelayedZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">tau</span><span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Gyr</span><span class="p">,</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="DelayedTauQuenchedSFH.parse_datablock">
+<a class="viewcode-back" href="../../hbsps.html#hbsps.sfh.DelayedTauQuenchedSFH.parse_datablock">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">datablock</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">pst</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">ExponentialDelayedZPowerLawCEM</span><span class="p">(</span>
+            <span class="n">today</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">today</span><span class="p">,</span>
+            <span class="n">mass_today</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">Msun</span><span class="p">,</span>
+            <span class="n">tau</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;logtau&quot;</span><span class="p">],</span>
+            <span class="n">alpha_powerlaw</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_powerlaw&quot;</span><span class="p">],</span>
+            <span class="n">ism_metallicity_today</span><span class="o">=</span><span class="n">datablock</span><span class="p">[</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span> <span class="s2">&quot;ism_metallicity_today&quot;</span><span class="p">]</span>
+            <span class="o">&lt;&lt;</span> <span class="n">u</span><span class="o">.</span><span class="n">dimensionless_unscaled</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span></div>
 </div>

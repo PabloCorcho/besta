@@ -7,7 +7,7 @@ Installation Guide
 System Requirements
 ===================
 - Python 3.8 or later
-- Required packages: NumPy, SciPy, Matplotlib, Astropy
+- Required packages: cosmosis, numpy, scipy, matplotlib, astropy
 
 Installing BESTA
 ================
@@ -26,4 +26,5 @@ To install the package from the source repository:
 
     git clone https://github.com/PabloCorcho/besta.git
     cd besta
+    python3 -m pip install -r requirements.txt
     python3 -m pip install .

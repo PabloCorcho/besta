@@ -6,16 +6,17 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.170.gb4f908f documentation</title>
+  <title>hbsps package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.173.gd857a60.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=5d1d4861"></script>
+      <script src="_static/documentation_options.js?v=f53082dd"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -97,6 +98,8 @@
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.FixedTime_sSFR_SFH"><code class="docutils literal notranslate"><span class="pre">FixedTime_sSFR_SFH</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.FixedMassFracSFH"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.ExponentialSFH"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.DelayedTauSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauSFH</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.DelayedTauQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauQuenchedSFH</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.LogNormalSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#hbsps.sfh.LogNormalQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH</span></code></a></li>
 </ul>
@@ -1068,12 +1071,75 @@ formed.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#DelayedTauSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.DelayedTauSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An exponentially declining delayed-tau SFH model.</p>
+<section id="id11">
+<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
+<div class="math notranslate nohighlight">
+\[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#hbsps.sfh.DelayedTauSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#DelayedTauSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.DelayedTauSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauQuenchedSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#DelayedTauQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.DelayedTauQuenchedSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An exponentially declining delayed-tau SFH model with a quenching event.</p>
+<section id="id12">
+<h3>Description<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
+<div class="math notranslate nohighlight">
+\[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
+<p>After the quenching event, taking place at <span class="math notranslate nohighlight">\(t_{quench}\)</span>, the
+stellas mass will be <span class="math notranslate nohighlight">\(M_\star(t)=M_\star(t_{quench})\)</span> for all times
+larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauQuenchedSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#hbsps.sfh.DelayedTauQuenchedSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hbsps.sfh.DelayedTauQuenchedSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#DelayedTauQuenchedSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.DelayedTauQuenchedSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="hbsps.sfh.LogNormalSFH">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#LogNormalSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.LogNormalSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model.</p>
-<section id="id11">
-<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<section id="id13">
+<h3>Description<a class="headerlink" href="#id13" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hbsps.sfh.LogNormalSFH.time">
@@ -1115,8 +1181,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">hbsps.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/hbsps/sfh.html#LogNormalQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hbsps.sfh.LogNormalQuenchedSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hbsps.sfh.ZPowerLawMixin" title="hbsps.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#hbsps.sfh.SFHBase" title="hbsps.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model including a quenching event.</p>
-<section id="id12">
-<h3>Description<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
+<section id="id14">
+<h3>Description<a class="headerlink" href="#id14" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function. A quenching
 event is modelled as an additional exponentially declining function that is
 applied after the time of quenching.</p>
