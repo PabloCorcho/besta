@@ -599,6 +599,98 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         return 1, None
 
 
+class DelayedTauSFH(ZPowerLawMixin, SFHBase):
+    r"""An exponentially declining delayed-tau SFH model.
+
+    Description
+    -----------
+    The SFH of a galaxy is modelled as an exponentially declining function.
+
+    .. math::
+        M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})
+
+    Attributes
+    ----------
+    time : astropy.units.Quantity
+        Time bins to evaluate the SFH.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print("[SFH] Initialising ExponentialSFH model")
+        # Initialise the free parameter
+        self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
+
+        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            mass_today=1 << u.Msun,
+            tau= 1 << u.Gyr,
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
+            << u.dimensionless_unscaled,
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+        )
+
+    def parse_datablock(self, datablock: DataBlock):
+        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            tau=10**datablock["parameters", "logtau"],
+            alpha_powerlaw=datablock["parameters", "alpha_powerlaw"],
+            ism_metallicity_today=datablock["parameters", "ism_metallicity_today"]
+            << u.dimensionless_unscaled,
+        )
+        return 1, None
+
+
+class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
+    r"""An exponentially declining delayed-tau SFH model with a quenching event.
+
+    Description
+    -----------
+    The SFH of a galaxy is modelled as an exponentially declining function.
+
+    .. math::
+        M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})
+
+    After the quenching event, taking place at :math:`t_{quench}`, the
+    stellas mass will be :math:`M_\star(t)=M_\star(t_{quench})` for all times
+    larget than :math:`t_{quench}`.
+
+    Attributes
+    ----------
+    time : astropy.units.Quantity
+        Time bins to evaluate the SFH.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print("[SFH] Initialising ExponentialSFH model")
+        # Initialise the free parameter
+        self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
+        self.free_params["quenching_time"] = kwargs.get("quenching_time",
+                                                [0, self.today / 2, self.today])
+
+        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            mass_today=1 << u.Msun,
+            tau= 1 << u.Gyr,
+            quenching_time = 0 << u.Gyr,
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
+            << u.dimensionless_unscaled,
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+        )
+
+    def parse_datablock(self, datablock: DataBlock):
+        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            tau=10**datablock["parameters", "logtau"],
+            quenching_time=10**datablock["parameters", "quenching_time"],
+            alpha_powerlaw=datablock["parameters", "alpha_powerlaw"],
+            ism_metallicity_today=datablock["parameters", "ism_metallicity_today"]
+            << u.dimensionless_unscaled,
+        )
+        return 1, None
+
+
 class LogNormalSFH(ZPowerLawMixin, SFHBase):
     """An analytical log-normal declining SFH model.
 
