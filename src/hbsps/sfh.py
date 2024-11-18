@@ -622,6 +622,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
         self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            today=self.today,
             mass_today=1 << u.Msun,
             tau= 1 << u.Gyr,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
@@ -670,6 +671,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
                                                 [0, self.today / 2, self.today])
 
         self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+            today=self.today,
             mass_today=1 << u.Msun,
             tau= 1 << u.Gyr,
             quenching_time = 0 << u.Gyr,
