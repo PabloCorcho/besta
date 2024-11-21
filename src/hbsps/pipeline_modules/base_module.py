@@ -63,7 +63,7 @@ class BaseModule(ClassModule):
         return options
 
     def prepare_observed_spectra(
-        self, options: DataBlock, normalize=True, luminosity=False
+        self, options: DataBlock, normalize=False, luminosity=False
     ):
         """Prepare the input spectra data.
 
