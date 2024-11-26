@@ -69,14 +69,14 @@ def read_results_file(path):
     table : :class:`astropy.table.Table`
         Table containing the results.
     """
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         header = f.readline().strip("#")
         columns = header.replace("\n", "").split("\t")
     matrix = np.atleast_2d(np.loadtxt(path))
-
     table = Table()
-    for ith, c in enumerate(columns):
-        table.add_column(matrix.T[ith], name=c.lower())
+    if matrix.size > 1:
+        for ith, c in enumerate(columns):
+            table.add_column(matrix.T[ith], name=c.lower())
     return table
 
 
