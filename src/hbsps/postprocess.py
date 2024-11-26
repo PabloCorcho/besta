@@ -7,6 +7,54 @@ from scipy import stats
 
 pct_cmap = plt.get_cmap("rainbow").copy()
 
+def weighted_sample_mean(x, weights):
+    """Compute the weighted mean of an input sample.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        Array of sample values. The last dimension must correspond
+        to the sample dimension.
+    weights : np.ndarray
+        1D array of weights associated to the sample ``x``.
+
+    Returns
+    -------
+    mean : np.array
+        Weighted mean of the sample
+    """
+    return np.sum(x * weights, axis=-1)
+
+
+def weighted_sample_covariance(x, weights, unbiased=False):
+    """Compute the covariance matrix of a sample with weights.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        Array of sample values. The last dimension must correspond
+        to the sample dimension.
+    weights : np.ndarray
+        1D array of weights associated to the sample ``x``.
+
+    Returns
+    -------
+    covariance : np.array
+        Weighted mean of the sample
+    """
+    mean = weighted_sample_mean(x, weights)
+    x_mean = x - mean[:, np.newaxis]
+    covariance = np.sum(
+        weights[np.newaxis, np.newaxis]
+        * x_mean[np.newaxis] * x_mean[:, np.newaxis], axis=-1)
+    if unbiased:
+        covariance /= 1 - np.sum(weights**2)
+    return covariance
+
+def weighted_1d_cmf(x, weights):
+    """Compute the cumulative probability distribution from a sample."""
+    sort_idx = np.argsort(x)
+    return x[sort_idx], np.cumsum(weights[sort_idx])
 
 def read_results_file(path):
     """Read the results produced during a cosmosis run.
@@ -73,7 +121,8 @@ def compute_pdf_from_results(
     pdf_2d=True,
     parameter_key_pairs=None,
     pdf_size=100,
-    plot=True,
+    plot=False,
+    show=False,
     real_values=None,
     extra_info={},
 ):
@@ -96,16 +145,39 @@ def compute_pdf_from_results(
     real_values : dict, optional
     extra_info : dict, optional
     """
+    if output_filename is None:
+        output_filename = "stat_analysis.fits"
+
     posterior = np.exp(
         table[posterior_key].value - np.nanmax(table[posterior_key].value)
     )
     posterior /= np.nansum(posterior)
 
-    # Select the keys that correspond to sampled parameters
+    # If not provided, select the keys that correspond to sampled parameters
     if parameter_keys is None:
-        parameter_keys = [key for key in list(table.keys()) if parameter_prefix in key]
+        parameter_keys = [
+            key for key in list(table.keys()) if parameter_prefix in key]
+
+    # Create a matrix (theta, samples)
+    values = np.array([table[key].value for key in parameter_keys])
 
     output_hdul = []
+
+    # Mean and covariance
+    mean_values = weighted_sample_mean(values, posterior)
+    covariance_matrix = weighted_sample_covariance(values, posterior)
+    header = fits.Header()
+    for axis, mean, key in zip(range(len(parameter_keys)),
+                               mean_values,
+                               parameter_keys):
+        kname = key.replace(parameter_prefix + "--", "")
+        header[f"hierarch axis_{axis}"] = kname, "parameter"
+        header[f"hierarch {kname}_mean"] = mean, "likelihood-weighted mean"
+    covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
+                                   header=header)
+    output_hdul.append(covariance_hdu)
+
+    # PDF analysis
     if pdf_1d:
         table_1d_pdf = Table()
         table_1d_percentiles = Table()
@@ -115,30 +187,30 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
-            sort_pos = np.argsort(value[mask])
-            cmf = np.cumsum(posterior[mask][sort_pos])
+            value_sorted, cmf = weighted_1d_cmf(value[mask], posterior[mask])
 
-            value_pct = np.interp(percentiles, cmf, value[mask][sort_pos])
+            value_pct = np.interp(percentiles, cmf, value_sorted)
+            # TODO: duplicated
             value_mean = np.sum(posterior[mask] * value[mask])
 
-            dummy_value = np.linspace(
-                value[mask].min(), value[mask].max(), pdf_size + 1
+            pdf_binedges = np.linspace(
+                value_sorted[0], value_sorted[-1], pdf_size + 1
             )
-            interp_cmf = np.interp(dummy_value, value[mask][sort_pos], cmf)
+            pdf_bins = (pdf_binedges[1:] + pdf_binedges[:-1]) / 2
+            interp_cmf = np.interp(pdf_binedges, value_sorted, cmf)
             pdf = (interp_cmf[1:] - interp_cmf[:-1]) / (
-                dummy_value[1:] - dummy_value[:-1]
+                pdf_binedges[1:] - pdf_binedges[:-1]
             )
-            dummy_bins = (dummy_value[1:] + dummy_value[:-1]) / 2
 
             key_name = key.replace(parameter_prefix + "--", "")
             try:
                 kde = stats.gaussian_kde(value[mask], weights=posterior[mask])
-                kde_pdf = kde(dummy_bins)
+                kde_pdf = kde(pdf_bins)
             except Exception as e:
                 print("There was an error during KDE estimation: ", e)
                 kde_pdf = np.full_like(pdf, fill_value=np.nan)
 
-            table_1d_pdf.add_column(dummy_bins, name=f"{key_name}_bin")
+            table_1d_pdf.add_column(pdf_bins, name=f"{key_name}_bin")
             table_1d_pdf.add_column(pdf, name=f"{key_name}_pdf")
             table_1d_pdf.add_column(kde_pdf, name=f"{key_name}_pdf_kde")
 
@@ -146,7 +218,7 @@ def compute_pdf_from_results(
 
             if real_values is not None and key in real_values:
                 integral_to_real = np.interp(
-                    real_values[key], value[mask][sort_pos], cmf
+                    real_values[key], value_sorted, cmf
                 )
                 table_1d_pct_hdr[f"hierarch {key_name}_real"] = np.nan_to_num(
                     real_values[key]
@@ -158,8 +230,8 @@ def compute_pdf_from_results(
             if plot:
                 fig, ax = plt.subplots()
                 ax.set_title(key)
-                ax.plot(dummy_bins, pdf, label="Original")
-                ax.plot(dummy_bins, kde_pdf, label="KDE")
+                ax.plot(pdf_bins, pdf, label="Original")
+                ax.plot(pdf_bins, kde_pdf, label="KDE")
                 ax.axvline(value_mean, label="Mean")
                 for p, v in zip(percentiles, value_pct):
                     ax.axvline(v, label=f"P{p*100}", color=pct_cmap(p))
@@ -170,8 +242,14 @@ def compute_pdf_from_results(
                 ax.set_xlabel(key_name)
                 ax.set_ylabel(f"PDF [1/{key_name} units]")
 
-                plt.show()  # TODO: save plots
-                # plt.close()
+                fig.savefig(os.path.join(
+                    os.path.dirname(output_filename),
+                    f"stat_analysis_pdf_{key_1}.png"),
+                            dpi=200, bbox_inches='tight')
+                if show:
+                    plt.show()
+                else:
+                    plt.close()
 
         output_hdul.extend(
             [
@@ -191,18 +269,6 @@ def compute_pdf_from_results(
             value_2 = table[key_2].value
             mask_2 = np.isfinite(value_2)
             mask = mask_1 & mask_2
-
-            # dummy_value_1 = np.linspace(
-            #     value_1[mask].min(), value_1[mask].max(), pdf_size + 1)
-            # dummy_value_2 = np.linspace(
-            #     value_2[mask].min(), value_2[mask].max(), pdf_size + 1)
-
-            # dd1, dd2 = np.meshgrid(dummy_value_1, dummy_value_2)
-
-            # kde = stats.gaussian_kde(np.array([value_1[mask], value_2[mask]]),
-            #                    weights=posterior[mask])
-            # pdf = kde(np.vstack([dd1.ravel(), dd2.ravel()]))
-            # pdf = pdf.reshape(dd1.shape)
 
             pdf, xedges, yedges = np.histogram2d(
                 value_1[mask],
@@ -248,25 +314,21 @@ def compute_pdf_from_results(
                 if real_values is not None and key_2 in real_values:
                     ax.axvline(real_values[key_2], c="r")
 
-                # if output_filename is None:
-                #     fig.savefig(f"stat_analysis_pdf_{key_1}_{key_2}.png",
-                #                 dpi=200, bbox_inches='tight')
-                # else:
-                #     fig.savefig(os.path.join(
-                #         os.path.dirname(output_filename),
-                #         f"stat_analysis_pdf_{key_1}_{key_2}.png"),
-                #                 dpi=200, bbox_inches='tight')
-                # plt.close()
+                fig.savefig(os.path.join(
+                    os.path.dirname(output_filename),
+                    f"stat_analysis_pdf_{key_1}_{key_2}.png"),
+                            dpi=200, bbox_inches='tight')
+                if show:
+                    plt.show()
+                else:
+                    plt.close()
 
     primary = fits.PrimaryHDU()
     for k, v in extra_info.items():
         primary.header[k] = v, "user-provided information"
     output_hdul = fits.HDUList([primary, *output_hdul])
-    if output_filename is None:
-        output_hdul.writeto("stat_analysis.fits", overwrite=True)
-    else:
-        output_hdul.writeto(output_filename, overwrite=True)
-
+    output_hdul.writeto(output_filename, overwrite=True)
+    return output_hdul
 
 def make_plot_chains(chain_results, truth_values=None, output="."):
     parameters = [par for par in chain_results.keys() if "parameters" in par]
@@ -319,6 +381,7 @@ if __name__ == "__main__":
         #                 'parameters--logssfr_over_8.70_yr',
         #                 'parameters--logssfr_over_8.48_yr'],
         pdf_2d=False,
-        plot=True,
+        plot=False,
         pdf_size=30,
+        output_filename="/home/pcorchoc/Research/Euclid/test.table.fits"
     )
