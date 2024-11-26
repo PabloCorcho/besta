@@ -670,18 +670,18 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         self.free_params["quenching_time"] = kwargs.get("quenching_time",
                                                 [0, self.today / 2, self.today])
 
-        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+        self.model = pst.models.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1 << u.Msun,
             tau= 1 << u.Gyr,
-            quenching_time = 0 << u.Gyr,
+            quenching_time = 1 << u.Gyr,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
         )
 
     def parse_datablock(self, datablock: DataBlock):
-        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+        self.model = pst.models.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             tau=10**datablock["parameters", "logtau"],
