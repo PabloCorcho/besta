@@ -685,7 +685,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
             today=self.today,
             mass_today=1.0 << u.Msun,
             tau=10**datablock["parameters", "logtau"],
-            quenching_time=10**datablock["parameters", "quenching_time"],
+            quenching_time=datablock["parameters", "quenching_time"],
             alpha_powerlaw=datablock["parameters", "alpha_powerlaw"],
             ism_metallicity_today=datablock["parameters", "ism_metallicity_today"]
             << u.dimensionless_unscaled,
