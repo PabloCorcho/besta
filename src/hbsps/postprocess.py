@@ -172,7 +172,7 @@ def compute_pdf_from_results(
                                parameter_keys):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
-        header[f"hierarch {kname}_mean"] = mean, "likelihood-weighted mean"
+        header[f"hierarch {kname}"] = mean, "like-weighted mean"
     covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
                                    header=header)
     output_hdul.append(covariance_hdu)
