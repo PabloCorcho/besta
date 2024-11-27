@@ -260,54 +260,61 @@ def compute_pdf_from_results(
             ]
         )
     if pdf_2d:
-        for key_1, key_2 in zip(*parameter_key_pairs):
-            print("Computing 2D posterior distribution of\n", key_1, "versus", key_2)
+        for key_1, key_2 in parameter_key_pairs:
+            print("2D post. PDF of", key_1, "vs", key_2)
 
             value_1 = table[key_1].value
-            mask_1 = np.isfinite(value_1)
-
             value_2 = table[key_2].value
-            mask_2 = np.isfinite(value_2)
-            mask = mask_1 & mask_2
+            mask = np.isfinite(value_1) & np.isfinite(value_2)
 
-            pdf, xedges, yedges = np.histogram2d(
-                value_1[mask],
-                value_2[mask],
-                weights=posterior[mask],
-                density=True,
-                bins=pdf_size,
-            )
+            binedges_1 = np.linspace(value_1[mask].min(), value_1[mask].max(),
+                                     pdf_size + 1)
+            bins_1 = (binedges_1[:-1] + binedges_1[1:]) / 2
+            binedges_2 = np.linspace(value_1[mask].min(), value_1[mask].max(),
+                                     pdf_size)
+            bins_2 = (binedges_2[:-1] + binedges_2[1:]) / 2
 
-            dummy_value_1 = (xedges[:-1] + xedges[1:]) / 2
-            dummy_value_2 = (yedges[:-1] + yedges[1:]) / 2
-
+            try:
+                v1_grid, v2_grid = np.meshgrid(bins_1, bins_2, indexing="ij")
+                kde = stats.gaussian_kde(
+                    np.array([value_1[mask], value_2[mask]]),
+                    weights=posterior[mask])
+                pdf = kde(np.array([v1_grid.flatten(), v2_grid.flatten()]))
+                pdf = pdf.reshape(v1_grid.shape)
+            except Exception as e:
+                print("There was an error during KDE estimation: ", e,
+                      "\nComputing PDF from histogram")
+                pdf, _, _ = np.histogram2d(
+                    value_1[mask], value_2[mask], weights=posterior[mask],
+                    density=True,
+                    bins=[binedges_1, binedges_2])
+ 
             hdr = fits.Header()
             hdr["AXIS0"] = key_1
             hdr["AXIS1"] = key_2
 
-            hdr["A0_INI"] = dummy_value_1[0]
-            hdr["A0_END"] = dummy_value_1[-1]
-
-            hdr["A1_INI"] = dummy_value_2[0]
-            hdr["A1_END"] = dummy_value_2[-1]
+            hdr["A0_INI"] = bins_1[0]
+            hdr["A0_END"] = bins_1[-1]
+            hdr["A0_DELTA"] = bins_1[1] - bins_1[0]
+ 
+            hdr["A1_INI"] = bins_2[0]
+            hdr["A1_END"] = bins_2[-1]
+            hdr["A1_DELTA"] = bins_2[1] - bins_2[0]
 
             k1 = key_1.replace(parameter_prefix + "--", "")
             k2 = key_2.replace(parameter_prefix + "--", "")
-            output_hdul.append(fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}"))
-
-            key_1_name = key_1.replace(parameter_prefix + "--", "")
-            key_2_name = key_2.replace(parameter_prefix + "--", "")
+            output_hdul.append(
+                fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}"))
 
             if plot:
                 fraction = compute_fraction_from_map(pdf)
-
                 fig, ax = plt.subplots()
-                ax.pcolormesh(dummy_value_2, dummy_value_1, pdf, cmap="Greys")
+                ax.pcolormesh(bins_2, bins_1, pdf, cmap="Greys")
                 ax.contour(
-                    dummy_value_2, dummy_value_1, fraction, levels=[0.1, 0.5, 0.84]
+                    bins_1, bins_2, fraction, levels=[0.1, 0.5, 0.84]
                 )
-                ax.set_xlabel(key_2_name)
-                ax.set_ylabel(key_1_name)
+                ax.set_xlabel(k2)
+                ax.set_ylabel(k1)
 
                 if real_values is not None and key_1 in real_values:
                     ax.axhline(real_values[key_1], c="r")
@@ -380,7 +387,10 @@ if __name__ == "__main__":
         #                 'parameters--logssfr_over_9.00_yr',
         #                 'parameters--logssfr_over_8.70_yr',
         #                 'parameters--logssfr_over_8.48_yr'],
-        pdf_2d=False,
+        parameter_key_pairs=[
+            ['parameters--logssfr_over_8.48_yr', 'parameters--logssfr_over_9.00_yr']
+            ],
+        pdf_2d=True,
         plot=False,
         pdf_size=30,
         output_filename="/home/pcorchoc/Research/Euclid/test.table.fits"
