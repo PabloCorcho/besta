@@ -617,7 +617,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising ExponentialSFH model")
+        print("[SFH] Initialising DelayedTauSFH model")
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
@@ -664,7 +664,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising ExponentialSFH model")
+        print("[SFH] Initialising DelayedTauQuenchedSFH model")
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
         self.free_params["quenching_time"] = kwargs.get("quenching_time",
@@ -760,7 +760,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising LogNorMalQuenched model")
+        print("[SFH] Initialising LogNormalQuenched model")
         self.time = kwargs.get("time")
         if self.time is None:
             self.time = self.today - np.geomspace(1e-5, 1, 200) * self.today
