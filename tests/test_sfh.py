@@ -61,6 +61,20 @@ class TestSFH(unittest.TestCase):
         value, penalty = model_fitter.parse_free_params(model_parameters)
         self.assertEqual(value, 1)
     
+    def test_delayed_tau_sfh(self):
+        model_fitter = sfh.DelayedTauSFH()
+        model_parameters = {"logtau": 0.5}
+        model_parameters = {**model_parameters, **self.metallicity_params}
+        value, penalty = model_fitter.parse_free_params(model_parameters)
+        self.assertEqual(value, 1)
+    
+    def test_delayed_tau_quenched_sfh(self):
+        model_fitter = sfh.DelayedTauQuenchedSFH()
+        model_parameters = {"logtau": 0.5, "quenching_time" : 1.0}
+        model_parameters = {**model_parameters, **self.metallicity_params}
+        value, penalty = model_fitter.parse_free_params(model_parameters)
+        self.assertEqual(value, 1)
+
     def test_lognormal_sfh(self):
         model_fitter = sfh.LogNormalSFH()
         model_parameters = {"scale": 0.5, "t0": 10.0}
