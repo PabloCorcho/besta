@@ -123,7 +123,8 @@ def convolve_spectra_with_kernel(spectra, kernel):
     convolved_spectra : np.ndarray
         Spectra convolved with the input kernel.
     """
-    return convolve(spectra, kernel)
+    return convolve(spectra, kernel, boundary="fill", fill_value=0.0,
+                    normalize_kernel=False)
 
 def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     velscale = config["velscale"]
