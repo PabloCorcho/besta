@@ -40,7 +40,6 @@ class FullSpectralFitModule(BaseModule):
         veloffset_pixel = block["parameters", "los_vel"] / (velscale / oversampling)
 
         # Build the kernel. TOO SLOW? Initialise only once?
-        print(sigma_pixel)
         kernel = kinematics.get_losvd_kernel(
             kernel_model = kinematics.GaussHermite(
             4,
@@ -53,14 +52,23 @@ class FullSpectralFitModule(BaseModule):
         # Perform the convolution
         flux_model = kinematics.convolve_spectra_with_kernel(
             flux_model, kernel)
+        # Track those pixels at the edges
+        mask = flux_model > 0
+        mask[: int(5 * sigma_pixel)] = False
+        mask[-int(5 * sigma_pixel) :] = False
         # Sample to observed resolution
-        if oversampling > 1:
-            extra_pixels = self.config["extra_pixels"]
-            flux_model = (
-            flux_model[extra_pixels * oversampling : -(extra_pixels * oversampling + 1)]
-            .reshape((self.config['flux'].size, oversampling))
-            .mean(axis=1)
-        )
+
+        extra_pixels = self.config["extra_pixels"]
+        flux_model = (
+        flux_model[extra_pixels * oversampling : -(1 + extra_pixels * oversampling)]
+        .reshape((self.config['flux'].size, oversampling))
+        .mean(axis=1))
+        mask = (
+        mask[extra_pixels * oversampling : -(1 + extra_pixels * oversampling)]
+        .reshape((self.config['flux'].size, oversampling))
+        .sum(axis=1))
+        # Enforce that all combined pixels are good
+        mask = mask == oversampling
 
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
@@ -68,7 +76,7 @@ class FullSpectralFitModule(BaseModule):
             self.config['wavelength'], flux_model,
             a_v=block["parameters", "av"]).value
 
-        weights = self.config["weights"] * (flux_model > 0)
+        weights = self.config["weights"] * mask
         normalization = np.sum(
             self.config['flux'] / flux_model * self.config["weights"]
             ) / np.sum(self.config["weights"])
@@ -85,11 +93,11 @@ class FullSpectralFitModule(BaseModule):
         # Obtain parameters from setup
         cov = self.config['cov']
         flux_model, weights = self.make_observable(block)
+        weights_norm = np.nansum(weights)
         # Calculate likelihood-value of the fit
         like = self.log_like(self.config["flux"] * weights,
-                          flux_model * weights, cov)
+                             flux_model * weights, cov * weights_norm)
         # Final posterior for sampling
-        print(like)
         block[section_names.likelihoods, f"{self.name}_like"] = like
         return 0
 
