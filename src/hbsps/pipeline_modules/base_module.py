@@ -186,7 +186,7 @@ class BaseModule(ClassModule):
         self.config["filters"] = photometric_filters
         print("-> Configuration done.")
 
-    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=300.0):
+    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
         """Prepare the SSP data.
 
         Parameters
@@ -222,7 +222,7 @@ class BaseModule(ClassModule):
         # Parameters to format the templates to the input spectra
         velscale = options["velscale"]
         if options.has_value("oversampling"):
-            oversampling = options["oversampling"]
+            oversampling = int(options["oversampling"])
         else:
             oversampling = 1
 
@@ -248,7 +248,6 @@ class BaseModule(ClassModule):
             " km/s",
         )
         dlnlam = velscale / specBasics.constants.c.to("km/s").value
-        dlnlam /= oversampling
 
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
@@ -263,13 +262,20 @@ class BaseModule(ClassModule):
             extra_offset_pixel = 0.0
 
         # Define the wavelength edges of the resampled SSP SED
+        oversampling = 1
         lnlam_bin_edges = np.arange(
-            ln_wl_edges[0] - dlnlam * extra_offset_pixel * oversampling - 0.5 * dlnlam,
-            ln_wl_edges[-1]
-            + dlnlam * (1 + extra_offset_pixel) * oversampling
-            + 0.5 * dlnlam,
-            dlnlam,
-        )
+            ln_wl_edges[0] - 0.5 * dlnlam  - dlnlam * extra_offset_pixel,
+            ln_wl_edges[-1] + 0.5 * dlnlam + dlnlam * (1 + extra_offset_pixel),
+            dlnlam)
+        
+        # lnlam_bin_edges = np.arange(
+        #     ln_wl_edges[0] - 0.5 * dlnlam
+        #     - dlnlam * extra_offset_pixel * oversampling,
+        #     ln_wl_edges[-1] + 0.5 * dlnlam
+        #     + dlnlam * (1 + extra_offset_pixel) * oversampling,
+        #     dlnlam,
+        # )
+
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bin_edges))
         print("SSP Model SED shape (met, age, lambda): ", ssp.L_lambda.shape)
