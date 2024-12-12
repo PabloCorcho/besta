@@ -167,8 +167,9 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
                       ) * ssp.L_lambda.unit
 
     # Rebin model spectra to observed grid
-    pixels = slice(extra_pixels * oversampling,  -(extra_pixels * oversampling + 1))
+    pixels = slice(extra_pixels * oversampling,  -(extra_pixels * oversampling))
     print(pixels)
+    print(ssp.L_lambda[:, :, pixels].shape)
     new_sed = ssp.L_lambda[:, :, pixels].reshape((ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
                                                   wl.size, oversampling)).mean(axis=-1)
     ssp.L_lambda = new_sed
