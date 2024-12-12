@@ -249,20 +249,19 @@ class BaseModule(ClassModule):
         )
         dlnlam = velscale / specBasics.constants.c.to("km/s").value
 
+        #TODO
+        extra_offset_pixel = int(velocity_buffer / velscale)
+
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
             # Add extra pixels at the edges to prevent corruption during convolution
-            extra_offset_pixel = int(velocity_buffer / velscale)
         else:
             ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
             extra_offset_pixel = 0
 
-        # TODO
-        if oversampling < 2:
-            extra_offset_pixel = 0.0
-
         # Define the wavelength edges of the resampled SSP SED
         oversampling = 1
+
         lnlam_bin_edges = np.arange(
             ln_wl_edges[0] - 0.5 * dlnlam  - dlnlam * extra_offset_pixel,
             ln_wl_edges[-1] + 0.5 * dlnlam + dlnlam * (1 + extra_offset_pixel),
