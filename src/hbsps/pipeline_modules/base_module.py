@@ -112,7 +112,7 @@ class BaseModule(ClassModule):
         flux = flux[good_idx]
         cov = error[good_idx] ** 2
         weights = weights[good_idx]
-        print("Number of selected pixels: ", good_idx.size)
+        print("Number of selected pixels within wavelength range: ", good_idx.size)
         if options.has_value("velscale"):
             velscale = options["velscale"]
         else:
@@ -126,6 +126,7 @@ class BaseModule(ClassModule):
         cov, _, _ = specBasics.log_rebin(wavelength, cov, velscale=velscale)
         weights, _, _ = specBasics.log_rebin(wavelength, weights, velscale=velscale)
         wavelength = np.exp(ln_wave)
+        print("Number of pixels after interpolation: ", wavelength.size)
         # Normalize spectra
         if normalize:
             print("Spectra normalized using wavelength range: ", wl_norm_range)
@@ -221,10 +222,6 @@ class BaseModule(ClassModule):
 
         # Parameters to format the templates to the input spectra
         velscale = options["velscale"]
-        if options.has_value("oversampling"):
-            oversampling = int(options["oversampling"])
-        else:
-            oversampling = 1
 
         if options.has_value("wlNormRange"):
             wl_norm_range = options["wlNormRange"]
@@ -242,15 +239,10 @@ class BaseModule(ClassModule):
             print(f"Loading SSP model from input directory: {ssp_dir}")
 
         # Rebin the spectra
-        print(
-            "Log-binning SSP spectra to velocity scale: ",
-            velscale / oversampling,
-            " km/s",
-        )
         dlnlam = velscale / specBasics.constants.c.to("km/s").value
-
-        #TODO
         extra_offset_pixel = int(velocity_buffer / velscale)
+        print("Log-binning SSP spectra to velocity scale: ", velscale, " km/s",
+              f"\nKeeping {extra_offset_pixel} extra pixels at both edges")
 
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
@@ -259,25 +251,14 @@ class BaseModule(ClassModule):
             ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
             extra_offset_pixel = 0
 
-        # Define the wavelength edges of the resampled SSP SED
-        oversampling = 1
-
         lnlam_bin_edges = np.arange(
             ln_wl_edges[0] - 0.5 * dlnlam  - dlnlam * extra_offset_pixel,
-            ln_wl_edges[-1] + 0.5 * dlnlam + dlnlam * (1 + extra_offset_pixel),
+            ln_wl_edges[-1] + dlnlam * (1 + extra_offset_pixel),
             dlnlam)
-        
-        # lnlam_bin_edges = np.arange(
-        #     ln_wl_edges[0] - 0.5 * dlnlam
-        #     - dlnlam * extra_offset_pixel * oversampling,
-        #     ln_wl_edges[-1] + 0.5 * dlnlam
-        #     + dlnlam * (1 + extra_offset_pixel) * oversampling,
-        #     dlnlam,
-        # )
 
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bin_edges))
-        print("SSP Model SED shape (met, age, lambda): ", ssp.L_lambda.shape)
+        print("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
 
         if normalize and wl_norm_range is not None:
             print("Normalizing SSP model SED within range ", wl_norm_range)
@@ -290,7 +271,6 @@ class BaseModule(ClassModule):
         ssp_sed = ssp.L_lambda.value.reshape(
             (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
         )
-
         # Apply Non-negative Matrix Factorisation for reducing dimensionality
         if n_nmf is not None:
             print(
@@ -308,7 +288,6 @@ class BaseModule(ClassModule):
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
         # Grid parameters
         self.config["velscale"] = velscale
-        self.config["oversampling"] = oversampling
         self.config["extra_pixels"] = extra_offset_pixel
         print("-> Configuration done.")
         return

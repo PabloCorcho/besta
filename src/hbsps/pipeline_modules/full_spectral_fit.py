@@ -34,10 +34,9 @@ class FullSpectralFitModule(BaseModule):
 
         # Kinematics
         velscale = self.config["velscale"]
-        oversampling = self.config["oversampling"]
         # Kinematics
-        sigma_pixel = block["parameters", "los_sigma"] / (velscale / oversampling)
-        veloffset_pixel = block["parameters", "los_vel"] / (velscale / oversampling)
+        sigma_pixel = block["parameters", "los_sigma"] / velscale
+        veloffset_pixel = block["parameters", "los_vel"] / velscale
 
         # Build the kernel. TOO SLOW? Initialise only once?
         kernel = kinematics.get_losvd_kernel(
@@ -59,16 +58,9 @@ class FullSpectralFitModule(BaseModule):
         # Sample to observed resolution
 
         extra_pixels = self.config["extra_pixels"]
-        flux_model = (
-        flux_model[extra_pixels * oversampling : -(1 + extra_pixels * oversampling)]
-        .reshape((self.config['flux'].size, oversampling))
-        .mean(axis=1))
-        mask = (
-        mask[extra_pixels * oversampling : -(1 + extra_pixels * oversampling)]
-        .reshape((self.config['flux'].size, oversampling))
-        .sum(axis=1))
-        # Enforce that all combined pixels are good
-        mask = mask == oversampling
+        pixels = slice(extra_pixels, - extra_pixels)
+        flux_model = flux_model[pixels]
+        mask = mask[pixels]
 
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
