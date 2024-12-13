@@ -69,9 +69,10 @@ class SFHSpectraModule(BaseModule):
             block['parameters', 'normalization'] = 0.0
             return 0
         flux_model = self.make_observable(block)
+        weights_norm = np.nansum(self.config["weights"])
         like = self.log_like(self.config['flux'] * self.config["weights"],
-                          flux_model * self.config["weights"],
-                          self.config['cov'])
+                             flux_model * self.config["weights"],
+                             self.config['cov'] * weights_norm)
         # Final posterior for sampling
         block[section_names.likelihoods, "SFHSpectra_like"] = like
         return 0
