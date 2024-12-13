@@ -1,5 +1,4 @@
-"""spectra module.
-
+"""
 This module contains classes and functions related
 to dealing with spectra
 
