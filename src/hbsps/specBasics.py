@@ -205,43 +205,33 @@ def smoothSpectrumFast(spectrum, sigmaPixel):
 
     return smoothSpectrum
 
+def get_legendre_polynomial_array(wavelength, order, bounds=None):
+    """
+    Compute an array of Legendre polynomials evaluated at normalized wavelengths.
 
-def getGaussianLP(w, wc, wstd, norm):
-    """Calculate Gaussian line profile for local covariance structure"""
-    glp = norm * np.exp(-((w - wc) ** 2 / (2 * wstd**2)))
+    Parameters
+    ----------
+    wavelength : numpy.ndarray
+        Array of wavelength values.
+    order : int
+        The maximum order of the Legendre polynomial to compute.
+    bounds : tuple, optional
+        A tuple specifying the minimum and maximum bounds for normalization 
+        (bounds[0], bounds[1]). If None, the normalization is based on the 
+        minimum and maximum of the `wavelength` array.
 
-    return glp
-
-
-def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
-    y = vel_pixel / sigma_pixel
-    g = (
-        np.exp(-(y**2) / 2)
-        / sigma_pixel
-        / np.sqrt(2 * np.pi)
-        * (
-            1
-            + h3 * (y * (2 * y**2 - 3) / np.sqrt(3))  # H3
-            + h4 * ((4 * (y**2 - 3) * y**2 + 3) / np.sqrt(24))  # H4
-        )
-    )
-    return g
-
-
-def getLegendrePolynomial(wavelength, order, bounds=None):
-    nBins = len(wavelength)
+    Returns
+    -------
+    numpy.ndarray
+        A 2D array where each row corresponds to the values of a Legendre 
+        polynomial of a given degree, evaluated at the normalized wavelengths.
+        The shape of the array is (order + 1, len(wavelength)).
+    """
     if bounds == None:
-        wavelengthN = -1.0 + 2.0 * (wavelength - wavelength[0]) / (
-            wavelength[-1] - wavelength[0]
-        )
+        norm_wl = 2 * (wavelength - wavelength.min()
+                   ) / (wavelength.max() - wavelength.min()) - 1
     else:
-        wavelengthN = -1.0 + 2.0 * (wavelength - bounds[0]) / (bounds[1] - bounds[0])
-
-    AL = np.zeros([nBins, order + 1])
-    for oIdx in range(order + 1):
-        pDegree = oIdx
-        legendreP = np.array(legendre(pDegree))
-        for dIdx in range(pDegree + 1):
-            AL[:, pDegree] += legendreP[dIdx] * wavelengthN ** (pDegree - dIdx)
-
-    return AL
+        norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
+    legendre_arr = np.array(
+        [np.array(legendre(deg)(norm_wl)) for deg in  np.arange(0, order + 1)])
+    return legendre_arr
