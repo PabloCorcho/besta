@@ -10,12 +10,12 @@ from matplotlib import pyplot as plt
 
 from cosmosis import DataBlock
 
-from hbsps import output
-from hbsps import pipeline_modules
+from besta import output
+from besta import pipeline_modules
 
 
 class MainPipeline(object):
-    """PST-HBSPS Pipeline manager.
+    """BESTA Pipeline manager.
 
     Attributes
     ----------

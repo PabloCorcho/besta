@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
@@ -43,7 +43,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">hbsps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">besta</a></li>
 </ul>
 
         </div>
@@ -61,7 +61,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">hbsps.kinematics</li>
+      <li class="breadcrumb-item active">besta.kinematics</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -70,7 +70,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for hbsps.kinematics</h1><div class="highlight"><pre>
+  <h1>Source code for besta.kinematics</h1><div class="highlight"><pre>
 <span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">from</span> <span class="nn">scipy.signal</span> <span class="kn">import</span> <span class="n">fftconvolve</span>
@@ -81,11 +81,11 @@
 <span class="kn">from</span> <span class="nn">astropy</span> <span class="kn">import</span> <span class="n">units</span> <span class="k">as</span> <span class="n">u</span>
 <span class="kn">from</span> <span class="nn">astropy.convolution</span> <span class="kn">import</span> <span class="n">convolve</span><span class="p">,</span> <span class="n">convolve_fft</span>
 
-<span class="kn">from</span> <span class="nn">hbsps</span> <span class="kn">import</span> <span class="n">specBasics</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">specBasics</span>
 
 
 <div class="viewcode-block" id="GaussHermite">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.GaussHermite">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.GaussHermite">[docs]</a>
 <span class="k">class</span> <span class="nc">GaussHermite</span><span class="p">(</span><span class="n">Fittable1DModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Gauss-Hermite model.&quot;&quot;&quot;</span>
     <span class="n">_param_names</span> <span class="o">=</span> <span class="p">()</span>
@@ -157,7 +157,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_names</span>
 
 <div class="viewcode-block" id="GaussHermite.evaluate">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.GaussHermite.evaluate">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.GaussHermite.evaluate">[docs]</a>
     <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
 
         <span class="n">a</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>                      <span class="c1"># amplitude, mean, stddev</span>
@@ -171,7 +171,7 @@
 
 
 <div class="viewcode-block" id="get_losvd_kernel">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.get_losvd_kernel">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.get_losvd_kernel">[docs]</a>
 <span class="k">def</span> <span class="nf">get_losvd_kernel</span><span class="p">(</span><span class="n">kernel_model</span><span class="p">,</span> <span class="n">x_size</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a ``Model1DKernel`` from an input ``Model``.</span>
 <span class="sd">    </span>
@@ -191,7 +191,7 @@
 
 
 <div class="viewcode-block" id="convolve_spectra_with_kernel">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.convolve_spectra_with_kernel">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_spectra_with_kernel">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_spectra_with_kernel</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">kernel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve an input spectra with a given kernel.</span>
 <span class="sd">    </span>
@@ -211,7 +211,7 @@
 
 
 <div class="viewcode-block" id="convolve_ssp">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.convolve_ssp">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_ssp">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_ssp</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">los_sigma</span><span class="p">,</span> <span class="n">los_vel</span><span class="p">,</span> <span class="n">los_h3</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">los_h4</span><span class="o">=</span><span class="mf">0.</span><span class="p">):</span>
     <span class="n">velscale</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;velscale&quot;</span><span class="p">]</span>
     <span class="n">oversampling</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;oversampling&quot;</span><span class="p">]</span>
@@ -239,7 +239,7 @@
 
 
 <div class="viewcode-block" id="convolve_ssp_model">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.kinematics.convolve_ssp_model">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_ssp_model">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_ssp_model</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">los_sigma</span><span class="p">,</span> <span class="n">los_vel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
     <span class="n">velscale</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;velscale&quot;</span><span class="p">]</span>
     <span class="n">oversampling</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;oversampling&quot;</span><span class="p">])</span>

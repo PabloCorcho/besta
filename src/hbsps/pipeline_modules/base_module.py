@@ -17,9 +17,9 @@ from cosmosis.datablock import SectionOptions, option_section
 from pst.observables import Filter
 from pst import SSP, dust
 
-from hbsps import spectrum
-from hbsps import sfh
-from hbsps.config import cosmology
+from besta import spectrum
+from besta import sfh
+from besta.config import cosmology
 
 
 class BaseModule(ClassModule):

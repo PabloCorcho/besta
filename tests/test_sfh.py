@@ -5,7 +5,7 @@ from astropy import units as u
 
 from cosmosis import DataBlock
 
-from hbsps import sfh
+from besta import sfh
 
 import pst
 

@@ -1,7 +1,7 @@
-hbsps
+besta
 =====
 
 .. toctree::
    :maxdepth: 4
 
-   hbsps
+   besta

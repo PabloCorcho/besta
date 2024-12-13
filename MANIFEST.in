@@ -1,4 +1,4 @@
-include src/hbsps/besta-config.yml
+include src/besta/besta-config.yml
 
 include *.toml                                                                  
 include *.txt

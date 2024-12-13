@@ -2,8 +2,8 @@ import unittest
 import os
 from cosmosis import DataBlock
 
-from hbsps.pipeline_modules.kin_dust import KinDustModule
-from hbsps.pipeline_modules.sfh_spectra import SFHSpectraModule
+from besta.pipeline_modules.kin_dust import KinDustModule
+from besta.pipeline_modules.sfh_spectra import SFHSpectraModule
 
 class TestPipelineModule(unittest.TestCase):
 
@@ -19,7 +19,7 @@ class TestPipelineModule(unittest.TestCase):
                 "save_ssp": "/path/to/ssp_output.txt",
                 "file": KinDustModule.get_path(),
                 "redshift": 0.0,
-                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-hbsps/generate_mock_data/exponential/input_spectra.dat",
+                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-besta/generate_mock_data/exponential/input_spectra.dat",
                 "SSPModel": "PyPopStar",
                 "SSPModelArgs": "KRO",
                 "SSPDir": "None",
@@ -50,7 +50,7 @@ class TestPipelineModule(unittest.TestCase):
         config = {"SFHSpectra": {
                 "file": SFHSpectraModule.get_path(),
                 "redshift": 0.0,
-                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-hbsps/generate_mock_data/exponential/input_spectra.dat",
+                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-besta/generate_mock_data/exponential/input_spectra.dat",
                 "SSPModel": "PyPopStar",
                 "SSPModelArgs": "KRO",
                 "SSPDir": "None",

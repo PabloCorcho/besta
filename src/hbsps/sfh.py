@@ -8,7 +8,7 @@ from astropy import units as u
 from cosmosis import DataBlock
 import pst
 
-from hbsps.config import cosmology
+from besta.config import cosmology
 
 
 # Star formation history models

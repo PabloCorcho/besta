@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
@@ -43,7 +43,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">hbsps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">besta</a></li>
 </ul>
 
         </div>
@@ -61,7 +61,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">hbsps.pipeline_modules.base_module</li>
+      <li class="breadcrumb-item active">besta.pipeline_modules.base_module</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -70,7 +70,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for hbsps.pipeline_modules.base_module</h1><div class="highlight"><pre>
+  <h1>Source code for besta.pipeline_modules.base_module</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Base pipeline module. This module contains the base class for creating new</span>
 <span class="sd">pipeline modules in BESTA.</span>
@@ -90,25 +90,25 @@
 <span class="kn">from</span> <span class="nn">pst.observables</span> <span class="kn">import</span> <span class="n">Filter</span>
 <span class="kn">from</span> <span class="nn">pst</span> <span class="kn">import</span> <span class="n">SSP</span><span class="p">,</span> <span class="n">dust</span>
 
-<span class="kn">from</span> <span class="nn">hbsps</span> <span class="kn">import</span> <span class="n">specBasics</span>
-<span class="kn">from</span> <span class="nn">hbsps</span> <span class="kn">import</span> <span class="n">sfh</span>
-<span class="kn">from</span> <span class="nn">hbsps.utils</span> <span class="kn">import</span> <span class="n">cosmology</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">specBasics</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">sfh</span>
+<span class="kn">from</span> <span class="nn">besta.utils</span> <span class="kn">import</span> <span class="n">cosmology</span>
 
 
 <div class="viewcode-block" id="BaseModule">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule">[docs]</a>
 <span class="k">class</span> <span class="nc">BaseModule</span><span class="p">(</span><span class="n">ClassModule</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;BESTA Pipeline module base class.&quot;&quot;&quot;</span>
 
 <div class="viewcode-block" id="BaseModule.make_observable">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.make_observable">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.make_observable">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">make_observable</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create an observable from an input set of model parameters.&quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="BaseModule.execute">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.execute">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.execute">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the pipeline.&quot;&quot;&quot;</span>
@@ -116,7 +116,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.get_path">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.get_path">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.get_path">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">get_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the path to the module file.&quot;&quot;&quot;</span>
@@ -124,7 +124,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.parse_options">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.parse_options">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.parse_options">[docs]</a>
     <span class="k">def</span> <span class="nf">parse_options</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="n">DataBlock</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse the input setup options.</span>
 
@@ -150,7 +150,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_observed_spectra">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.prepare_observed_spectra">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_spectra">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_observed_spectra</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">luminosity</span><span class="o">=</span><span class="kc">False</span>
     <span class="p">):</span>
@@ -246,7 +246,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_observed_photometry">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.prepare_observed_photometry">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_photometry">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_observed_photometry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the Photometric Data.</span>
 
@@ -280,7 +280,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_ssp_model">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.prepare_ssp_model">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_ssp_model">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_ssp_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">velocity_buffer</span><span class="o">=</span><span class="mf">300.0</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the SSP data.</span>
 
@@ -405,7 +405,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_extinction_law">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.prepare_extinction_law">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_extinction_law">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_extinction_law</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare an dust extinction model.</span>
 
@@ -423,7 +423,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_sfh_model">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.prepare_sfh_model">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_sfh_model">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_sfh_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the SFH model.</span>
 
@@ -451,7 +451,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.log_like">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#hbsps.pipeline_modules.BaseModule.log_like">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.log_like">[docs]</a>
     <span class="k">def</span> <span class="nf">log_like</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">cov</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the likelihood between an input data set and a model.</span>
 

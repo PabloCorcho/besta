@@ -387,7 +387,7 @@ def compute_chain_percentiles(chain_results, pct=[0.5, 0.16, 0.50, 0.84, 0.95]):
 
 if __name__ == "__main__":
     table = read_results_file(
-        "/home/pcorchoc/Develop/HBSPS/output/photometry/illustris_dust_and_redshift/subhalo_484448/SFH_results.txt"
+        "/home/pcorchoc/Develop/besta/output/photometry/illustris_dust_and_redshift/subhalo_484448/SFH_results.txt"
     )
     compute_pdf_from_results(
         table,

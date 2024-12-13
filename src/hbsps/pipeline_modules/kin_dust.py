@@ -1,10 +1,10 @@
-from hbsps.pipeline_modules.base_module import BaseModule
+from besta.pipeline_modules.base_module import BaseModule
 import numpy as np
 from scipy.optimize import nnls
 
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
-from hbsps import kinematics
+from besta import kinematics
 
 class KinDustModule(BaseModule):
     name = "KinDust"

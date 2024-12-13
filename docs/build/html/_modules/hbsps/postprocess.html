@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.postprocess &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.postprocess &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
@@ -43,7 +43,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">hbsps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">besta</a></li>
 </ul>
 
         </div>
@@ -61,7 +61,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">hbsps.postprocess</li>
+      <li class="breadcrumb-item active">besta.postprocess</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -70,7 +70,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for hbsps.postprocess</h1><div class="highlight"><pre>
+  <h1>Source code for besta.postprocess</h1><div class="highlight"><pre>
 <span></span><span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">from</span> <span class="nn">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
@@ -82,7 +82,7 @@
 
 
 <div class="viewcode-block" id="read_results_file">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.postprocess.read_results_file">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.postprocess.read_results_file">[docs]</a>
 <span class="k">def</span> <span class="nf">read_results_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the results produced during a cosmosis run.</span>
 
@@ -109,7 +109,7 @@
 
 
 <div class="viewcode-block" id="compute_fraction_from_map">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.postprocess.compute_fraction_from_map">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.postprocess.compute_fraction_from_map">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_fraction_from_map</span><span class="p">(</span><span class="n">distribution</span><span class="p">,</span> <span class="n">xedges</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">yedges</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the enclosed probability map associated to a given 2D distribution.</span>
 
@@ -141,7 +141,7 @@
 
 
 <div class="viewcode-block" id="compute_pdf_from_results">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.postprocess.compute_pdf_from_results">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.postprocess.compute_pdf_from_results">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_pdf_from_results</span><span class="p">(</span>
     <span class="n">table</span><span class="p">,</span>
     <span class="n">output_filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -351,7 +351,7 @@
 
 
 <div class="viewcode-block" id="make_plot_chains">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.postprocess.make_plot_chains">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.postprocess.make_plot_chains">[docs]</a>
 <span class="k">def</span> <span class="nf">make_plot_chains</span><span class="p">(</span><span class="n">chain_results</span><span class="p">,</span> <span class="n">truth_values</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">):</span>
     <span class="n">parameters</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span> <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="n">chain_results</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">par</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">truth_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -372,7 +372,7 @@
 
 
 <div class="viewcode-block" id="compute_chain_percentiles">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.postprocess.compute_chain_percentiles">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.postprocess.compute_chain_percentiles">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_chain_percentiles</span><span class="p">(</span><span class="n">chain_results</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">]):</span>
     <span class="n">parameters</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span> <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="n">chain_results</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">par</span><span class="p">]</span>
     <span class="n">pct_resutls</span> <span class="o">=</span> <span class="p">{}</span>
@@ -387,7 +387,7 @@
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
     <span class="n">table</span> <span class="o">=</span> <span class="n">read_results_file</span><span class="p">(</span>
-        <span class="s2">&quot;/home/pcorchoc/Develop/HBSPS/output/photometry/illustris_dust_and_redshift/subhalo_484448/SFH_results.txt&quot;</span>
+        <span class="s2">&quot;/home/pcorchoc/Develop/besta/output/photometry/illustris_dust_and_redshift/subhalo_484448/SFH_results.txt&quot;</span>
     <span class="p">)</span>
     <span class="n">compute_pdf_from_results</span><span class="p">(</span>
         <span class="n">table</span><span class="p">,</span>

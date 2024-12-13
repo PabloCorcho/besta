@@ -9,8 +9,8 @@ from astropy.convolution.kernels import Model1DKernel
 from astropy import units as u
 from astropy.convolution import convolve, convolve_fft
 
-from hbsps import spectrum
-from hbsps import config
+from besta import spectrum
+from besta import config
 
 class GaussHermite(Fittable1DModel):
     """Gauss-Hermite model."""

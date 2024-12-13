@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>hbsps.specBasics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.165.g807eeef documentation</title>
+  <title>besta.specBasics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.165.g807eeef documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
@@ -42,7 +42,7 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">hbsps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">besta</a></li>
 </ul>
 
         </div>
@@ -60,7 +60,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">hbsps.specBasics</li>
+      <li class="breadcrumb-item active">besta.specBasics</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -69,7 +69,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for hbsps.specBasics</h1><div class="highlight"><pre>
+  <h1>Source code for besta.specBasics</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;spectra module.</span>
 
 <span class="sd">This module contains classes and functions related</span>
@@ -84,7 +84,7 @@
 
 
 <div class="viewcode-block" id="log_rebin">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.log_rebin">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.log_rebin">[docs]</a>
 <span class="k">def</span> <span class="nf">log_rebin</span><span class="p">(</span><span class="n">lam</span><span class="p">,</span> <span class="n">spec</span><span class="p">,</span> <span class="n">velscale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">oversample</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">flux</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Logarithmically rebin a spectrum, or the first dimension of an array of</span>
@@ -211,7 +211,7 @@
 
 
 <div class="viewcode-block" id="smoothSpectrum">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.smoothSpectrum">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.smoothSpectrum">[docs]</a>
 <span class="k">def</span> <span class="nf">smoothSpectrum</span><span class="p">(</span><span class="n">wavelength</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Smooth spectrum to a given velocity dispersion.</span>
 
@@ -236,7 +236,7 @@
 
 
 <div class="viewcode-block" id="smoothSpectra">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.smoothSpectra">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.smoothSpectra">[docs]</a>
 <span class="k">def</span> <span class="nf">smoothSpectra</span><span class="p">(</span><span class="n">wavelength</span><span class="p">,</span> <span class="n">S</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Smooth spectra in matrix with stellar spectra to a given velocity dispersion.</span>
 
@@ -265,7 +265,7 @@
 
 
 <div class="viewcode-block" id="smoothSpectrumFast">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.smoothSpectrumFast">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.smoothSpectrumFast">[docs]</a>
 <span class="k">def</span> <span class="nf">smoothSpectrumFast</span><span class="p">(</span><span class="n">spectrum</span><span class="p">,</span> <span class="n">sigmaPixel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Fast spectrum smoothing.</span>
 
@@ -291,7 +291,7 @@
 
 
 <div class="viewcode-block" id="getGaussianLP">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.getGaussianLP">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.getGaussianLP">[docs]</a>
 <span class="k">def</span> <span class="nf">getGaussianLP</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">wc</span><span class="p">,</span> <span class="n">wstd</span><span class="p">,</span> <span class="n">norm</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Calculate Gaussian line profile for local covariance structure&quot;&quot;&quot;</span>
     <span class="n">glp</span> <span class="o">=</span> <span class="n">norm</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">((</span><span class="n">w</span> <span class="o">-</span> <span class="n">wc</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">wstd</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span>
@@ -301,7 +301,7 @@
 
 
 <div class="viewcode-block" id="losvd">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.losvd">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.losvd">[docs]</a>
 <span class="k">def</span> <span class="nf">losvd</span><span class="p">(</span><span class="n">vel_pixel</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
     <span class="n">y</span> <span class="o">=</span> <span class="n">vel_pixel</span> <span class="o">/</span> <span class="n">sigma_pixel</span>
     <span class="n">g</span> <span class="o">=</span> <span class="p">(</span>
@@ -319,7 +319,7 @@
 
 
 <div class="viewcode-block" id="getLegendrePolynomial">
-<a class="viewcode-back" href="../../hbsps.html#hbsps.specBasics.getLegendrePolynomial">[docs]</a>
+<a class="viewcode-back" href="../../besta.html#besta.specBasics.getLegendrePolynomial">[docs]</a>
 <span class="k">def</span> <span class="nf">getLegendrePolynomial</span><span class="p">(</span><span class="n">wavelength</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
     <span class="n">nBins</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wavelength</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">bounds</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>

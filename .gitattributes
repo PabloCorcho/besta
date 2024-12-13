@@ -1,1 +1,1 @@
-src/hbsps/_version.py export-subst
+src/besta/_version.py export-subst
