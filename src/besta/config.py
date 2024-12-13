@@ -25,7 +25,7 @@ if "cosmology" in config_file:
                        + "cosmology name")
     # Initialising some cosmologies require some input parameters
     if "args" in config_file["cosmology"]:
-        cosmology(**config_file["cosmology"]["args"])
+        cosmology = cosmology(**config_file["cosmology"]["args"])
 else:
     print("Using default cosmology")
     cosmology = astropy_cosmology.FlatLambdaCDM(H0=70., Om0=0.28)
