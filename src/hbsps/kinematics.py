@@ -1,3 +1,4 @@
+"""This module contains the tools for modelling kinematic effects on spectra."""
 import numpy as np
 import re
 from scipy.signal import fftconvolve
@@ -9,7 +10,7 @@ from astropy import units as u
 from astropy.convolution import convolve, convolve_fft
 
 from hbsps import specBasics
-
+from hbsps import config
 
 class GaussHermite(Fittable1DModel):
     """Gauss-Hermite model."""
@@ -90,6 +91,20 @@ class GaussHermite(Fittable1DModel):
 
         return f
 
+#TODO : remove and homogeneize
+def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
+    y = vel_pixel / sigma_pixel
+    g = (
+        np.exp(-(y**2) / 2)
+        / sigma_pixel
+        / np.sqrt(2 * np.pi)
+        * (
+            1
+            + h3 * (y * (2 * y**2 - 3) / np.sqrt(3))  # H3
+            + h4 * ((4 * (y**2 - 3) * y**2 + 3) / np.sqrt(24))  # H4
+        )
+    )
+    return g
 
 def get_losvd_kernel(kernel_model, x_size):
     """Create a ``Model1DKernel`` from an input ``Model``.
@@ -135,16 +150,18 @@ def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     # Kinematics
     sigma_pixel = los_sigma / velscale
     veloffset_pixel = los_vel / velscale
-    x = np.arange(-5 * sigma_pixel, 5 * sigma_pixel) - veloffset_pixel
-    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel,
-                                    h3=los_h3, h4=los_h4)
+    x = np.arange(
+        - config.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+        config.kinematics["lsf_sigma_truncation"] * sigma_pixel
+        ) - veloffset_pixel
+    losvd_kernel = losvd(x, sigma_pixel=sigma_pixel, h3=los_h3, h4=los_h4)
     sed = fftconvolve(ssp_sed, np.atleast_2d(losvd_kernel), mode="same", axes=1)
     # Rebin model spectra to observed grid
     sed = sed[:, extra_pixels : - extra_pixels]
     ### Mask pixels at the edges with artifacts produced by the convolution
     mask = np.ones_like(flux, dtype=bool)
-    mask[: int(5 * sigma_pixel)] = False
-    mask[-int(5 * sigma_pixel) :] = False
+    mask[: int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel)] = False
+    mask[-int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel) :] = False
     return sed, mask
 
 def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
@@ -155,7 +172,10 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
     # Kinematics
     sigma_pixel = los_sigma / velscale
     veloffset_pixel = los_vel / velscale
-    x = np.arange(-8 * sigma_pixel, 8 * sigma_pixel) - veloffset_pixel
+    x = np.arange(
+        - config.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+        config.kinematics["lsf_sigma_truncation"] * sigma_pixel
+        ) - veloffset_pixel
     losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
     ssp.L_lambda = fftconvolve(ssp.L_lambda.value,
                       losvd_kernel[np.newaxis, np.newaxis], mode="same", axes=2
@@ -170,6 +190,6 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
         ssp.wavelength = wl
     ### Mask pixels at the edges with artifacts produced by the convolution
     mask = np.ones(wl.size, dtype=bool)
-    mask[: int(5 * sigma_pixel)] = False
-    mask[-int(5 * sigma_pixel) :] = False
+    mask[: int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel)] = False
+    mask[-int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel) :] = False
     return ssp, mask
