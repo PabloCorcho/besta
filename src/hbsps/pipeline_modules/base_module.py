@@ -19,7 +19,7 @@ from pst import SSP, dust
 
 from hbsps import specBasics
 from hbsps import sfh
-from hbsps.utils import cosmology
+from hbsps.config import cosmology
 
 
 class BaseModule(ClassModule):
