@@ -1,3 +1,4 @@
+"""Module dedicated to read and manipulate the output products of BESTA."""
 import os
 import numpy as np
 import cosmosis

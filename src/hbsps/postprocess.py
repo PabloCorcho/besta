@@ -1,3 +1,6 @@
+"""
+Module dedicated to the post-processing of data produced by BESTA.
+"""
 import os
 import numpy as np
 from matplotlib import pyplot as plt
