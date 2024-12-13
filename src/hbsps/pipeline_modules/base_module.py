@@ -17,7 +17,7 @@ from cosmosis.datablock import SectionOptions, option_section
 from pst.observables import Filter
 from pst import SSP, dust
 
-from hbsps import specBasics
+from hbsps import spectrum
 from hbsps import sfh
 from hbsps.config import cosmology
 
@@ -120,11 +120,11 @@ class BaseModule(ClassModule):
             velscale = None
         print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
         # Update the value of velscale
-        flux, ln_wave, velscale = specBasics.log_rebin(
+        flux, ln_wave, velscale = spectrum.log_rebin(
             wavelength, flux, velscale=velscale
         )
-        cov, _, _ = specBasics.log_rebin(wavelength, cov, velscale=velscale)
-        weights, _, _ = specBasics.log_rebin(wavelength, weights, velscale=velscale)
+        cov, _, _ = spectrum.log_rebin(wavelength, cov, velscale=velscale)
+        weights, _, _ = spectrum.log_rebin(wavelength, weights, velscale=velscale)
         wavelength = np.exp(ln_wave)
         print("Number of pixels after interpolation: ", wavelength.size)
         # Normalize spectra
@@ -239,7 +239,7 @@ class BaseModule(ClassModule):
             print(f"Loading SSP model from input directory: {ssp_dir}")
 
         # Rebin the spectra
-        dlnlam = velscale / specBasics.constants.c.to("km/s").value
+        dlnlam = velscale / spectrum.constants.c.to("km/s").value
         extra_offset_pixel = int(velocity_buffer / velscale)
         print("Log-binning SSP spectra to velocity scale: ", velscale, " km/s",
               f"\nKeeping {extra_offset_pixel} extra pixels at both edges")

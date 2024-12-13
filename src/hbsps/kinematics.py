@@ -9,7 +9,7 @@ from astropy.convolution.kernels import Model1DKernel
 from astropy import units as u
 from astropy.convolution import convolve, convolve_fft
 
-from hbsps import specBasics
+from hbsps import spectrum
 from hbsps import config
 
 class GaussHermite(Fittable1DModel):
@@ -176,7 +176,7 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
         - config.kinematics["lsf_sigma_truncation"] * sigma_pixel,
         config.kinematics["lsf_sigma_truncation"] * sigma_pixel
         ) - veloffset_pixel
-    losvd_kernel = specBasics.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
+    losvd_kernel = spectrum.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
     ssp.L_lambda = fftconvolve(ssp.L_lambda.value,
                       losvd_kernel[np.newaxis, np.newaxis], mode="same", axes=2
                       ) * ssp.L_lambda.unit
