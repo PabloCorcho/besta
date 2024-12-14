@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=394d8e05"></script>
+      <script src="../../_static/documentation_options.js?v=7f5de030"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -30,7 +30,7 @@
           
           <a href="../../index.html">
             
-              <img src="../../_static/besta.png" class="logo" alt="Logo"/>
+              <img src="../../_static/besta_transparent.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -71,7 +71,8 @@
            <div itemprop="articleBody">
              
   <h1>Source code for besta.kinematics</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span></span><span class="sd">&quot;&quot;&quot;This module contains the tools for modelling kinematic effects on spectra.&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">from</span> <span class="nn">scipy.signal</span> <span class="kn">import</span> <span class="n">fftconvolve</span>
 <span class="kn">from</span> <span class="nn">astropy.modeling</span> <span class="kn">import</span> <span class="n">Fittable1DModel</span>
@@ -81,11 +82,11 @@
 <span class="kn">from</span> <span class="nn">astropy</span> <span class="kn">import</span> <span class="n">units</span> <span class="k">as</span> <span class="n">u</span>
 <span class="kn">from</span> <span class="nn">astropy.convolution</span> <span class="kn">import</span> <span class="n">convolve</span><span class="p">,</span> <span class="n">convolve_fft</span>
 
-<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">specBasics</span>
-
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">spectrum</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">config</span>
 
 <div class="viewcode-block" id="GaussHermite">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.GaussHermite">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.GaussHermite">[docs]</a>
 <span class="k">class</span> <span class="nc">GaussHermite</span><span class="p">(</span><span class="n">Fittable1DModel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Gauss-Hermite model.&quot;&quot;&quot;</span>
     <span class="n">_param_names</span> <span class="o">=</span> <span class="p">()</span>
@@ -157,7 +158,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_names</span>
 
 <div class="viewcode-block" id="GaussHermite.evaluate">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.GaussHermite.evaluate">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.GaussHermite.evaluate">[docs]</a>
     <span class="k">def</span> <span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">params</span><span class="p">):</span>
 
         <span class="n">a</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>                      <span class="c1"># amplitude, mean, stddev</span>
@@ -169,9 +170,26 @@
 </div>
 
 
+<span class="c1">#TODO : remove and homogeneize</span>
+<div class="viewcode-block" id="losvd">
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.losvd">[docs]</a>
+<span class="k">def</span> <span class="nf">losvd</span><span class="p">(</span><span class="n">vel_pixel</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">vel_pixel</span> <span class="o">/</span> <span class="n">sigma_pixel</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">y</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="o">/</span> <span class="n">sigma_pixel</span>
+        <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+        <span class="o">*</span> <span class="p">(</span>
+            <span class="mi">1</span>
+            <span class="o">+</span> <span class="n">h3</span> <span class="o">*</span> <span class="p">(</span><span class="n">y</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">y</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>  <span class="c1"># H3</span>
+            <span class="o">+</span> <span class="n">h4</span> <span class="o">*</span> <span class="p">((</span><span class="mi">4</span> <span class="o">*</span> <span class="p">(</span><span class="n">y</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="n">y</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">24</span><span class="p">))</span>  <span class="c1"># H4</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">g</span></div>
+
 
 <div class="viewcode-block" id="get_losvd_kernel">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.get_losvd_kernel">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.get_losvd_kernel">[docs]</a>
 <span class="k">def</span> <span class="nf">get_losvd_kernel</span><span class="p">(</span><span class="n">kernel_model</span><span class="p">,</span> <span class="n">x_size</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a ``Model1DKernel`` from an input ``Model``.</span>
 <span class="sd">    </span>
@@ -191,7 +209,7 @@
 
 
 <div class="viewcode-block" id="convolve_spectra_with_kernel">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_spectra_with_kernel">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.convolve_spectra_with_kernel">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_spectra_with_kernel</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">kernel</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve an input spectra with a given kernel.</span>
 <span class="sd">    </span>
@@ -207,59 +225,56 @@
 <span class="sd">    convolved_spectra : np.ndarray</span>
 <span class="sd">        Spectra convolved with the input kernel.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">convolve</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">kernel</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">convolve</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">boundary</span><span class="o">=</span><span class="s2">&quot;fill&quot;</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+                    <span class="n">normalize_kernel</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="convolve_ssp">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_ssp">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.convolve_ssp">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_ssp</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">los_sigma</span><span class="p">,</span> <span class="n">los_vel</span><span class="p">,</span> <span class="n">los_h3</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">los_h4</span><span class="o">=</span><span class="mf">0.</span><span class="p">):</span>
     <span class="n">velscale</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;velscale&quot;</span><span class="p">]</span>
-    <span class="n">oversampling</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;oversampling&quot;</span><span class="p">]</span>
     <span class="n">extra_pixels</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;extra_pixels&quot;</span><span class="p">]</span>
     <span class="n">ssp_sed</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_sed&quot;</span><span class="p">]</span>
     <span class="n">flux</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;flux&quot;</span><span class="p">]</span>
     <span class="c1"># Kinematics</span>
-    <span class="n">sigma_pixel</span> <span class="o">=</span> <span class="n">los_sigma</span> <span class="o">/</span> <span class="p">(</span><span class="n">velscale</span> <span class="o">/</span> <span class="n">oversampling</span><span class="p">)</span>
-    <span class="n">veloffset_pixel</span> <span class="o">=</span> <span class="n">los_vel</span> <span class="o">/</span> <span class="p">(</span><span class="n">velscale</span> <span class="o">/</span> <span class="n">oversampling</span><span class="p">)</span>
-    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="o">-</span> <span class="n">veloffset_pixel</span>
-    <span class="n">losvd_kernel</span> <span class="o">=</span> <span class="n">specBasics</span><span class="o">.</span><span class="n">losvd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">sigma_pixel</span><span class="p">,</span>
-                                    <span class="n">h3</span><span class="o">=</span><span class="n">los_h3</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="n">los_h4</span><span class="p">)</span>
+    <span class="n">sigma_pixel</span> <span class="o">=</span> <span class="n">los_sigma</span> <span class="o">/</span> <span class="n">velscale</span>
+    <span class="n">veloffset_pixel</span> <span class="o">=</span> <span class="n">los_vel</span> <span class="o">/</span> <span class="n">velscale</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
+        <span class="o">-</span> <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">,</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span>
+        <span class="p">)</span> <span class="o">-</span> <span class="n">veloffset_pixel</span>
+    <span class="n">losvd_kernel</span> <span class="o">=</span> <span class="n">losvd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">sigma_pixel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="n">los_h3</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="n">los_h4</span><span class="p">)</span>
     <span class="n">sed</span> <span class="o">=</span> <span class="n">fftconvolve</span><span class="p">(</span><span class="n">ssp_sed</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">losvd_kernel</span><span class="p">),</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;same&quot;</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
     <span class="c1"># Rebin model spectra to observed grid</span>
-    <span class="n">sed</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">sed</span><span class="p">[:,</span> <span class="n">extra_pixels</span> <span class="o">*</span> <span class="n">oversampling</span> <span class="p">:</span> <span class="o">-</span><span class="p">(</span><span class="n">extra_pixels</span> <span class="o">*</span> <span class="n">oversampling</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
-        <span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">sed</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">flux</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">oversampling</span><span class="p">))</span>
-        <span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
-    <span class="p">)</span>
+    <span class="n">sed</span> <span class="o">=</span> <span class="n">sed</span><span class="p">[:,</span> <span class="n">extra_pixels</span> <span class="p">:</span> <span class="o">-</span> <span class="n">extra_pixels</span><span class="p">]</span>
     <span class="c1">### Mask pixels at the edges with artifacts produced by the convolution</span>
     <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">flux</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-    <span class="n">mask</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="nb">int</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">mask</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="n">sed</span><span class="p">,</span> <span class="n">mask</span></div>
 
 
 <div class="viewcode-block" id="convolve_ssp_model">
-<a class="viewcode-back" href="../../besta.html#besta.kinematics.convolve_ssp_model">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.kinematics.convolve_ssp_model">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_ssp_model</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">los_sigma</span><span class="p">,</span> <span class="n">los_vel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
     <span class="n">velscale</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;velscale&quot;</span><span class="p">]</span>
-    <span class="n">oversampling</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;oversampling&quot;</span><span class="p">])</span>
     <span class="n">extra_pixels</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;extra_pixels&quot;</span><span class="p">])</span>
     <span class="n">ssp</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">]</span>
     <span class="n">wl</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;wavelength&#39;</span><span class="p">]</span>
     <span class="c1"># Kinematics</span>
-    <span class="n">sigma_pixel</span> <span class="o">=</span> <span class="n">los_sigma</span> <span class="o">/</span> <span class="p">(</span><span class="n">velscale</span> <span class="o">/</span> <span class="n">oversampling</span><span class="p">)</span>
-    <span class="n">veloffset_pixel</span> <span class="o">=</span> <span class="n">los_vel</span> <span class="o">/</span> <span class="p">(</span><span class="n">velscale</span> <span class="o">/</span> <span class="n">oversampling</span><span class="p">)</span>
-    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mi">8</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">,</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="o">-</span> <span class="n">veloffset_pixel</span>
-    <span class="n">losvd_kernel</span> <span class="o">=</span> <span class="n">specBasics</span><span class="o">.</span><span class="n">losvd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">sigma_pixel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="n">h3</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="n">h4</span><span class="p">)</span>
+    <span class="n">sigma_pixel</span> <span class="o">=</span> <span class="n">los_sigma</span> <span class="o">/</span> <span class="n">velscale</span>
+    <span class="n">veloffset_pixel</span> <span class="o">=</span> <span class="n">los_vel</span> <span class="o">/</span> <span class="n">velscale</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
+        <span class="o">-</span> <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">,</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span>
+        <span class="p">)</span> <span class="o">-</span> <span class="n">veloffset_pixel</span>
+    <span class="n">losvd_kernel</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">losvd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">sigma_pixel</span><span class="p">,</span> <span class="n">h3</span><span class="o">=</span><span class="n">h3</span><span class="p">,</span> <span class="n">h4</span><span class="o">=</span><span class="n">h4</span><span class="p">)</span>
     <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span> <span class="o">=</span> <span class="n">fftconvolve</span><span class="p">(</span><span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
                       <span class="n">losvd_kernel</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">],</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;same&quot;</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="mi">2</span>
                       <span class="p">)</span> <span class="o">*</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">unit</span>
-
     <span class="c1"># Rebin model spectra to observed grid</span>
-    <span class="n">pixels</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">extra_pixels</span> <span class="o">*</span> <span class="n">oversampling</span><span class="p">,</span>  <span class="o">-</span><span class="p">(</span><span class="n">extra_pixels</span> <span class="o">*</span> <span class="n">oversampling</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">pixels</span><span class="p">)</span>
-    <span class="n">new_sed</span> <span class="o">=</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">pixels</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-                                                  <span class="n">wl</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">oversampling</span><span class="p">))</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">pixels</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">extra_pixels</span><span class="p">,</span>  <span class="o">-</span> <span class="n">extra_pixels</span><span class="p">)</span>
+    <span class="n">new_sed</span> <span class="o">=</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">pixels</span><span class="p">]</span>
     <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span> <span class="o">=</span> <span class="n">new_sed</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">wl</span><span class="p">,</span> <span class="n">u</span><span class="o">.</span><span class="n">Quantity</span><span class="p">):</span>
         <span class="n">ssp</span><span class="o">.</span><span class="n">wavelength</span> <span class="o">=</span> <span class="n">wl</span> <span class="o">*</span> <span class="n">ssp</span><span class="o">.</span><span class="n">wavelength</span><span class="o">.</span><span class="n">unit</span>
@@ -267,8 +282,8 @@
         <span class="n">ssp</span><span class="o">.</span><span class="n">wavelength</span> <span class="o">=</span> <span class="n">wl</span>
     <span class="c1">### Mask pixels at the edges with artifacts produced by the convolution</span>
     <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">wl</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-    <span class="n">mask</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="nb">int</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">mask</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="n">ssp</span><span class="p">,</span> <span class="n">mask</span></div>
 
 </pre></div>

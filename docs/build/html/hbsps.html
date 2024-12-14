@@ -6,22 +6,20 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta package &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=394d8e05"></script>
+      <script src="_static/documentation_options.js?v=7f5de030"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="besta.pipeline_modules package" href="besta.pipeline_modules.html" />
-    <link rel="prev" title="besta" href="modules.html" /> 
+    <link rel="search" title="Search" href="search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,84 +43,9 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="modules.html">besta</a><ul class="current">
-<li class="toctree-l2 current"><a class="current reference internal" href="#">besta package</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#subpackages">Subpackages</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html">besta.pipeline_modules package</a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#submodules">Submodules</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.dust_extinction">besta.dust_extinction module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.dust_extinction.redden_ssp_model"><code class="docutils literal notranslate"><span class="pre">redden_ssp_model()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.dust_extinction.redden_spectra"><code class="docutils literal notranslate"><span class="pre">redden_spectra()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.dust_extinction.deredden_spectra"><code class="docutils literal notranslate"><span class="pre">deredden_spectra()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.dust_extinction.DustScreen"><code class="docutils literal notranslate"><span class="pre">DustScreen</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.kinematics">besta.kinematics module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.kinematics.GaussHermite"><code class="docutils literal notranslate"><span class="pre">GaussHermite</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.kinematics.get_losvd_kernel"><code class="docutils literal notranslate"><span class="pre">get_losvd_kernel()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.kinematics.convolve_spectra_with_kernel"><code class="docutils literal notranslate"><span class="pre">convolve_spectra_with_kernel()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.kinematics.convolve_ssp"><code class="docutils literal notranslate"><span class="pre">convolve_ssp()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.kinematics.convolve_ssp_model"><code class="docutils literal notranslate"><span class="pre">convolve_ssp_model()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.masking">besta.masking module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.output">besta.output module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.make_ini_file"><code class="docutils literal notranslate"><span class="pre">make_ini_file()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.make_values_file"><code class="docutils literal notranslate"><span class="pre">make_values_file()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader"><code class="docutils literal notranslate"><span class="pre">Reader</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.pipeline">besta.pipeline module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline"><code class="docutils literal notranslate"><span class="pre">MainPipeline</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.postprocess">besta.postprocess module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.postprocess.read_results_file"><code class="docutils literal notranslate"><span class="pre">read_results_file()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.postprocess.compute_fraction_from_map"><code class="docutils literal notranslate"><span class="pre">compute_fraction_from_map()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.postprocess.compute_pdf_from_results"><code class="docutils literal notranslate"><span class="pre">compute_pdf_from_results()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.postprocess.make_plot_chains"><code class="docutils literal notranslate"><span class="pre">make_plot_chains()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.postprocess.compute_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">compute_chain_percentiles()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#besta-prepare-fit-module">besta.prepare_fit module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.sfh">besta.sfh module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase"><code class="docutils literal notranslate"><span class="pre">SFHBase</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ZPowerLawMixin"><code class="docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin"><code class="docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTimeSFH"><code class="docutils literal notranslate"><span class="pre">FixedTimeSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedCosmicTimeSFH"><code class="docutils literal notranslate"><span class="pre">FixedCosmicTimeSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FlexibleCosmicTimeSFH"><code class="docutils literal notranslate"><span class="pre">FlexibleCosmicTimeSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTime_sSFR_SFH"><code class="docutils literal notranslate"><span class="pre">FixedTime_sSFR_SFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedMassFracSFH"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ExponentialSFH"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauQuenchedSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.specBasics">besta.specBasics module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.log_rebin"><code class="docutils literal notranslate"><span class="pre">log_rebin()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.smoothSpectrum"><code class="docutils literal notranslate"><span class="pre">smoothSpectrum()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.smoothSpectra"><code class="docutils literal notranslate"><span class="pre">smoothSpectra()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.smoothSpectrumFast"><code class="docutils literal notranslate"><span class="pre">smoothSpectrumFast()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.getGaussianLP"><code class="docutils literal notranslate"><span class="pre">getGaussianLP()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.losvd"><code class="docutils literal notranslate"><span class="pre">losvd()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.specBasics.getLegendrePolynomial"><code class="docutils literal notranslate"><span class="pre">getLegendrePolynomial()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="#module-besta.utils">besta.utils module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.utils.read_chain_file"><code class="docutils literal notranslate"><span class="pre">read_chain_file()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">besta</a></li>
 </ul>
 
         </div>
@@ -139,10 +62,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-          <li class="breadcrumb-item"><a href="modules.html">besta</a></li>
       <li class="breadcrumb-item active">besta package</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/besta.rst.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/hbsps.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -155,165 +77,21 @@
 <section id="subpackages">
 <h2>Subpackages<a class="headerlink" href="#subpackages" title="Link to this heading"></a></h2>
 <div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html">besta.pipeline_modules package</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule"><code class="docutils literal notranslate"><span class="pre">BaseModule</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.make_observable"><code class="docutils literal notranslate"><span class="pre">BaseModule.make_observable()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.execute"><code class="docutils literal notranslate"><span class="pre">BaseModule.execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.get_path"><code class="docutils literal notranslate"><span class="pre">BaseModule.get_path()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.parse_options"><code class="docutils literal notranslate"><span class="pre">BaseModule.parse_options()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_spectra"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_observed_spectra()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_photometry"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_observed_photometry()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_ssp_model"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_ssp_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_extinction_law"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_extinction_law()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_sfh_model"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_sfh_model()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.BaseModule.log_like"><code class="docutils literal notranslate"><span class="pre">BaseModule.log_like()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule"><code class="docutils literal notranslate"><span class="pre">KinDustModule</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.name"><code class="docutils literal notranslate"><span class="pre">KinDustModule.name</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.__init__"><code class="docutils literal notranslate"><span class="pre">KinDustModule.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.make_observable"><code class="docutils literal notranslate"><span class="pre">KinDustModule.make_observable()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.execute"><code class="docutils literal notranslate"><span class="pre">KinDustModule.execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.cleanup"><code class="docutils literal notranslate"><span class="pre">KinDustModule.cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule.name"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.name</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule.__init__"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule.make_observable"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.make_observable()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule.execute"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.execute()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHPhotometryModule"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHPhotometryModule.name"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.name</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHPhotometryModule.__init__"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHPhotometryModule.make_observable"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.make_observable()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHPhotometryModule.execute"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.execute()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule</span></code></a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule.name"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.name</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule.__init__"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.__init__()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule.make_observable"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.make_observable()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule.execute"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.FullSpectralFitModule.cleanup"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#submodules">Submodules</a></li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#module-besta.pipeline_modules.base_module">besta.pipeline_modules.base_module module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule"><code class="docutils literal notranslate"><span class="pre">BaseModule</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.make_observable"><code class="docutils literal notranslate"><span class="pre">BaseModule.make_observable()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.execute"><code class="docutils literal notranslate"><span class="pre">BaseModule.execute()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.get_path"><code class="docutils literal notranslate"><span class="pre">BaseModule.get_path()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.parse_options"><code class="docutils literal notranslate"><span class="pre">BaseModule.parse_options()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_observed_spectra"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_observed_spectra()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_observed_photometry"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_observed_photometry()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_ssp_model"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_ssp_model()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_extinction_law"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_extinction_law()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_sfh_model"><code class="docutils literal notranslate"><span class="pre">BaseModule.prepare_sfh_model()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.log_like"><code class="docutils literal notranslate"><span class="pre">BaseModule.log_like()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#module-besta.pipeline_modules.full_spectral_fit">besta.pipeline_modules.full_spectral_fit module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule.name"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.name</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule.__init__"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.__init__()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule.make_observable"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.make_observable()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule.execute"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.execute()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule.cleanup"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule.cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.setup"><code class="docutils literal notranslate"><span class="pre">setup()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.execute"><code class="docutils literal notranslate"><span class="pre">execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.cleanup"><code class="docutils literal notranslate"><span class="pre">cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#module-besta.pipeline_modules.kin_dust">besta.pipeline_modules.kin_dust module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule"><code class="docutils literal notranslate"><span class="pre">KinDustModule</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule.name"><code class="docutils literal notranslate"><span class="pre">KinDustModule.name</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule.__init__"><code class="docutils literal notranslate"><span class="pre">KinDustModule.__init__()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule.make_observable"><code class="docutils literal notranslate"><span class="pre">KinDustModule.make_observable()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule.execute"><code class="docutils literal notranslate"><span class="pre">KinDustModule.execute()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule.cleanup"><code class="docutils literal notranslate"><span class="pre">KinDustModule.cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.setup"><code class="docutils literal notranslate"><span class="pre">setup()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.execute"><code class="docutils literal notranslate"><span class="pre">execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.cleanup"><code class="docutils literal notranslate"><span class="pre">cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#module-besta.pipeline_modules.sfh_photometry">besta.pipeline_modules.sfh_photometry module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule.name"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.name</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule.__init__"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.__init__()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule.make_observable"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.make_observable()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule.execute"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule.execute()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.setup"><code class="docutils literal notranslate"><span class="pre">setup()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.execute"><code class="docutils literal notranslate"><span class="pre">execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.cleanup"><code class="docutils literal notranslate"><span class="pre">cleanup()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="besta.pipeline_modules.html#module-besta.pipeline_modules.sfh_spectra">besta.pipeline_modules.sfh_spectra module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.SFHSpectraModule"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.SFHSpectraModule.name"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.name</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.SFHSpectraModule.__init__"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.__init__()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.SFHSpectraModule.make_observable"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.make_observable()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.SFHSpectraModule.execute"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule.execute()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.setup"><code class="docutils literal notranslate"><span class="pre">setup()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.execute"><code class="docutils literal notranslate"><span class="pre">execute()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_spectra.cleanup"><code class="docutils literal notranslate"><span class="pre">cleanup()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
 </div>
 </section>
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 </section>
-<section id="module-besta.dust_extinction">
-<span id="besta-dust-extinction-module"></span><h2>besta.dust_extinction module<a class="headerlink" href="#module-besta.dust_extinction" title="Link to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.dust_extinction.redden_ssp_model">
-<span class="sig-prename descclassname"><span class="pre">besta.dust_extinction.</span></span><span class="sig-name descname"><span class="pre">redden_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">av</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/dust_extinction.html#redden_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.dust_extinction.redden_ssp_model" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.dust_extinction.redden_spectra">
-<span class="sig-prename descclassname"><span class="pre">besta.dust_extinction.</span></span><span class="sig-name descname"><span class="pre">redden_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">av</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/dust_extinction.html#redden_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.dust_extinction.redden_spectra" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.dust_extinction.deredden_spectra">
-<span class="sig-prename descclassname"><span class="pre">besta.dust_extinction.</span></span><span class="sig-name descname"><span class="pre">deredden_spectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">av</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/dust_extinction.html#deredden_spectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.dust_extinction.deredden_spectra" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="besta.dust_extinction.DustScreen">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.dust_extinction.</span></span><span class="sig-name descname"><span class="pre">DustScreen</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ext_law_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wave_norm_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3.1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/dust_extinction.html#DustScreen"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.dust_extinction.DustScreen" title="Link to this definition"></a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<dl class="py method">
-<dt class="sig sig-object py" id="besta.dust_extinction.DustScreen.extinction">
-<span class="sig-name descname"><span class="pre">extinction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wave</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">av</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/dust_extinction.html#DustScreen.extinction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.dust_extinction.DustScreen.extinction" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
+<section id="besta-dust-extinction-module">
+<h2>besta.dust_extinction module<a class="headerlink" href="#besta-dust-extinction-module" title="Link to this heading"></a></h2>
 </section>
 <section id="module-besta.kinematics">
 <span id="besta-kinematics-module"></span><h2>besta.kinematics module<a class="headerlink" href="#module-besta.kinematics" title="Link to this heading"></a></h2>
+<p>This module contains the tools for modelling kinematic effects on spectra.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="besta.kinematics.GaussHermite">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">GaussHermite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">order</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#GaussHermite"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.GaussHermite" title="Link to this definition"></a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.modeling.Fittable1DModel.html#astropy.modeling.Fittable1DModel" title="(in Astropy v6.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Fittable1DModel</span></code></a></p>
+<dd><p>Bases: <a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.modeling.Fittable1DModel.html#astropy.modeling.Fittable1DModel" title="(in Astropy v7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Fittable1DModel</span></code></a></p>
 <p>Gauss-Hermite model.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="besta.kinematics.GaussHermite.param_names">
@@ -331,6 +109,11 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 </dd></dl>
 
 </dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.kinematics.losvd">
+<span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">losvd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vel_pixel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_pixel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h4</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#losvd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.losvd" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.kinematics.get_losvd_kernel">
@@ -377,12 +160,12 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 <dd></dd></dl>
 
 </section>
-<section id="module-besta.masking">
-<span id="besta-masking-module"></span><h2>besta.masking module<a class="headerlink" href="#module-besta.masking" title="Link to this heading"></a></h2>
-<p>Module dedicated to data masking</p>
+<section id="besta-masking-module">
+<h2>besta.masking module<a class="headerlink" href="#besta-masking-module" title="Link to this heading"></a></h2>
 </section>
 <section id="module-besta.output">
 <span id="besta-output-module"></span><h2>besta.output module<a class="headerlink" href="#module-besta.output" title="Link to this heading"></a></h2>
+<p>Module dedicated to read and manipulate the output products of BESTA.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.output.make_ini_file">
 <span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">make_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#make_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.make_ini_file" title="Link to this definition"></a></dt>
@@ -586,7 +369,7 @@ the 1 per cent with the highest probability.</p></li>
 <dt class="sig sig-object py" id="besta.pipeline.MainPipeline">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.pipeline.</span></span><span class="sig-name descname"><span class="pre">MainPipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pipeline_configuration_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cores_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_values_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>PST-besta Pipeline manager.</p>
+<p>BESTA Pipeline manager.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="besta.pipeline.MainPipeline.pipelines_config">
 <span class="sig-name descname"><span class="pre">pipelines_config</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.pipelines_config" title="Link to this definition"></a></dt>
@@ -674,6 +457,49 @@ the subpipeline.</p></li>
 </section>
 <section id="module-besta.postprocess">
 <span id="besta-postprocess-module"></span><h2>besta.postprocess module<a class="headerlink" href="#module-besta.postprocess" title="Link to this heading"></a></h2>
+<p>Module dedicated to the post-processing of data produced by BESTA.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.postprocess.weighted_sample_mean">
+<span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">weighted_sample_mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#weighted_sample_mean"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.weighted_sample_mean" title="Link to this definition"></a></dt>
+<dd><p>Compute the weighted mean of an input sample.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>np.ndarray</em>) – Array of sample values. The last dimension must correspond
+to the sample dimension.</p></li>
+<li><p><strong>weights</strong> (<em>np.ndarray</em>) – 1D array of weights associated to the sample <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>mean</strong> (<em>np.array</em>) – Weighted mean of the sample</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.postprocess.weighted_sample_covariance">
+<span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">weighted_sample_covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unbiased</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#weighted_sample_covariance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.weighted_sample_covariance" title="Link to this definition"></a></dt>
+<dd><p>Compute the covariance matrix of a sample with weights.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>np.ndarray</em>) – Array of sample values. The last dimension must correspond
+to the sample dimension.</p></li>
+<li><p><strong>weights</strong> (<em>np.ndarray</em>) – 1D array of weights associated to the sample <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>covariance</strong> (<em>np.array</em>) – Weighted mean of the sample</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.postprocess.weighted_1d_cmf">
+<span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">weighted_1d_cmf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#weighted_1d_cmf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.weighted_1d_cmf" title="Link to this definition"></a></dt>
+<dd><p>Compute the cumulative probability distribution from a sample.</p>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.postprocess.read_results_file">
 <span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">read_results_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#read_results_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.read_results_file" title="Link to this definition"></a></dt>
@@ -683,7 +509,7 @@ the subpipeline.</p></li>
 <dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file containing the cosmosis results</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>table</strong> (<a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.table.Table.html#astropy.table.Table" title="(in Astropy v6.1)"><code class="xref py py-class docutils literal notranslate"><span class="pre">astropy.table.Table</span></code></a>) – Table containing the results.</p>
+<dd class="field-even"><p><strong>table</strong> (<a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.table.Table.html#astropy.table.Table" title="(in Astropy v7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">astropy.table.Table</span></code></a>) – Table containing the results.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -705,7 +531,7 @@ the subpipeline.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.postprocess.compute_pdf_from_results">
-<span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_pdf_from_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">posterior_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_keys</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_1d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">percentiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.05,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_2d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_key_pairs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">real_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_info</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#compute_pdf_from_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.compute_pdf_from_results" title="Link to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">besta.postprocess.</span></span><span class="sig-name descname"><span class="pre">compute_pdf_from_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">posterior_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_keys</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_1d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">percentiles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.05,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_2d</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parameter_key_pairs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">real_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_info</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/postprocess.html#compute_pdf_from_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.postprocess.compute_pdf_from_results" title="Link to this definition"></a></dt>
 <dd><p>Compute the PDF from a given results table.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -783,7 +609,7 @@ respective range of validity.</p>
 it is computed using the default cosmology and the value of <code class="docutils literal notranslate"><span class="pre">redshift</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -879,7 +705,7 @@ assuming a constant star formation history.</p>
 <dd><p>Lookback time bin edges.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -908,7 +734,7 @@ parameters correspond to … #TODO</p>
 <dd><p>Lookback time bin edges.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -943,7 +769,7 @@ parameters correspond to … #TODO</p>
 <dd><p>Lookback time bin edges.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -978,7 +804,7 @@ parameters correspond to the average sSFR over the last <code class="docutils li
 <dd><p>Lookback time bin edges.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1019,7 +845,7 @@ formed.</p>
 <dd><p>Lookback time bin edges.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1047,7 +873,7 @@ formed.</p>
 <dd><p>Time bins to evaluate the SFH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1057,7 +883,7 @@ formed.</p>
 <span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.ExponentialSFH.lookback_time" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1087,7 +913,7 @@ formed.</p>
 <dd><p>Time bins to evaluate the SFH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1120,7 +946,7 @@ larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p
 <dd><p>Time bins to evaluate the SFH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1148,7 +974,7 @@ larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p
 <dd><p>Time bins to evaluate the SFH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1158,7 +984,7 @@ larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p
 <span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.LogNormalSFH.lookback_time" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1193,7 +1019,7 @@ applied after the time of quenching.</p>
 <dd><p>Time bins to evaluate the SFH.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1203,7 +1029,7 @@ applied after the time of quenching.</p>
 <span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH.lookback_time" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v6.1)">astropy.units.Quantity</a></p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -1218,170 +1044,18 @@ applied after the time of quenching.</p>
 </dd></dl>
 
 </section>
-<section id="module-besta.specBasics">
-<span id="besta-specbasics-module"></span><h2>besta.specBasics module<a class="headerlink" href="#module-besta.specBasics" title="Link to this heading"></a></h2>
-<p>spectra module.</p>
-<p>This module contains classes and functions related
-to dealing with spectra</p>
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.log_rebin">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">log_rebin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lam</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">velscale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">oversample</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flux</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#log_rebin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.log_rebin" title="Link to this definition"></a></dt>
-<dd><p>Logarithmically rebin a spectrum, or the first dimension of an array of
-spectra arranged as columns, while rigorously conserving the flux. The
-photons in the spectrum are simply redistributed according to a new grid of
-pixels, with logarithmic sampling in the spectral direction.</p>
-<p>When <cite>flux=True</cite> keyword is set, this program performs an exact integration
-of the original spectrum, assumed to be a step function constant within
-each pixel, onto the new logarithmically-spaced pixels. When <cite>flux=False</cite>
-(default) the result of the integration is divided by the size of each
-pixel to return a flux density (e.g. in erg/(s cm^2 A)). The output was
-tested to agree with the analytic solution.</p>
-<section id="input-parameters">
-<h3>Input Parameters<a class="headerlink" href="#input-parameters" title="Link to this heading"></a></h3>
-<dl>
-<dt>lam: either [lam_min, lam_max] or wavelength <cite>lam</cite> per spectral pixel.</dt><dd><ul class="simple">
-<li><p>If this has two elements, they are assumed to represent the central
-wavelength of the first and last pixels in the spectrum, which is
-assumed to have constant wavelength scale.
-log_rebin is faster with regular sampling.</p></li>
-<li><p>Alternatively one can input the central wavelength of every spectral
-pixel and this allows for arbitrary irregular sampling in wavelength.
-In this case the program assumes the pixels edges are the midpoints
-of the input pixels wavelengths.</p></li>
-</ul>
-<p>EXAMPLE: For uniform wavelength sampling, using the values in the
-standard FITS keywords (but note that the format can be different):</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">lam</span> <span class="o">=</span> <span class="n">CRVAL1</span> <span class="o">+</span> <span class="n">CDELT1</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">NAXIS1</span><span class="p">)</span>
-</pre></div>
-</div>
-</dd>
-<dt>spec: array_like with shape (npixels,) or (npixels, nspec)</dt><dd><p>Input spectrum or array of spectra to rebin logarithmically.
-This can be a vector <cite>spec[npixels]</cite> or array <cite>spec[npixels, nspec]</cite>.</p>
-</dd>
-<dt>oversample: int</dt><dd><p>Can be used, not to degrade spectral resolution, especially for
-extended wavelength ranges and to avoid aliasing. Default:
-<cite>oversample=1</cite> implies same number of output pixels as input.</p>
-</dd>
-<dt>velscale: float</dt><dd><p>Velocity scale in km/s per pixels. If this variable is not defined, it
-will be computed to produce the same number of output pixels as the
-input. If this variable is defined by the user it will be used to set
-the output number of pixels and wavelength scale.</p>
-</dd>
-<dt>flux: bool</dt><dd><p><cite>True</cite> to preserve total flux, <cite>False</cite> to preserve the flux density.
-When <cite>flux=True</cite> the log rebinning changes the pixels flux in
-proportion to their dlam and the following command will show large
-differences between the spectral shape before and after <cite>log_rebin</cite>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">exp</span><span class="p">(</span><span class="n">ln_lam</span><span class="p">),</span> <span class="n">specNew</span><span class="p">)</span>  <span class="c1"># Plot log-rebinned spectrum</span>
-<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">lam</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">lam</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">spec</span><span class="o">.</span><span class="n">size</span><span class="p">),</span> <span class="n">spec</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>By default <cite>flux=`False</cite> and <cite>log_rebin</cite> returns a flux density and the
-above two lines produce two spectra that almost perfectly overlap each
-other.</p>
-</dd>
-</dl>
+<section id="besta-specbasics-module">
+<h2>besta.specBasics module<a class="headerlink" href="#besta-specbasics-module" title="Link to this heading"></a></h2>
 </section>
-<section id="output-parameters">
-<h3>Output Parameters<a class="headerlink" href="#output-parameters" title="Link to this heading"></a></h3>
-<dl class="simple">
-<dt>spec_new:</dt><dd><p>Logarithmically-rebinned spectrum flux.</p>
-</dd>
-<dt>ln_lam:</dt><dd><p>Natural logarithm of the wavelength.</p>
-</dd>
-<dt>velscale:</dt><dd><p>Velocity scale per pixel in km/s.</p>
-</dd>
-</dl>
-</section>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.smoothSpectrum">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">smoothSpectrum</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wavelength</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spectrum</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#smoothSpectrum"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.smoothSpectrum" title="Link to this definition"></a></dt>
-<dd><p>Smooth spectrum to a given velocity dispersion.</p>
-<dl>
-<dt>Args:</dt><dd><dl class="simple">
-<dt>wavelength: wavelength-array of the spectrum (should</dt><dd><p>be logarithmic for constant sigma-smoothing).</p>
-</dd>
-</dl>
-<p>spectrum: numpy array with spectral data.
-sigma: required velocity dispersion (km/s)</p>
-</dd>
-<dt>Returns:</dt><dd><p>spectrumSmooth: smoothed version of the spectrum.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.smoothSpectra">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">smoothSpectra</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wavelength</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">S</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#smoothSpectra"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.smoothSpectra" title="Link to this definition"></a></dt>
-<dd><p>Smooth spectra in matrix with stellar spectra to a given velocity dispersion.</p>
-<dl>
-<dt>Args:</dt><dd><dl class="simple">
-<dt>wavelength: wavelength-array of the spectra (should</dt><dd><p>be logarithmic for constant sigma smoothing).</p>
-</dd>
-<dt>S: matrix with stellar templates, spectra are assumed to be</dt><dd><p>int the columns of the matrix.</p>
-</dd>
-</dl>
-<p>spectrum: numpy array with spectral data.
-sigma: required velocity dispersion (km/s)</p>
-</dd>
-<dt>Returns:</dt><dd><p>S: smoothed version of the spectra in S.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.smoothSpectrumFast">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">smoothSpectrumFast</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spectrum</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigmaPixel</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#smoothSpectrumFast"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.smoothSpectrumFast" title="Link to this definition"></a></dt>
-<dd><p>Fast spectrum smoothing.</p>
-<p>This function smooths a spectrum given the
-standard deviation in pixel space.</p>
-<dl class="simple">
-<dt>Args:</dt><dd><p>spectrum: the input spectrum.
-sigmaPixel: smoothing scale in pixel space.</p>
-</dd>
-<dt>Returns:</dt><dd><dl class="simple">
-<dt>smoothSpectrum: a smoothed version of the</dt><dd><p>input spectrum.</p>
-</dd>
-</dl>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.getGaussianLP">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">getGaussianLP</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">w</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wstd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#getGaussianLP"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.getGaussianLP" title="Link to this definition"></a></dt>
-<dd><p>Calculate Gaussian line profile for local covariance structure</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.losvd">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">losvd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vel_pixel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_pixel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h4</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#losvd"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.losvd" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.specBasics.getLegendrePolynomial">
-<span class="sig-prename descclassname"><span class="pre">besta.specBasics.</span></span><span class="sig-name descname"><span class="pre">getLegendrePolynomial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wavelength</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">order</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/specBasics.html#getLegendrePolynomial"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.specBasics.getLegendrePolynomial" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-</section>
-<section id="module-besta.utils">
-<span id="besta-utils-module"></span><h2>besta.utils module<a class="headerlink" href="#module-besta.utils" title="Link to this heading"></a></h2>
-<dl class="py function">
-<dt class="sig sig-object py" id="besta.utils.read_chain_file">
-<span class="sig-prename descclassname"><span class="pre">besta.utils.</span></span><span class="sig-name descname"><span class="pre">read_chain_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/utils.html#read_chain_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.utils.read_chain_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
+<section id="besta-utils-module">
+<h2>besta.utils module<a class="headerlink" href="#besta-utils-module" title="Link to this heading"></a></h2>
 </section>
 </section>
 
 
            </div>
           </div>
-          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modules.html" class="btn btn-neutral float-left" title="besta" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="besta.pipeline_modules.html" class="btn btn-neutral float-right" title="besta.pipeline_modules package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
-    </div>
+          <footer>
 
   <hr/>
 

@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.pipeline_modules.kin_dust &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.pipeline_modules.kin_dust &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=394d8e05"></script>
+      <script src="../../../_static/documentation_options.js?v=7f5de030"></script>
       <script src="../../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
@@ -30,7 +30,7 @@
           
           <a href="../../../index.html">
             
-              <img src="../../../_static/besta.png" class="logo" alt="Logo"/>
+              <img src="../../../_static/besta_transparent.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
@@ -80,11 +80,11 @@
 <span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">kinematics</span>
 
 <div class="viewcode-block" id="KinDustModule">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.KinDustModule">[docs]</a>
 <span class="k">class</span> <span class="nc">KinDustModule</span><span class="p">(</span><span class="n">BaseModule</span><span class="p">):</span>
     <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;KinDust&quot;</span>
 <div class="viewcode-block" id="KinDustModule.__init__">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.__init__">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.KinDustModule.__init__">[docs]</a>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Set-up the COSMOSIS sampler.</span>
 <span class="sd">            Args:</span>
@@ -110,7 +110,7 @@
 
     
 <div class="viewcode-block" id="KinDustModule.make_observable">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.make_observable">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.KinDustModule.make_observable">[docs]</a>
     <span class="k">def</span> <span class="nf">make_observable</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create the spectra model from the input parameters&quot;&quot;&quot;</span>
         <span class="n">dust_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;extinction_law&quot;</span><span class="p">]</span>
@@ -133,7 +133,7 @@
 
 
 <div class="viewcode-block" id="KinDustModule.execute">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.execute">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.KinDustModule.execute">[docs]</a>
     <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Function executed by sampler</span>
 <span class="sd">        This is the function that is executed many times by the sampler. The</span>
@@ -152,7 +152,7 @@
 
 
 <div class="viewcode-block" id="KinDustModule.cleanup">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.KinDustModule.cleanup">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.KinDustModule.cleanup">[docs]</a>
     <span class="k">def</span> <span class="nf">cleanup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssp_output</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">np</span><span class="o">.</span><span class="n">savetxt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssp_output</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">solution</span><span class="p">)</span></div>
@@ -161,7 +161,7 @@
 
 
 <div class="viewcode-block" id="setup">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.setup">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.setup">[docs]</a>
 <span class="k">def</span> <span class="nf">setup</span><span class="p">(</span><span class="n">options</span><span class="p">):</span>
         <span class="n">options</span> <span class="o">=</span> <span class="n">SectionOptions</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
         <span class="n">mod</span> <span class="o">=</span> <span class="n">KinDustModule</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
@@ -169,14 +169,14 @@
 
 
 <div class="viewcode-block" id="execute">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.execute">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.execute">[docs]</a>
 <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">mod</span><span class="p">):</span>
     <span class="n">mod</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
     <span class="k">return</span> <span class="mi">0</span></div>
 
 
 <div class="viewcode-block" id="cleanup">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.cleanup">[docs]</a>
+<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.cleanup">[docs]</a>
 <span class="k">def</span> <span class="nf">cleanup</span><span class="p">(</span><span class="n">mod</span><span class="p">):</span>
     <span class="n">mod</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span></div>
 

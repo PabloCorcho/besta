@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.output &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.181.g2b24991.dirty documentation</title>
+  <title>besta.output &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=394d8e05"></script>
+      <script src="../../_static/documentation_options.js?v=7f5de030"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -30,7 +30,7 @@
           
           <a href="../../index.html">
             
-              <img src="../../_static/besta.png" class="logo" alt="Logo"/>
+              <img src="../../_static/besta_transparent.png" class="logo" alt="Logo"/>
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
@@ -71,7 +71,8 @@
            <div itemprop="articleBody">
              
   <h1>Source code for besta.output</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span> <span class="nn">os</span>
+<span></span><span class="sd">&quot;&quot;&quot;Module dedicated to read and manipulate the output products of BESTA.&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">cosmosis</span>
 
@@ -79,7 +80,7 @@
 
 
 <div class="viewcode-block" id="make_ini_file">
-<a class="viewcode-back" href="../../besta.html#besta.output.make_ini_file">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.make_ini_file">[docs]</a>
 <span class="k">def</span> <span class="nf">make_ini_file</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a .ini file from an input configuration.</span>
 
@@ -116,7 +117,7 @@
 
 
 <div class="viewcode-block" id="make_values_file">
-<a class="viewcode-back" href="../../besta.html#besta.output.make_values_file">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.make_values_file">[docs]</a>
 <span class="k">def</span> <span class="nf">make_values_file</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Make a values.ini file from the configuration.</span>
 
@@ -147,7 +148,7 @@
 
 
 <div class="viewcode-block" id="Reader">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader">[docs]</a>
 <span class="k">class</span> <span class="nc">Reader</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cosmosis Data Reader</span>
 
@@ -245,7 +246,7 @@
     <span class="c1">#         return None</span>
 
 <div class="viewcode-block" id="Reader.load_results">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.load_results">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.load_results">[docs]</a>
     <span class="k">def</span> <span class="nf">load_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Load the cosmosis run results associated to the ``ini`` file.&quot;&quot;&quot;</span>
         <span class="n">path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ini</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]</span>
@@ -255,7 +256,7 @@
 
 
 <div class="viewcode-block" id="Reader.get_chain_percentiles">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.get_chain_percentiles">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.get_chain_percentiles">[docs]</a>
     <span class="k">def</span> <span class="nf">get_chain_percentiles</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">]):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the percentile values of the parameter chains.</span>
 
@@ -282,7 +283,7 @@
 
 
 <div class="viewcode-block" id="Reader.get_maxlike_solution">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.get_maxlike_solution">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.get_maxlike_solution">[docs]</a>
     <span class="k">def</span> <span class="nf">get_maxlike_solution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_prob</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the maximum likelihood solution.</span>
 
@@ -310,7 +311,7 @@
 
 
 <div class="viewcode-block" id="Reader.solution_to_datablock">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.solution_to_datablock">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.solution_to_datablock">[docs]</a>
     <span class="k">def</span> <span class="nf">solution_to_datablock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">solution</span><span class="p">,</span> <span class="n">section</span><span class="o">=</span><span class="s2">&quot;parameters&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert a solution into a DataBlock.</span>
 
@@ -349,7 +350,7 @@
 
 
 <div class="viewcode-block" id="Reader.get_pct_solutions">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.get_pct_solutions">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.get_pct_solutions">[docs]</a>
     <span class="k">def</span> <span class="nf">get_pct_solutions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="mi">99</span><span class="p">,</span> <span class="n">log_prob</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the top percentile solutions.</span>
 
@@ -395,7 +396,7 @@
 
 
 <div class="viewcode-block" id="Reader.read_ini_file">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.read_ini_file">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.read_ini_file">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">read_ini_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Read the cosmosis configuration .ini file.</span>
@@ -449,7 +450,7 @@
 
 
 <div class="viewcode-block" id="Reader.read_ini_values_file">
-<a class="viewcode-back" href="../../besta.html#besta.output.Reader.read_ini_values_file">[docs]</a>
+<a class="viewcode-back" href="../../hbsps.html#besta.output.Reader.read_ini_values_file">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">read_ini_values_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Read the cosmosis configuration .ini file.</span>
