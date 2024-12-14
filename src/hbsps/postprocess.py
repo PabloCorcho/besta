@@ -54,7 +54,7 @@ def weighted_sample_covariance(x, weights, unbiased=False):
 def weighted_1d_cmf(x, weights):
     """Compute the cumulative probability distribution from a sample."""
     sort_idx = np.argsort(x)
-    return x[sort_idx], np.cumsum(weights[sort_idx])
+    return x[sort_idx], weights[sort_idx], np.cumsum(weights[sort_idx])
 
 def read_results_file(path):
     """Read the results produced during a cosmosis run.
@@ -163,16 +163,23 @@ def compute_pdf_from_results(
 
     output_hdul = []
 
+    # Max-likelihood
+    maxlike_idx = np.argmax(posterior)
+    maxlike_values = values[:, maxlike_idx]
     # Mean and covariance
     mean_values = weighted_sample_mean(values, posterior)
     covariance_matrix = weighted_sample_covariance(values, posterior)
     header = fits.Header()
-    for axis, mean, key in zip(range(len(parameter_keys)),
-                               mean_values,
-                               parameter_keys):
+    for axis, mean, maxlike, key in zip(range(len(parameter_keys)),
+                                        mean_values,
+                                        maxlike_values,
+                                        parameter_keys):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
         header[f"hierarch {kname}"] = mean, "like-weighted mean"
+        header[f"hierarch {kname}-max"] = maxlike, "max-like"
+    header[f"hierarch maxlike"] = posterior[maxlike_idx], "max-like value"
+
     covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
                                    header=header)
     output_hdul.append(covariance_hdu)
@@ -187,9 +194,11 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
-            value_sorted, cmf = weighted_1d_cmf(value[mask], posterior[mask])
-
+            value_sorted, post_sorted, cmf = weighted_1d_cmf(
+                value[mask], posterior[mask])
+            
             value_pct = np.interp(percentiles, cmf, value_sorted)
+            post_pct = np.interp(percentiles, cmf, post_sorted)
             # TODO: duplicated
             value_mean = np.sum(posterior[mask] * value[mask])
 
@@ -215,6 +224,7 @@ def compute_pdf_from_results(
             table_1d_pdf.add_column(kde_pdf, name=f"{key_name}_pdf_kde")
 
             table_1d_percentiles.add_column(value_pct, name=f"{key_name}_pct")
+            table_1d_percentiles.add_column(post_pct, name=f"{key_name}_post_pct")
 
             if real_values is not None and key in real_values:
                 integral_to_real = np.interp(
