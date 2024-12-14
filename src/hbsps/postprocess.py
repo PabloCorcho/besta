@@ -54,7 +54,7 @@ def weighted_sample_covariance(x, weights, unbiased=False):
 def weighted_1d_cmf(x, weights):
     """Compute the cumulative probability distribution from a sample."""
     sort_idx = np.argsort(x)
-    return x[sort_idx], weights[sort_idx], np.cumsum(weights[sort_idx])
+    return x[sort_idx], sort_idx, np.cumsum(weights[sort_idx])
 
 def read_results_file(path):
     """Read the results produced during a cosmosis run.
@@ -148,37 +148,44 @@ def compute_pdf_from_results(
     if output_filename is None:
         output_filename = "stat_analysis.fits"
 
-    posterior = np.exp(
-        table[posterior_key].value - np.nanmax(table[posterior_key].value)
-    )
+    max_logpost, max_post_idx = (np.nanmax(table[posterior_key]),
+                                 np.nanargmax(table[posterior_key]))
+    max_loglike, max_loglike_idx = (np.nanmax(table["like"]),
+                                    np.nanargmax(table["like"]))
+
+    # Linear posterior renormalized to the maximum value
+    logpost = table[posterior_key].value
+    posterior = np.exp(logpost - max_logpost)
     posterior /= np.nansum(posterior)
 
     # If not provided, select the keys that correspond to sampled parameters
     if parameter_keys is None:
         parameter_keys = [
             key for key in list(table.keys()) if parameter_prefix in key]
-
     # Create a matrix (theta, samples)
     values = np.array([table[key].value for key in parameter_keys])
 
     output_hdul = []
-
+    header = fits.Header()
+    header["hierarch max_logpost"] = max_logpost, "Maximum of the logposterior"
+    header["hierarch max_loglike"] = max_loglike, "Maximum of the log-likelihood"
     # Max-likelihood
-    maxlike_idx = np.argmax(posterior)
-    maxlike_values = values[:, maxlike_idx]
+    maxpost_values = values[:, max_post_idx]
+    maxlike_values = values[:, max_loglike_idx]
     # Mean and covariance
     mean_values = weighted_sample_mean(values, posterior)
     covariance_matrix = weighted_sample_covariance(values, posterior)
-    header = fits.Header()
-    for axis, mean, maxlike, key in zip(range(len(parameter_keys)),
+    # Store everything on the header
+    for axis, mean, maxpost, maxlike, key in zip(range(len(parameter_keys)),
                                         mean_values,
+                                        maxpost_values,
                                         maxlike_values,
                                         parameter_keys):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
         header[f"hierarch {kname}"] = mean, "like-weighted mean"
-        header[f"hierarch {kname}-max"] = maxlike, "max-like"
-    header[f"hierarch maxlike"] = posterior[maxlike_idx], "max-like value"
+        header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
+        header[f"hierarch maxlike_{kname}"] = maxlike, "max-like value"
 
     covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
                                    header=header)
@@ -194,11 +201,11 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
-            value_sorted, post_sorted, cmf = weighted_1d_cmf(
+            value_sorted, sort_idx, cmf = weighted_1d_cmf(
                 value[mask], posterior[mask])
             
             value_pct = np.interp(percentiles, cmf, value_sorted)
-            post_pct = np.interp(percentiles, cmf, post_sorted)
+            logpost_pct = np.interp(percentiles, cmf, logpost[sort_idx])
             # TODO: duplicated
             value_mean = np.sum(posterior[mask] * value[mask])
 
@@ -224,7 +231,7 @@ def compute_pdf_from_results(
             table_1d_pdf.add_column(kde_pdf, name=f"{key_name}_pdf_kde")
 
             table_1d_percentiles.add_column(value_pct, name=f"{key_name}_pct")
-            table_1d_percentiles.add_column(post_pct, name=f"{key_name}_post_pct")
+            table_1d_percentiles.add_column(logpost_pct, name=f"{key_name}_post_pct")
 
             if real_values is not None and key in real_values:
                 integral_to_real = np.interp(
