@@ -31,7 +31,7 @@ class KinDustModule(BaseModule):
         self.prepare_ssp_model(options)
         self.prepare_extinction_law(options)
     
-    def make_observable(self, block):
+    def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         dust_model = self.config["extinction_law"]
         sed, mask = kinematics.convolve_ssp(self.config,

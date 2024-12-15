@@ -72,8 +72,10 @@ class SFHPhotometryModule(BaseModule):
         self.config['av_grid'] = a_v_array
         self.config['photometry_grid'] = all_photometry
 
-    def make_observable(self, block):
+    def make_observable(self, block, parse=False):
         sfh_model = self.config['sfh_model']
+        if parse:
+            sfh_model.parse_datablock(block)
         av = block["parameters", "a_v"]
         av_idx = np.searchsorted(self.config['av_grid'], av)
         w_idx = (av - self.config['av_grid'][av_idx - 1]) / (

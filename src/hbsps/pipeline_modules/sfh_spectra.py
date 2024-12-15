@@ -50,8 +50,10 @@ class SFHSpectraModule(BaseModule):
             self.config['ssp_model'] = self.config["extinction_law"].redden_ssp_model(
                 self.config['ssp_model'], a_v=av)
 
-    def make_observable(self, block):
+    def make_observable(self, block, parse=False):
         sfh_model = self.config['sfh_model']
+        if parse:
+             sfh_model.parse_datablock(block)
         flux_model = sfh_model.model.compute_SED(self.config['ssp_model'],
 										     t_obs=sfh_model.today,
 											 allow_negative=False).value
