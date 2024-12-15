@@ -150,8 +150,8 @@ def compute_pdf_from_results(
 
     max_logpost, max_post_idx = (np.nanmax(table[posterior_key]),
                                  np.nanargmax(table[posterior_key]))
-    max_loglike, max_loglike_idx = (np.nanmax(table["like"]),
-                                    np.nanargmax(table["like"]))
+    # max_loglike, max_loglike_idx = (np.nanmax(table["like"]),
+    #                                 np.nanargmax(table["like"]))
 
     # Linear posterior renormalized to the maximum value
     logpost = table[posterior_key].value
@@ -168,10 +168,10 @@ def compute_pdf_from_results(
     output_hdul = []
     header = fits.Header()
     header["hierarch max_logpost"] = max_logpost, "Maximum of the logposterior"
-    header["hierarch max_loglike"] = max_loglike, "Maximum of the log-likelihood"
+    # header["hierarch max_loglike"] = max_loglike, "Maximum of the log-likelihood"
     # Max-likelihood
     maxpost_values = values[:, max_post_idx]
-    maxlike_values = values[:, max_loglike_idx]
+    # maxlike_values = values[:, max_loglike_idx]
     # Mean and covariance
     mean_values = weighted_sample_mean(values, posterior)
     covariance_matrix = weighted_sample_covariance(values, posterior)
@@ -179,7 +179,7 @@ def compute_pdf_from_results(
     for axis, mean, maxpost, maxlike, key in zip(range(len(parameter_keys)),
                                         mean_values,
                                         maxpost_values,
-                                        maxlike_values,
+                                        # maxlike_values,
                                         parameter_keys):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
