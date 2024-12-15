@@ -151,9 +151,12 @@ class MainPipeline(object):
 
     def plot_fit(self, module, solution: DataBlock, pipe_config):
         """Plot the fit."""
-        flux_model = module.make_observable(solution)
+        flux_model = module.make_observable(solution, parse=True)
         if isinstance(flux_model, tuple):
+            weights = flux_model[1]
             flux_model = flux_model[0]
+        else:
+            weights = np.ones_like(flux_model)
 
         fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
         plt.suptitle(f"Module: {module.name}")
@@ -170,7 +173,7 @@ class MainPipeline(object):
             module.config["wavelength"], module.config["flux"], c="k", label="Observed"
         )
         # Show masked pixels
-        mask = module.config["weights"] == 0
+        mask = (weights * module.config["weights"]) == 0
         ax.plot(
             module.config["wavelength"][mask],
             module.config["flux"][mask],
