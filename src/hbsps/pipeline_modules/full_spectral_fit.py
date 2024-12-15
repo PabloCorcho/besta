@@ -24,10 +24,12 @@ class FullSpectralFitModule(BaseModule):
         self.prepare_sfh_model(options)
         self.prepare_extinction_law(options)
 
-    def make_observable(self, block):
+    def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
         sfh_model = self.config['sfh_model']
+        if parse:
+             sfh_model.parse_datablock(block)
         flux_model = sfh_model.model.compute_SED(self.config['ssp_model'],
                                                  t_obs=sfh_model.today,
                                                  allow_negative=False).value
@@ -53,8 +55,8 @@ class FullSpectralFitModule(BaseModule):
             flux_model, kernel)
         # Track those pixels at the edges
         mask = flux_model > 0
-        mask[: int(5 * sigma_pixel)] = False
-        mask[-int(5 * sigma_pixel) :] = False
+        mask[: int(10 * sigma_pixel)] = False
+        mask[-int(10 * sigma_pixel) :] = False
         # Sample to observed resolution
 
         extra_pixels = self.config["extra_pixels"]
@@ -69,9 +71,7 @@ class FullSpectralFitModule(BaseModule):
             a_v=block["parameters", "av"]).value
 
         weights = self.config["weights"] * mask
-        normalization = np.sum(
-            self.config['flux'] / flux_model * self.config["weights"]
-            ) / np.sum(self.config["weights"])
+        normalization = np.nanmedian(self.config['flux'] / flux_model)
         block['parameters', 'normalization'] = normalization
         return flux_model * normalization, weights
 
@@ -82,13 +82,18 @@ class FullSpectralFitModule(BaseModule):
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
         """
+        valid, penalty = self.config['sfh_model'].parse_datablock(block)
+        if not valid:
+            print("Invalid")
+            block[section_names.likelihoods, f"{self.name}_like"] = -1e20 * penalty
+            block['parameters', 'normalization'] = 0.0
+            return 0
         # Obtain parameters from setup
         cov = self.config['cov']
         flux_model, weights = self.make_observable(block)
-        weights_norm = np.nansum(weights)
         # Calculate likelihood-value of the fit
-        like = self.log_like(self.config["flux"] * weights,
-                             flux_model * weights, cov * weights_norm)
+        like = self.log_like(self.config["flux"][weights > 0],
+                             flux_model[weights > 0], cov[weights > 0])
         # Final posterior for sampling
         block[section_names.likelihoods, f"{self.name}_like"] = like
         return 0
