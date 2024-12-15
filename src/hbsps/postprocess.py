@@ -114,11 +114,10 @@ def compute_pdf_from_results(
     output_filename=None,
     parameter_prefix="parameters",
     posterior_key="post",
-    weights_key=None,  # TODO
     parameter_keys=None,
     pdf_1d=True,
     percentiles=[0.05, 0.16, 0.5, 0.84, 0.95],
-    pdf_2d=True,
+    pdf_2d=False,
     parameter_key_pairs=None,
     pdf_size=100,
     plot=False,
@@ -145,47 +144,43 @@ def compute_pdf_from_results(
     real_values : dict, optional
     extra_info : dict, optional
     """
-    if output_filename is None:
-        output_filename = "stat_analysis.fits"
-
-    max_logpost, max_post_idx = (np.nanmax(table[posterior_key]),
-                                 np.nanargmax(table[posterior_key]))
-    # max_loglike, max_loglike_idx = (np.nanmax(table["like"]),
-    #                                 np.nanargmax(table["like"]))
-
-    # Linear posterior renormalized to the maximum value
-    logpost = table[posterior_key].value
-    posterior = np.exp(logpost - max_logpost)
-    posterior /= np.nansum(posterior)
-
     # If not provided, select the keys that correspond to sampled parameters
     if parameter_keys is None:
+        print(
+            "No keys provided" 
+            + f"\nSelecting every column that includes prefix *{parameter_prefix}*")
         parameter_keys = [
             key for key in list(table.keys()) if parameter_prefix in key]
-    # Create a matrix (theta, samples)
+        print("Number of keys found ", len(parameter_keys))
+
+    assert len(parameter_keys) > 0, "No keys available"
+
+    # Create the array of parameter values (theta, samples)
     values = np.array([table[key].value for key in parameter_keys])
 
     output_hdul = []
     header = fits.Header()
+
+    max_logpost, max_post_idx = (np.nanmax(table[posterior_key]),
+                                 np.nanargmax(table[posterior_key]))
+    # Linear posterior renormalized to the maximum value
+    logpost = table[posterior_key].value
+    posterior = np.exp(logpost - max_logpost)
+    posterior /= np.nansum(posterior)
     header["hierarch max_logpost"] = max_logpost, "Maximum of the logposterior"
-    # header["hierarch max_loglike"] = max_loglike, "Maximum of the log-likelihood"
-    # Max-likelihood
     maxpost_values = values[:, max_post_idx]
-    # maxlike_values = values[:, max_loglike_idx]
     # Mean and covariance
     mean_values = weighted_sample_mean(values, posterior)
     covariance_matrix = weighted_sample_covariance(values, posterior)
     # Store everything on the header
-    for axis, mean, maxpost, maxlike, key in zip(range(len(parameter_keys)),
+    for axis, mean, maxpost, key in zip(range(len(parameter_keys)),
                                         mean_values,
                                         maxpost_values,
-                                        # maxlike_values,
                                         parameter_keys):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
-        header[f"hierarch {kname}"] = mean, "like-weighted mean"
+        header[f"hierarch mean_{kname}"] = mean, "post-weighted mean"
         header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
-        header[f"hierarch maxlike_{kname}"] = maxlike, "max-like value"
 
     covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
                                    header=header)
@@ -277,6 +272,9 @@ def compute_pdf_from_results(
             ]
         )
     if pdf_2d:
+        if parameter_key_pairs is None:
+            raise ValueError("2D PDF analysis requires input parameter_key_pairs")
+
         for key_1, key_2 in parameter_key_pairs:
             print("2D post. PDF of", key_1, "vs", key_2)
 
@@ -351,7 +349,8 @@ def compute_pdf_from_results(
     for k, v in extra_info.items():
         primary.header[k] = v, "user-provided information"
     output_hdul = fits.HDUList([primary, *output_hdul])
-    output_hdul.writeto(output_filename, overwrite=True)
+    if output_filename is not None:
+        output_hdul.writeto(output_filename, overwrite=True)
     return output_hdul
 
 def make_plot_chains(chain_results, truth_values=None, output="."):
