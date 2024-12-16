@@ -349,6 +349,6 @@ class BaseModule(ClassModule):
         loglike : np.ndarray
             The log-likelihood associated to the model given the data.
         """
-        residual = model - data
-        loglike = -0.5 * np.dot(residual / cov, residual)
+        chi = (model - data) / cov
+        loglike = -0.5 * np.sum(chi * chi)
         return loglike
