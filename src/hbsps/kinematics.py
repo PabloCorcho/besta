@@ -106,7 +106,8 @@ def get_losvd_kernel(kernel_model, x_size):
     kernel : :class:`Model1DKernel`
         Kernel model
     """
-    return Model1DKernel(kernel_model, x_size=x_size)
+    return Model1DKernel(kernel_model, x_size=x_size, mode="oversample",
+                         factor=10)
 
 def convolve_spectra_with_kernel(spectra, kernel):
     """Convolve an input spectra with a given kernel.
@@ -124,7 +125,7 @@ def convolve_spectra_with_kernel(spectra, kernel):
         Spectra convolved with the input kernel.
     """
     return convolve(spectra, kernel, boundary="fill", fill_value=0.0,
-                    normalize_kernel=False)
+                    normalize_kernel=True)
 
 def convolve_ssp(config, los_sigma, los_vel, los_h3=0., los_h4=0.):
     velscale = config["velscale"]
