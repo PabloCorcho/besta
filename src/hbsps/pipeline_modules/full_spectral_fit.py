@@ -39,16 +39,17 @@ class FullSpectralFitModule(BaseModule):
         # Kinematics
         sigma_pixel = block["parameters", "los_sigma"] / velscale
         veloffset_pixel = block["parameters", "los_vel"] / velscale
-
         # Build the kernel. TOO SLOW? Initialise only once?
-        kernel = kinematics.get_losvd_kernel(
-            kernel_model = kinematics.GaussHermite(
+        kernel_model = kinematics.GaussHermite(
             4,
             mean=veloffset_pixel,
             stddev=sigma_pixel,
             h3=block["parameters", "los_h3"],
-            h4=block["parameters", "los_h4"]),
-            x_size=8 * int(np.round(sigma_pixel)) + 1
+            h4=block["parameters", "los_h4"])
+        kernel = kinematics.get_losvd_kernel(
+            kernel_model,
+            x_size=10* np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1, None) + 1
+            # x_size=flux_model.size
         )
         # Perform the convolution
         flux_model = kinematics.convolve_spectra_with_kernel(
@@ -58,7 +59,6 @@ class FullSpectralFitModule(BaseModule):
         mask[: int(10 * sigma_pixel)] = False
         mask[-int(10 * sigma_pixel) :] = False
         # Sample to observed resolution
-
         extra_pixels = self.config["extra_pixels"]
         pixels = slice(extra_pixels, - extra_pixels)
         flux_model = flux_model[pixels]
@@ -71,7 +71,8 @@ class FullSpectralFitModule(BaseModule):
             a_v=block["parameters", "av"]).value
 
         weights = self.config["weights"] * mask
-        normalization = np.nanmedian(self.config['flux'] / flux_model)
+        normalization = np.nanmedian(
+             self.config['flux'][weights > 0] / flux_model[weights > 0])
         block['parameters', 'normalization'] = normalization
         return flux_model * normalization, weights
 
