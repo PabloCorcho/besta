@@ -211,11 +211,11 @@ class Reader(object):
             Dictionary containing the solution with the maximum likelihood.
         """
         good_sample = self.results_table[log_prob] != 0
-        maxlike_pos = np.nanargmax(self.results_table[log_prob].value)
+        maxlike_pos = np.nanargmax(self.results_table[good_sample][log_prob].value)
         solution = {}
         for k, v in self.results_table.items():
             if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[maxlike_pos]
+                solution[k.replace("parameters--", "")] = v[good_sample][maxlike_pos]
 
         return solution
 
