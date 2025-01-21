@@ -1,0 +1,20 @@
+####################
+# Pipeline cosmology
+####################
+cosmology:
+    name: FlatLambdaCDM
+    args:
+        H0: 70.
+        Om0: 0.28
+# cosmology:
+#     name: WMAP7
+
+####################
+# Kinematics
+####################
+kinematics:
+    # Number of sigma for truncating the LSF kernel function
+    lsf_sigma_truncation: 5
+    # Velocity offset that will result in extra pixels included in the model
+    # spectra to minimize convolution problems at the edges.
+    extra_velocity_buffer: 800.0

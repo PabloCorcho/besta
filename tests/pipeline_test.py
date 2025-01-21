@@ -1,4 +1,4 @@
-from hbsps.pipeline import MainPipeline
+from besta.pipeline import MainPipeline
 from time import time
 
 kin_configuration = {
@@ -20,13 +20,13 @@ kin_configuration = {
     },
 
     "output": {
-        "filename": "/home/pcorchoc/Develop/HBSPS/output/lognormal/kinematics",
+        "filename": "/home/pcorchoc/Develop/besta/output/lognormal/kinematics",
         "format": "text"
     },
 
     "pipeline": {
         "modules": "KinDust",
-        "values": "/home/pcorchoc/Develop/HBSPS/output/lognormal/values_KinDust.ini",
+        "values": "/home/pcorchoc/Develop/besta/output/lognormal/values_KinDust.ini",
         "likelihoods": "KinDust",
         "quiet": "T",
         "timing": "T",
@@ -35,7 +35,7 @@ kin_configuration = {
     },
 
     "KinDust": {
-        "file": "/home/pcorchoc/Develop/HBSPS/KinDust.py",
+        "file": "/home/pcorchoc/Develop/besta/KinDust.py",
         "redshift": 0.0,
         "inputSpectrum": "test/lognormal/input_spectra.dat",
         "SSPModel": "PyPopStar",
@@ -83,17 +83,17 @@ sfh_configuration = {
         "feedback": True,
         "update_interval": 2000,
         "log_zero": -1e14,
-        "multinest_outfile_root": "/home/pcorchoc/Develop/HBSPS/output/lognormal/sampling/"
+        "multinest_outfile_root": "/home/pcorchoc/Develop/besta/output/lognormal/sampling/"
     },
 
     "output": {
-        "filename": "/home/pcorchoc/Develop/HBSPS/output/lognormal/SFH_results",
+        "filename": "/home/pcorchoc/Develop/besta/output/lognormal/SFH_results",
         "format": "text"
     },
 
     "pipeline": {
         "modules": "SFH_stellar_mass",
-        "values": "/home/pcorchoc/Develop/HBSPS/output/lognormal/values_SFH.ini",
+        "values": "/home/pcorchoc/Develop/besta/output/lognormal/values_SFH.ini",
         "likelihoods": "SFH_stellar_mass",
         "quiet": "T",
         "timing": "T",
@@ -102,9 +102,9 @@ sfh_configuration = {
     },
 
     "SFH_stellar_mass": {
-        "file": "/home/pcorchoc/Develop/HBSPS/SFH_stellar_mass.py",
+        "file": "/home/pcorchoc/Develop/besta/SFH_stellar_mass.py",
         "redshift": 0.0,
-        "inputSpectrum": "/home/pcorchoc/Develop/HBSPS/test/lognormal/input_spectra.dat",
+        "inputSpectrum": "/home/pcorchoc/Develop/besta/test/lognormal/input_spectra.dat",
         "SSPModel": "PyPopStar",
         "SSPModelArgs": "KRO",
         "SSPDir": None,

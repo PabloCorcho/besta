@@ -1,7 +1,7 @@
-hbsps package
+besta package
 =============
 
-.. automodule:: hbsps
+.. automodule:: besta
    :members:
    :undoc-members:
    :show-inheritance:
@@ -12,87 +12,87 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   hbsps.pipeline_modules
+   besta.pipeline_modules
 
 Submodules
 ----------
 
-hbsps.dust\_extinction module
+besta.dust\_extinction module
 -----------------------------
 
-.. automodule:: hbsps.dust_extinction
+.. automodule:: besta.dust_extinction
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.kinematics module
+besta.kinematics module
 -----------------------
 
-.. automodule:: hbsps.kinematics
+.. automodule:: besta.kinematics
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.masking module
+besta.masking module
 --------------------
 
-.. automodule:: hbsps.masking
+.. automodule:: besta.masking
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.output module
+besta.output module
 -------------------
 
-.. automodule:: hbsps.output
+.. automodule:: besta.output
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.pipeline module
+besta.pipeline module
 ---------------------
 
-.. automodule:: hbsps.pipeline
+.. automodule:: besta.pipeline
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.postprocess module
+besta.postprocess module
 ------------------------
 
-.. automodule:: hbsps.postprocess
+.. automodule:: besta.postprocess
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.prepare\_fit module
+besta.prepare\_fit module
 -------------------------
 
-.. automodule:: hbsps.prepare_fit
+.. automodule:: besta.prepare_fit
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.sfh module
+besta.sfh module
 ----------------
 
-.. automodule:: hbsps.sfh
+.. automodule:: besta.sfh
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.specBasics module
+besta.specBasics module
 -----------------------
 
-.. automodule:: hbsps.specBasics
+.. automodule:: besta.specBasics
    :members:
    :undoc-members:
    :show-inheritance:
 
-hbsps.utils module
+besta.utils module
 ------------------
 
-.. automodule:: hbsps.utils
+.. automodule:: besta.utils
    :members:
    :undoc-members:
    :show-inheritance:

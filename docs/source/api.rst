@@ -3,7 +3,7 @@
 API Documentation
 =================
 
-.. automodule:: hbsps
+.. automodule:: besta
    :members:
    :undoc-members:
    :show-inheritance:

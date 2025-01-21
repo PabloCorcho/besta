@@ -3,7 +3,7 @@ requires = ["setuptools >= 75.0", "versioneer[toml]"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hbsps"
+name = "besta"
 dynamic = ["version", "dependencies"]
 authors = [
   { name="Pablo Corcho-Caballero", email="p.corcho.caballero@rug.nl" },
@@ -32,10 +32,10 @@ where = ["src"]
 [tool.versioneer]
 VCS = 'git'
 style = 'pep440'
-versionfile_source = 'src/hbsps/_version.py'
-versionfile_build = 'hbsps/_version.py'
+versionfile_source = 'src/besta/_version.py'
+versionfile_build = 'besta/_version.py'
 tag_prefix = 'v'
 
 [project.urls]
-Homepage = "https://github.com/PabloCorcho/HBSPS"
-Issues = "https://github.com/PabloCorcho/HBSPS/issues"
+Homepage = "https://github.com/PabloCorcho/besta"
+Issues = "https://github.com/PabloCorcho/besta/issues"

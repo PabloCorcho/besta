@@ -49,12 +49,12 @@ Piece-wise SFHs
 
 ### Pipeline modules
 
-The default modules used to perform the fitting using either spectra or photometry, are now located within `src/hbsps/pipeline_modules`. All module names are now in lower case format.
+The default modules used to perform the fitting using either spectra or photometry, are now located within `src/besta/pipeline_modules`. All module names are now in lower case format.
 
 It is now possible to obtain the path to a given module (an include it on the cosmosis .ini file) by using the `get_path` method:
 
 ```python
-from hbsps.pipeline_modules.kin_dust import KinDustModule
+from besta.pipeline_modules.kin_dust import KinDustModule
 
 path_to_module = KinDustModule.get_path()
 print("In the .ini file now you should plug")

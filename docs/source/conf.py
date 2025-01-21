@@ -53,10 +53,10 @@ copyright = '2024, Corcho-Caballero P.'
 author = 'Corcho-Caballero P.'
 
 
-import hbsps
-version = '.'.join(hbsps.__version__.split(".")[0:2])
+import besta
+version = '.'.join(besta.__version__.split(".")[0:2])
 # The full version, including alpha/beta/rc tags.
-release = hbsps.__version__
+release = besta.__version__
 
 source_suffix = '.rst'
 

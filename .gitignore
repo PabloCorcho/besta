@@ -8,3 +8,4 @@ cosmosis-standard-library/
 !docs/source/besta_transparent.png
 output/
 test_data/
+src/besta.egg-info
