@@ -204,6 +204,7 @@ def smoothSpectrumFast(spectrum, sigmaPixel):
 
     return smoothSpectrum
 
+
 def get_legendre_polynomial_array(wavelength, order, bounds=None):
     """
     Compute an array of Legendre polynomials evaluated at normalized wavelengths.
@@ -215,22 +216,25 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None):
     order : int
         The maximum order of the Legendre polynomial to compute.
     bounds : tuple, optional
-        A tuple specifying the minimum and maximum bounds for normalization 
-        (bounds[0], bounds[1]). If None, the normalization is based on the 
+        A tuple specifying the minimum and maximum bounds for normalization
+        (bounds[0], bounds[1]). If None, the normalization is based on the
         minimum and maximum of the `wavelength` array.
 
     Returns
     -------
     numpy.ndarray
-        A 2D array where each row corresponds to the values of a Legendre 
+        A 2D array where each row corresponds to the values of a Legendre
         polynomial of a given degree, evaluated at the normalized wavelengths.
         The shape of the array is (order + 1, len(wavelength)).
     """
     if bounds == None:
-        norm_wl = 2 * (wavelength - wavelength.min()
-                   ) / (wavelength.max() - wavelength.min()) - 1
+        norm_wl = (
+            2 * (wavelength - wavelength.min()) / (wavelength.max() - wavelength.min())
+            - 1
+        )
     else:
         norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
     legendre_arr = np.array(
-        [np.array(legendre(deg)(norm_wl)) for deg in  np.arange(0, order + 1)])
+        [np.array(legendre(deg)(norm_wl)) for deg in np.arange(0, order + 1)]
+    )
     return legendre_arr

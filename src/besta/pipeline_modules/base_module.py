@@ -107,7 +107,9 @@ class BaseModule(ClassModule):
         print(f"Setting to restframe with respect to input redshift: {redshift}")
         wavelength /= 1.0 + redshift
         print("Constraining fit to wavelength range: ", wl_range)
-        good_idx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
+        good_idx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[
+            0
+        ]
         wavelength = wavelength[good_idx]
         flux = flux[good_idx]
         cov = error[good_idx] ** 2
@@ -241,8 +243,12 @@ class BaseModule(ClassModule):
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
         extra_offset_pixel = int(velocity_buffer / velscale)
-        print("Log-binning SSP spectra to velocity scale: ", velscale, " km/s",
-              f"\nKeeping {extra_offset_pixel} extra pixels at both edges")
+        print(
+            "Log-binning SSP spectra to velocity scale: ",
+            velscale,
+            " km/s",
+            f"\nKeeping {extra_offset_pixel} extra pixels at both edges",
+        )
 
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
@@ -252,9 +258,10 @@ class BaseModule(ClassModule):
             extra_offset_pixel = 0
 
         lnlam_bin_edges = np.arange(
-            ln_wl_edges[0] - 0.5 * dlnlam  - dlnlam * extra_offset_pixel,
+            ln_wl_edges[0] - 0.5 * dlnlam - dlnlam * extra_offset_pixel,
             ln_wl_edges[-1] + dlnlam * (1 + extra_offset_pixel),
-            dlnlam)
+            dlnlam,
+        )
 
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bin_edges))

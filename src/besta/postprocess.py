@@ -10,9 +10,10 @@ from scipy import stats
 
 pct_cmap = plt.get_cmap("rainbow").copy()
 
+
 def weighted_sample_mean(x, weights):
     """Compute the weighted mean of an input sample.
-    
+
     Parameters
     ----------
     x : np.ndarray
@@ -31,7 +32,7 @@ def weighted_sample_mean(x, weights):
 
 def weighted_sample_covariance(x, weights, unbiased=False):
     """Compute the covariance matrix of a sample with weights.
-    
+
     Parameters
     ----------
     x : np.ndarray
@@ -48,16 +49,19 @@ def weighted_sample_covariance(x, weights, unbiased=False):
     mean = weighted_sample_mean(x, weights)
     x_mean = x - mean[:, np.newaxis]
     covariance = np.sum(
-        weights[np.newaxis, np.newaxis]
-        * x_mean[np.newaxis] * x_mean[:, np.newaxis], axis=-1)
+        weights[np.newaxis, np.newaxis] * x_mean[np.newaxis] * x_mean[:, np.newaxis],
+        axis=-1,
+    )
     if unbiased:
         covariance /= 1 - np.sum(weights**2)
     return covariance
+
 
 def weighted_1d_cmf(x, weights):
     """Compute the cumulative probability distribution from a sample."""
     sort_idx = np.argsort(x)
     return x[sort_idx], sort_idx, np.cumsum(weights[sort_idx])
+
 
 def read_results_file(path):
     """Read the results produced during a cosmosis run.
@@ -150,10 +154,10 @@ def compute_pdf_from_results(
     # If not provided, select the keys that correspond to sampled parameters
     if parameter_keys is None:
         print(
-            "No keys provided" 
-            + f"\nSelecting every column that includes prefix *{parameter_prefix}*")
-        parameter_keys = [
-            key for key in list(table.keys()) if parameter_prefix in key]
+            "No keys provided"
+            + f"\nSelecting every column that includes prefix *{parameter_prefix}*"
+        )
+        parameter_keys = [key for key in list(table.keys()) if parameter_prefix in key]
         print("Number of keys found ", len(parameter_keys))
 
     assert len(parameter_keys) > 0, "No keys available"
@@ -164,8 +168,10 @@ def compute_pdf_from_results(
     output_hdul = []
     header = fits.Header()
 
-    max_logpost, max_post_idx = (np.nanmax(table[posterior_key]),
-                                 np.nanargmax(table[posterior_key]))
+    max_logpost, max_post_idx = (
+        np.nanmax(table[posterior_key]),
+        np.nanargmax(table[posterior_key]),
+    )
     # Linear posterior renormalized to the maximum value
     logpost = table[posterior_key].value
     posterior = np.exp(logpost - max_logpost)
@@ -176,17 +182,17 @@ def compute_pdf_from_results(
     mean_values = weighted_sample_mean(values, posterior)
     covariance_matrix = weighted_sample_covariance(values, posterior)
     # Store everything on the header
-    for axis, mean, maxpost, key in zip(range(len(parameter_keys)),
-                                        mean_values,
-                                        maxpost_values,
-                                        parameter_keys):
+    for axis, mean, maxpost, key in zip(
+        range(len(parameter_keys)), mean_values, maxpost_values, parameter_keys
+    ):
         kname = key.replace(parameter_prefix + "--", "")
         header[f"hierarch axis_{axis}"] = kname, "parameter"
         header[f"hierarch mean_{kname}"] = mean, "post-weighted mean"
         header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
 
-    covariance_hdu = fits.ImageHDU(data=covariance_matrix, name="COVARIANCE",
-                                   header=header)
+    covariance_hdu = fits.ImageHDU(
+        data=covariance_matrix, name="COVARIANCE", header=header
+    )
     output_hdul.append(covariance_hdu)
 
     # PDF analysis
@@ -199,17 +205,14 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
-            value_sorted, sort_idx, cmf = weighted_1d_cmf(
-                value[mask], posterior[mask])
-            
+            value_sorted, sort_idx, cmf = weighted_1d_cmf(value[mask], posterior[mask])
+
             value_pct = np.interp(percentiles, cmf, value_sorted)
             logpost_pct = np.interp(percentiles, cmf, logpost[sort_idx])
             # TODO: duplicated
             value_mean = np.sum(posterior[mask] * value[mask])
 
-            pdf_binedges = np.linspace(
-                value_sorted[0], value_sorted[-1], pdf_size + 1
-            )
+            pdf_binedges = np.linspace(value_sorted[0], value_sorted[-1], pdf_size + 1)
             pdf_bins = (pdf_binedges[1:] + pdf_binedges[:-1]) / 2
             interp_cmf = np.interp(pdf_binedges, value_sorted, cmf)
             pdf = (interp_cmf[1:] - interp_cmf[:-1]) / (
@@ -232,9 +235,7 @@ def compute_pdf_from_results(
             table_1d_percentiles.add_column(logpost_pct, name=f"{key_name}_post_pct")
 
             if real_values is not None and key in real_values:
-                integral_to_real = np.interp(
-                    real_values[key], value_sorted, cmf
-                )
+                integral_to_real = np.interp(real_values[key], value_sorted, cmf)
                 table_1d_pct_hdr[f"hierarch {key_name}_real"] = np.nan_to_num(
                     real_values[key]
                 )
@@ -257,10 +258,14 @@ def compute_pdf_from_results(
                 ax.set_xlabel(key_name)
                 ax.set_ylabel(f"PDF [1/{key_name} units]")
 
-                fig.savefig(os.path.join(
-                    os.path.dirname(output_filename),
-                    f"stat_analysis_pdf_{key_1}.png"),
-                            dpi=200, bbox_inches='tight')
+                fig.savefig(
+                    os.path.join(
+                        os.path.dirname(output_filename),
+                        f"stat_analysis_pdf_{key_1}.png",
+                    ),
+                    dpi=200,
+                    bbox_inches="tight",
+                )
                 if show:
                     plt.show()
                 else:
@@ -285,28 +290,34 @@ def compute_pdf_from_results(
             value_2 = table[key_2].value
             mask = np.isfinite(value_1) & np.isfinite(value_2)
 
-            binedges_1 = np.linspace(value_1[mask].min(), value_1[mask].max(),
-                                     pdf_size + 1)
+            binedges_1 = np.linspace(
+                value_1[mask].min(), value_1[mask].max(), pdf_size + 1
+            )
             bins_1 = (binedges_1[:-1] + binedges_1[1:]) / 2
-            binedges_2 = np.linspace(value_1[mask].min(), value_1[mask].max(),
-                                     pdf_size)
+            binedges_2 = np.linspace(value_1[mask].min(), value_1[mask].max(), pdf_size)
             bins_2 = (binedges_2[:-1] + binedges_2[1:]) / 2
 
             try:
                 v1_grid, v2_grid = np.meshgrid(bins_1, bins_2, indexing="ij")
                 kde = stats.gaussian_kde(
-                    np.array([value_1[mask], value_2[mask]]),
-                    weights=posterior[mask])
+                    np.array([value_1[mask], value_2[mask]]), weights=posterior[mask]
+                )
                 pdf = kde(np.array([v1_grid.flatten(), v2_grid.flatten()]))
                 pdf = pdf.reshape(v1_grid.shape)
             except Exception as e:
-                print("There was an error during KDE estimation: ", e,
-                      "\nComputing PDF from histogram")
+                print(
+                    "There was an error during KDE estimation: ",
+                    e,
+                    "\nComputing PDF from histogram",
+                )
                 pdf, _, _ = np.histogram2d(
-                    value_1[mask], value_2[mask], weights=posterior[mask],
+                    value_1[mask],
+                    value_2[mask],
+                    weights=posterior[mask],
                     density=True,
-                    bins=[binedges_1, binedges_2])
- 
+                    bins=[binedges_1, binedges_2],
+                )
+
             hdr = fits.Header()
             hdr["AXIS0"] = key_1
             hdr["AXIS1"] = key_2
@@ -314,23 +325,20 @@ def compute_pdf_from_results(
             hdr["A0_INI"] = bins_1[0]
             hdr["A0_END"] = bins_1[-1]
             hdr["A0_DELTA"] = bins_1[1] - bins_1[0]
- 
+
             hdr["A1_INI"] = bins_2[0]
             hdr["A1_END"] = bins_2[-1]
             hdr["A1_DELTA"] = bins_2[1] - bins_2[0]
 
             k1 = key_1.replace(parameter_prefix + "--", "")
             k2 = key_2.replace(parameter_prefix + "--", "")
-            output_hdul.append(
-                fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}"))
+            output_hdul.append(fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}"))
 
             if plot:
                 fraction = compute_fraction_from_map(pdf)
                 fig, ax = plt.subplots()
                 ax.pcolormesh(bins_2, bins_1, pdf, cmap="Greys")
-                ax.contour(
-                    bins_1, bins_2, fraction, levels=[0.1, 0.5, 0.84]
-                )
+                ax.contour(bins_1, bins_2, fraction, levels=[0.1, 0.5, 0.84])
                 ax.set_xlabel(k2)
                 ax.set_ylabel(k1)
 
@@ -339,10 +347,14 @@ def compute_pdf_from_results(
                 if real_values is not None and key_2 in real_values:
                     ax.axvline(real_values[key_2], c="r")
 
-                fig.savefig(os.path.join(
-                    os.path.dirname(output_filename),
-                    f"stat_analysis_pdf_{key_1}_{key_2}.png"),
-                            dpi=200, bbox_inches='tight')
+                fig.savefig(
+                    os.path.join(
+                        os.path.dirname(output_filename),
+                        f"stat_analysis_pdf_{key_1}_{key_2}.png",
+                    ),
+                    dpi=200,
+                    bbox_inches="tight",
+                )
                 if show:
                     plt.show()
                 else:
@@ -355,6 +367,7 @@ def compute_pdf_from_results(
     if output_filename is not None:
         output_hdul.writeto(output_filename, overwrite=True)
     return output_hdul
+
 
 def make_plot_chains(chain_results, truth_values=None, output="."):
     parameters = [par for par in chain_results.keys() if "parameters" in par]
@@ -407,10 +420,10 @@ if __name__ == "__main__":
         #                 'parameters--logssfr_over_8.70_yr',
         #                 'parameters--logssfr_over_8.48_yr'],
         parameter_key_pairs=[
-            ['parameters--logssfr_over_8.48_yr', 'parameters--logssfr_over_9.00_yr']
-            ],
+            ["parameters--logssfr_over_8.48_yr", "parameters--logssfr_over_9.00_yr"]
+        ],
         pdf_2d=True,
         plot=False,
         pdf_size=30,
-        output_filename="/home/pcorchoc/Research/Euclid/test.table.fits"
+        output_filename="/home/pcorchoc/Research/Euclid/test.table.fits",
     )

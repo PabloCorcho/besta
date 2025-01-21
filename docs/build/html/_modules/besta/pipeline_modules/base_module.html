@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
+  <title>besta.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.237.g211f258.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=7f5de030"></script>
+      <script src="../../../_static/documentation_options.js?v=9c7d7888"></script>
       <script src="../../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
@@ -43,7 +43,11 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">besta</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">Pipeline Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../configuration.html">Configuring BESTA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../manager.html">Pipeline Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api.html">API</a></li>
 </ul>
 
         </div>
@@ -96,19 +100,19 @@
 
 
 <div class="viewcode-block" id="BaseModule">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule">[docs]</a>
 <span class="k">class</span> <span class="nc">BaseModule</span><span class="p">(</span><span class="n">ClassModule</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;BESTA Pipeline module base class.&quot;&quot;&quot;</span>
 
 <div class="viewcode-block" id="BaseModule.make_observable">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.make_observable">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.make_observable">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">make_observable</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create an observable from an input set of model parameters.&quot;&quot;&quot;</span></div>
 
 
 <div class="viewcode-block" id="BaseModule.execute">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.execute">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.execute">[docs]</a>
     <span class="nd">@abstractmethod</span>
     <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute the pipeline.&quot;&quot;&quot;</span>
@@ -116,7 +120,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.get_path">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.get_path">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.get_path">[docs]</a>
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">get_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the path to the module file.&quot;&quot;&quot;</span>
@@ -124,7 +128,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.parse_options">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.parse_options">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.parse_options">[docs]</a>
     <span class="k">def</span> <span class="nf">parse_options</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="n">DataBlock</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse the input setup options.</span>
 
@@ -150,7 +154,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_observed_spectra">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_spectra">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_observed_spectra">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_observed_spectra</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">:</span> <span class="n">DataBlock</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">luminosity</span><span class="o">=</span><span class="kc">False</span>
     <span class="p">):</span>
@@ -196,7 +200,9 @@
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Setting to restframe with respect to input redshift: </span><span class="si">{</span><span class="n">redshift</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="n">wavelength</span> <span class="o">/=</span> <span class="mf">1.0</span> <span class="o">+</span> <span class="n">redshift</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Constraining fit to wavelength range: &quot;</span><span class="p">,</span> <span class="n">wl_range</span><span class="p">)</span>
-        <span class="n">good_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">wavelength</span> <span class="o">&gt;=</span> <span class="n">wl_range</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wavelength</span> <span class="o">&lt;=</span> <span class="n">wl_range</span><span class="p">[</span><span class="mi">1</span><span class="p">]))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">good_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">wavelength</span> <span class="o">&gt;=</span> <span class="n">wl_range</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">wavelength</span> <span class="o">&lt;=</span> <span class="n">wl_range</span><span class="p">[</span><span class="mi">1</span><span class="p">]))[</span>
+            <span class="mi">0</span>
+        <span class="p">]</span>
         <span class="n">wavelength</span> <span class="o">=</span> <span class="n">wavelength</span><span class="p">[</span><span class="n">good_idx</span><span class="p">]</span>
         <span class="n">flux</span> <span class="o">=</span> <span class="n">flux</span><span class="p">[</span><span class="n">good_idx</span><span class="p">]</span>
         <span class="n">cov</span> <span class="o">=</span> <span class="n">error</span><span class="p">[</span><span class="n">good_idx</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span>
@@ -247,7 +253,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_observed_photometry">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_observed_photometry">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_observed_photometry">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_observed_photometry</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the Photometric Data.</span>
 
@@ -281,7 +287,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_ssp_model">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_ssp_model">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_ssp_model">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_ssp_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">velocity_buffer</span><span class="o">=</span><span class="mf">800.0</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the SSP data.</span>
 
@@ -336,8 +342,12 @@
         <span class="c1"># Rebin the spectra</span>
         <span class="n">dlnlam</span> <span class="o">=</span> <span class="n">velscale</span> <span class="o">/</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">constants</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s2">&quot;km/s&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
         <span class="n">extra_offset_pixel</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">velocity_buffer</span> <span class="o">/</span> <span class="n">velscale</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Log-binning SSP spectra to velocity scale: &quot;</span><span class="p">,</span> <span class="n">velscale</span><span class="p">,</span> <span class="s2">&quot; km/s&quot;</span><span class="p">,</span>
-              <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Keeping </span><span class="si">{</span><span class="n">extra_offset_pixel</span><span class="si">}</span><span class="s2"> extra pixels at both edges&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;Log-binning SSP spectra to velocity scale: &quot;</span><span class="p">,</span>
+            <span class="n">velscale</span><span class="p">,</span>
+            <span class="s2">&quot; km/s&quot;</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Keeping </span><span class="si">{</span><span class="n">extra_offset_pixel</span><span class="si">}</span><span class="s2"> extra pixels at both edges&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
 
         <span class="k">if</span> <span class="s2">&quot;ln_wave&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
             <span class="n">ln_wl_edges</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ln_wave&quot;</span><span class="p">][[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
@@ -347,9 +357,10 @@
             <span class="n">extra_offset_pixel</span> <span class="o">=</span> <span class="mi">0</span>
 
         <span class="n">lnlam_bin_edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
-            <span class="n">ln_wl_edges</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">dlnlam</span>  <span class="o">-</span> <span class="n">dlnlam</span> <span class="o">*</span> <span class="n">extra_offset_pixel</span><span class="p">,</span>
+            <span class="n">ln_wl_edges</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">dlnlam</span> <span class="o">-</span> <span class="n">dlnlam</span> <span class="o">*</span> <span class="n">extra_offset_pixel</span><span class="p">,</span>
             <span class="n">ln_wl_edges</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">dlnlam</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">extra_offset_pixel</span><span class="p">),</span>
-            <span class="n">dlnlam</span><span class="p">)</span>
+            <span class="n">dlnlam</span><span class="p">,</span>
+        <span class="p">)</span>
 
         <span class="c1"># Resample the SED</span>
         <span class="n">ssp</span><span class="o">.</span><span class="n">interpolate_sed</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">lnlam_bin_edges</span><span class="p">))</span>
@@ -389,7 +400,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_extinction_law">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_extinction_law">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_extinction_law">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_extinction_law</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare an dust extinction model.</span>
 
@@ -407,7 +418,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.prepare_sfh_model">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.prepare_sfh_model">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.prepare_sfh_model">[docs]</a>
     <span class="k">def</span> <span class="nf">prepare_sfh_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">options</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare the SFH model.</span>
 
@@ -435,7 +446,7 @@
 
 
 <div class="viewcode-block" id="BaseModule.log_like">
-<a class="viewcode-back" href="../../../hbsps.pipeline_modules.html#besta.pipeline_modules.BaseModule.log_like">[docs]</a>
+<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.log_like">[docs]</a>
     <span class="k">def</span> <span class="nf">log_like</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">cov</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute the likelihood between an input data set and a model.</span>
 
@@ -453,8 +464,8 @@
 <span class="sd">        loglike : np.ndarray</span>
 <span class="sd">            The log-likelihood associated to the model given the data.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">residual</span> <span class="o">=</span> <span class="n">model</span> <span class="o">-</span> <span class="n">data</span>
-        <span class="n">loglike</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">residual</span> <span class="o">/</span> <span class="n">cov</span><span class="p">,</span> <span class="n">residual</span><span class="p">)</span>
+        <span class="n">chi</span> <span class="o">=</span> <span class="p">(</span><span class="n">model</span> <span class="o">-</span> <span class="n">data</span><span class="p">)</span> <span class="o">/</span> <span class="n">cov</span>
+        <span class="n">loglike</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">chi</span> <span class="o">*</span> <span class="n">chi</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">loglike</span></div>
 </div>
 

@@ -5,16 +5,18 @@ from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
 
+
 class SFHSpectraModule(BaseModule):
     name = "SFHSpectra"
+
     def __init__(self, options):
         """Set-up the COSMOSIS sampler.
-            Args:
-                options: options from startup file (i.e. .ini file)
-            Returns:
-                config: parameters or objects that are passed to 
-                    the sampler.
-                    
+        Args:
+            options: options from startup file (i.e. .ini file)
+        Returns:
+            config: parameters or objects that are passed to
+                the sampler.
+
         """
         options = self.parse_options(options)
         # Pipeline values file
@@ -35,10 +37,10 @@ class SFHSpectraModule(BaseModule):
                     h4 = 0
                 print(f"\nConvolving SSP models with Gauss-Hermite LOSVD")
                 ssp, mask = kinematics.convolve_ssp_model(
-                    self.config,
-                    options["los_sigma"], options["los_vel"], h3, h4)
-                self.config['ssp_model'] = ssp
-                self.config['weights'] *= mask
+                    self.config, options["los_sigma"], options["los_vel"], h3, h4
+                )
+                self.config["ssp_model"] = ssp
+                self.config["weights"] *= mask
                 print(f"Valid pixels: {np.count_nonzero(mask)} out of {mask.size}")
         else:
             print("No kinematic information was provided")
@@ -47,46 +49,52 @@ class SFHSpectraModule(BaseModule):
             av = options["av"]
             self.prepare_extinction_law(options)
             print(f"\nReddening SSP models using Av={av}")
-            self.config['ssp_model'] = self.config["extinction_law"].redden_ssp_model(
-                self.config['ssp_model'], a_v=av)
+            self.config["ssp_model"] = self.config["extinction_law"].redden_ssp_model(
+                self.config["ssp_model"], a_v=av
+            )
 
     def make_observable(self, block, parse=False):
-        sfh_model = self.config['sfh_model']
+        sfh_model = self.config["sfh_model"]
         if parse:
-             sfh_model.parse_datablock(block)
-        flux_model = sfh_model.model.compute_SED(self.config['ssp_model'],
-										     t_obs=sfh_model.today,
-											 allow_negative=False).value
+            sfh_model.parse_datablock(block)
+        flux_model = sfh_model.model.compute_SED(
+            self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
+        ).value
         normalization = np.sum(
-            self.config['flux'] / flux_model * self.config["weights"]
-            ) / np.sum(self.config["weights"])
-        block['parameters', 'normalization'] = normalization
+            self.config["flux"] / flux_model * self.config["weights"]
+        ) / np.sum(self.config["weights"])
+        block["parameters", "normalization"] = normalization
         return flux_model * normalization
 
     def execute(self, block):
-        valid, penalty = self.config['sfh_model'].parse_datablock(block)
+        valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
             print("Invalid")
             block[section_names.likelihoods, "SFHSpectra_like"] = -1e20 * penalty
-            block['parameters', 'normalization'] = 0.0
+            block["parameters", "normalization"] = 0.0
             return 0
         flux_model = self.make_observable(block)
         weights_norm = np.nansum(self.config["weights"])
-        like = self.log_like(self.config['flux'] * self.config["weights"],
-                             flux_model * self.config["weights"],
-                             self.config['cov'] * weights_norm)
+        like = self.log_like(
+            self.config["flux"] * self.config["weights"],
+            flux_model * self.config["weights"],
+            self.config["cov"] * weights_norm,
+        )
         # Final posterior for sampling
         block[section_names.likelihoods, "SFHSpectra_like"] = like
         return 0
 
+
 def setup(options):
-        options = SectionOptions(options)
-        mod = SFHSpectraModule(options)
-        return mod
+    options = SectionOptions(options)
+    mod = SFHSpectraModule(options)
+    return mod
+
 
 def execute(block, mod):
     mod.execute(block)
     return 0
+
 
 def cleanup(mod):
     mod.cleanup()
