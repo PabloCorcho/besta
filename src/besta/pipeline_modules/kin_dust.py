@@ -6,16 +6,18 @@ from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
 
+
 class KinDustModule(BaseModule):
     name = "KinDust"
+
     def __init__(self, options):
         """Set-up the COSMOSIS sampler.
-            Args:
-                options: options from startup file (i.e. .ini file)
-            Returns:
-                config: parameters or objects that are passed to 
-                    the sampler.
-                    
+        Args:
+            options: options from startup file (i.e. .ini file)
+        Returns:
+            config: parameters or objects that are passed to
+                the sampler.
+
         """
         options = self.parse_options(options)
         # Pipeline values file
@@ -30,22 +32,27 @@ class KinDustModule(BaseModule):
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_extinction_law(options)
-    
+
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         dust_model = self.config["extinction_law"]
-        sed, mask = kinematics.convolve_ssp(self.config,
-									 los_vel=block["parameters", "los_vel"],
-									 los_sigma=block["parameters", "los_sigma"],
-									 los_h3=block["parameters", "los_h3"],
-									 los_h4=block["parameters", "los_h4"])
+        sed, mask = kinematics.convolve_ssp(
+            self.config,
+            los_vel=block["parameters", "los_vel"],
+            los_sigma=block["parameters", "los_sigma"],
+            los_h3=block["parameters", "los_h3"],
+            los_h4=block["parameters", "los_h4"],
+        )
         sed *= dust_model.get_extinction(
-            self.config["wavelength"], a_v=block["parameters", "av"])[np.newaxis]
+            self.config["wavelength"], a_v=block["parameters", "av"]
+        )[np.newaxis]
         weights = self.config["weights"] * mask
         sq_weights = np.sqrt(weights)
-        solution, _ = nnls(sq_weights[:, None] * sed.T,
-                           sq_weights * self.config["flux"],
-                           maxiter=sed.shape[0] * 10)
+        solution, _ = nnls(
+            sq_weights[:, None] * sed.T,
+            sq_weights * self.config["flux"],
+            maxiter=sed.shape[0] * 10,
+        )
         if self.ssp_output:
             self.solution.append(solution)
         flux_model = np.sum(sed * solution[:, np.newaxis], axis=0)
@@ -58,11 +65,10 @@ class KinDustModule(BaseModule):
         of which the parameter space is sampled.
         """
         # Obtain parameters from setup
-        cov = self.config['cov']
+        cov = self.config["cov"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
-        like = self.log_like(self.config["flux"] * weights,
-                          flux_model * weights, cov)
+        like = self.log_like(self.config["flux"] * weights, flux_model * weights, cov)
         # Final posterior for sampling
         block[section_names.likelihoods, "KinDust_like"] = like
         return 0
@@ -73,13 +79,15 @@ class KinDustModule(BaseModule):
 
 
 def setup(options):
-        options = SectionOptions(options)
-        mod = KinDustModule(options)
-        return mod
+    options = SectionOptions(options)
+    mod = KinDustModule(options)
+    return mod
+
 
 def execute(block, mod):
     mod.execute(block)
     return 0
+
 
 def cleanup(mod):
     mod.cleanup()

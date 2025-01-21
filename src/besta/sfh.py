@@ -624,7 +624,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         self.model = pst.models.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1 << u.Msun,
-            tau= 1 << u.Gyr,
+            tau=1 << u.Gyr,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
@@ -634,7 +634,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         self.model = pst.models.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
-            tau=10**datablock["parameters", "logtau"],
+            tau=10 ** datablock["parameters", "logtau"],
             alpha_powerlaw=datablock["parameters", "alpha_powerlaw"],
             ism_metallicity_today=datablock["parameters", "ism_metallicity_today"]
             << u.dimensionless_unscaled,
@@ -667,14 +667,15 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         print("[SFH] Initialising DelayedTauQuenchedSFH model")
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
-        self.free_params["quenching_time"] = kwargs.get("quenching_time",
-                                                [0, self.today / 2, self.today])
+        self.free_params["quenching_time"] = kwargs.get(
+            "quenching_time", [0, self.today / 2, self.today]
+        )
 
         self.model = pst.models.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1 << u.Msun,
-            tau= 1 << u.Gyr,
-            quenching_time = 1 << u.Gyr,
+            tau=1 << u.Gyr,
+            quenching_time=1 << u.Gyr,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
@@ -684,7 +685,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         self.model = pst.models.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
-            tau=10**datablock["parameters", "logtau"],
+            tau=10 ** datablock["parameters", "logtau"],
             quenching_time=datablock["parameters", "quenching_time"],
             alpha_powerlaw=datablock["parameters", "alpha_powerlaw"],
             ism_metallicity_today=datablock["parameters", "ism_metallicity_today"]
