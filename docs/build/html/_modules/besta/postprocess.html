@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.postprocess &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
+  <title>besta.postprocess &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.237.g211f258.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=7f5de030"></script>
+      <script src="../../_static/documentation_options.js?v=9c7d7888"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -43,7 +43,11 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules.html">besta</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">Pipeline Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuring BESTA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../manager.html">Pipeline Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">API</a></li>
 </ul>
 
         </div>
@@ -83,11 +87,12 @@
 
 <span class="n">pct_cmap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">get_cmap</span><span class="p">(</span><span class="s2">&quot;rainbow&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
+
 <div class="viewcode-block" id="weighted_sample_mean">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.weighted_sample_mean">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.weighted_sample_mean">[docs]</a>
 <span class="k">def</span> <span class="nf">weighted_sample_mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the weighted mean of an input sample.</span>
-<span class="sd">    </span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    x : np.ndarray</span>
@@ -106,10 +111,10 @@
 
 
 <div class="viewcode-block" id="weighted_sample_covariance">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.weighted_sample_covariance">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.weighted_sample_covariance">[docs]</a>
 <span class="k">def</span> <span class="nf">weighted_sample_covariance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">unbiased</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the covariance matrix of a sample with weights.</span>
-<span class="sd">    </span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    x : np.ndarray</span>
@@ -126,23 +131,26 @@
     <span class="n">mean</span> <span class="o">=</span> <span class="n">weighted_sample_mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span>
     <span class="n">x_mean</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">mean</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
     <span class="n">covariance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
-        <span class="n">weights</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
-        <span class="o">*</span> <span class="n">x_mean</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">*</span> <span class="n">x_mean</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">],</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">weights</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">*</span> <span class="n">x_mean</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">*</span> <span class="n">x_mean</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">],</span>
+        <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
     <span class="k">if</span> <span class="n">unbiased</span><span class="p">:</span>
         <span class="n">covariance</span> <span class="o">/=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">covariance</span></div>
 
 
+
 <div class="viewcode-block" id="weighted_1d_cmf">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.weighted_1d_cmf">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.weighted_1d_cmf">[docs]</a>
 <span class="k">def</span> <span class="nf">weighted_1d_cmf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the cumulative probability distribution from a sample.&quot;&quot;&quot;</span>
     <span class="n">sort_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">])</span></div>
+    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">],</span> <span class="n">sort_idx</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">])</span></div>
+
 
 
 <div class="viewcode-block" id="read_results_file">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.read_results_file">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.read_results_file">[docs]</a>
 <span class="k">def</span> <span class="nf">read_results_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the results produced during a cosmosis run.</span>
 
@@ -169,7 +177,7 @@
 
 
 <div class="viewcode-block" id="compute_fraction_from_map">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.compute_fraction_from_map">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.compute_fraction_from_map">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_fraction_from_map</span><span class="p">(</span><span class="n">distribution</span><span class="p">,</span> <span class="n">xedges</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">yedges</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the enclosed probability map associated to a given 2D distribution.</span>
 
@@ -201,17 +209,16 @@
 
 
 <div class="viewcode-block" id="compute_pdf_from_results">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.compute_pdf_from_results">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.compute_pdf_from_results">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_pdf_from_results</span><span class="p">(</span>
     <span class="n">table</span><span class="p">,</span>
     <span class="n">output_filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">parameter_prefix</span><span class="o">=</span><span class="s2">&quot;parameters&quot;</span><span class="p">,</span>
     <span class="n">posterior_key</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">,</span>
-    <span class="n">weights_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># TODO</span>
     <span class="n">parameter_keys</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">pdf_1d</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="n">percentiles</span><span class="o">=</span><span class="p">[</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">],</span>
-    <span class="n">pdf_2d</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">pdf_2d</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="n">parameter_key_pairs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="n">pdf_size</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
     <span class="n">plot</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
@@ -238,36 +245,48 @@
 <span class="sd">    real_values : dict, optional</span>
 <span class="sd">    extra_info : dict, optional</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">output_filename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">output_filename</span> <span class="o">=</span> <span class="s2">&quot;stat_analysis.fits&quot;</span>
-
-    <span class="n">posterior</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span>
-        <span class="n">table</span><span class="p">[</span><span class="n">posterior_key</span><span class="p">]</span><span class="o">.</span><span class="n">value</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">table</span><span class="p">[</span><span class="n">posterior_key</span><span class="p">]</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
-    <span class="p">)</span>
-    <span class="n">posterior</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">posterior</span><span class="p">)</span>
-
     <span class="c1"># If not provided, select the keys that correspond to sampled parameters</span>
     <span class="k">if</span> <span class="n">parameter_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">parameter_keys</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">parameter_prefix</span> <span class="ow">in</span> <span class="n">key</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;No keys provided&quot;</span>
+            <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Selecting every column that includes prefix *</span><span class="si">{</span><span class="n">parameter_prefix</span><span class="si">}</span><span class="s2">*&quot;</span>
+        <span class="p">)</span>
+        <span class="n">parameter_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span> <span class="k">if</span> <span class="n">parameter_prefix</span> <span class="ow">in</span> <span class="n">key</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of keys found &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">parameter_keys</span><span class="p">))</span>
 
-    <span class="c1"># Create a matrix (theta, samples)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">parameter_keys</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;No keys available&quot;</span>
+
+    <span class="c1"># Create the array of parameter values (theta, samples)</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">table</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">parameter_keys</span><span class="p">])</span>
 
     <span class="n">output_hdul</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">Header</span><span class="p">()</span>
 
+    <span class="n">max_logpost</span><span class="p">,</span> <span class="n">max_post_idx</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">nanmax</span><span class="p">(</span><span class="n">table</span><span class="p">[</span><span class="n">posterior_key</span><span class="p">]),</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">nanargmax</span><span class="p">(</span><span class="n">table</span><span class="p">[</span><span class="n">posterior_key</span><span class="p">]),</span>
+    <span class="p">)</span>
+    <span class="c1"># Linear posterior renormalized to the maximum value</span>
+    <span class="n">logpost</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="n">posterior_key</span><span class="p">]</span><span class="o">.</span><span class="n">value</span>
+    <span class="n">posterior</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">logpost</span> <span class="o">-</span> <span class="n">max_logpost</span><span class="p">)</span>
+    <span class="n">posterior</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">posterior</span><span class="p">)</span>
+    <span class="n">header</span><span class="p">[</span><span class="s2">&quot;hierarch max_logpost&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_logpost</span><span class="p">,</span> <span class="s2">&quot;Maximum of the logposterior&quot;</span>
+    <span class="n">maxpost_values</span> <span class="o">=</span> <span class="n">values</span><span class="p">[:,</span> <span class="n">max_post_idx</span><span class="p">]</span>
     <span class="c1"># Mean and covariance</span>
     <span class="n">mean_values</span> <span class="o">=</span> <span class="n">weighted_sample_mean</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">posterior</span><span class="p">)</span>
     <span class="n">covariance_matrix</span> <span class="o">=</span> <span class="n">weighted_sample_covariance</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">posterior</span><span class="p">)</span>
-    <span class="n">header</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">Header</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">axis</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">parameter_keys</span><span class="p">)),</span>
-                               <span class="n">mean_values</span><span class="p">,</span>
-                               <span class="n">parameter_keys</span><span class="p">):</span>
+    <span class="c1"># Store everything on the header</span>
+    <span class="k">for</span> <span class="n">axis</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">maxpost</span><span class="p">,</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
+        <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">parameter_keys</span><span class="p">)),</span> <span class="n">mean_values</span><span class="p">,</span> <span class="n">maxpost_values</span><span class="p">,</span> <span class="n">parameter_keys</span>
+    <span class="p">):</span>
         <span class="n">kname</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">parameter_prefix</span> <span class="o">+</span> <span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
         <span class="n">header</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;hierarch axis_</span><span class="si">{</span><span class="n">axis</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kname</span><span class="p">,</span> <span class="s2">&quot;parameter&quot;</span>
-        <span class="n">header</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;hierarch </span><span class="si">{</span><span class="n">kname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">mean</span><span class="p">,</span> <span class="s2">&quot;like-weighted mean&quot;</span>
-    <span class="n">covariance_hdu</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">covariance_matrix</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;COVARIANCE&quot;</span><span class="p">,</span>
-                                   <span class="n">header</span><span class="o">=</span><span class="n">header</span><span class="p">)</span>
+        <span class="n">header</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;hierarch mean_</span><span class="si">{</span><span class="n">kname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">mean</span><span class="p">,</span> <span class="s2">&quot;post-weighted mean&quot;</span>
+        <span class="n">header</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;hierarch maxpost_</span><span class="si">{</span><span class="n">kname</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">maxpost</span><span class="p">,</span> <span class="s2">&quot;max-post value&quot;</span>
+
+    <span class="n">covariance_hdu</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">covariance_matrix</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;COVARIANCE&quot;</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="n">header</span>
+    <span class="p">)</span>
     <span class="n">output_hdul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">covariance_hdu</span><span class="p">)</span>
 
     <span class="c1"># PDF analysis</span>
@@ -280,15 +299,14 @@
         <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">parameter_keys</span><span class="p">:</span>
             <span class="n">value</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">value</span>
             <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-            <span class="n">value_sorted</span><span class="p">,</span> <span class="n">cmf</span> <span class="o">=</span> <span class="n">weighted_1d_cmf</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
+            <span class="n">value_sorted</span><span class="p">,</span> <span class="n">sort_idx</span><span class="p">,</span> <span class="n">cmf</span> <span class="o">=</span> <span class="n">weighted_1d_cmf</span><span class="p">(</span><span class="n">value</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
 
             <span class="n">value_pct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">percentiles</span><span class="p">,</span> <span class="n">cmf</span><span class="p">,</span> <span class="n">value_sorted</span><span class="p">)</span>
+            <span class="n">logpost_pct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">percentiles</span><span class="p">,</span> <span class="n">cmf</span><span class="p">,</span> <span class="n">logpost</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">])</span>
             <span class="c1"># TODO: duplicated</span>
             <span class="n">value_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">*</span> <span class="n">value</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
 
-            <span class="n">pdf_binedges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span>
-                <span class="n">value_sorted</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">value_sorted</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">pdf_size</span> <span class="o">+</span> <span class="mi">1</span>
-            <span class="p">)</span>
+            <span class="n">pdf_binedges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">value_sorted</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">value_sorted</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">pdf_size</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
             <span class="n">pdf_bins</span> <span class="o">=</span> <span class="p">(</span><span class="n">pdf_binedges</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="n">pdf_binedges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
             <span class="n">interp_cmf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">pdf_binedges</span><span class="p">,</span> <span class="n">value_sorted</span><span class="p">,</span> <span class="n">cmf</span><span class="p">)</span>
             <span class="n">pdf</span> <span class="o">=</span> <span class="p">(</span><span class="n">interp_cmf</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">interp_cmf</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span>
@@ -308,11 +326,10 @@
             <span class="n">table_1d_pdf</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">kde_pdf</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key_name</span><span class="si">}</span><span class="s2">_pdf_kde&quot;</span><span class="p">)</span>
 
             <span class="n">table_1d_percentiles</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">value_pct</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key_name</span><span class="si">}</span><span class="s2">_pct&quot;</span><span class="p">)</span>
+            <span class="n">table_1d_percentiles</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">logpost_pct</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key_name</span><span class="si">}</span><span class="s2">_post_pct&quot;</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">real_values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">real_values</span><span class="p">:</span>
-                <span class="n">integral_to_real</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span>
-                    <span class="n">real_values</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">value_sorted</span><span class="p">,</span> <span class="n">cmf</span>
-                <span class="p">)</span>
+                <span class="n">integral_to_real</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">real_values</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="n">value_sorted</span><span class="p">,</span> <span class="n">cmf</span><span class="p">)</span>
                 <span class="n">table_1d_pct_hdr</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;hierarch </span><span class="si">{</span><span class="n">key_name</span><span class="si">}</span><span class="s2">_real&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span>
                     <span class="n">real_values</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
                 <span class="p">)</span>
@@ -335,10 +352,14 @@
                 <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">key_name</span><span class="p">)</span>
                 <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;PDF [1/</span><span class="si">{</span><span class="n">key_name</span><span class="si">}</span><span class="s2"> units]&quot;</span><span class="p">)</span>
 
-                <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_filename</span><span class="p">),</span>
-                    <span class="sa">f</span><span class="s2">&quot;stat_analysis_pdf_</span><span class="si">{</span><span class="n">key_1</span><span class="si">}</span><span class="s2">.png&quot;</span><span class="p">),</span>
-                            <span class="n">dpi</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s1">&#39;tight&#39;</span><span class="p">)</span>
+                <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_filename</span><span class="p">),</span>
+                        <span class="sa">f</span><span class="s2">&quot;stat_analysis_pdf_</span><span class="si">{</span><span class="n">key_1</span><span class="si">}</span><span class="s2">.png&quot;</span><span class="p">,</span>
+                    <span class="p">),</span>
+                    <span class="n">dpi</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+                    <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
                 <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
                     <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
                 <span class="k">else</span><span class="p">:</span>
@@ -353,6 +374,9 @@
             <span class="p">]</span>
         <span class="p">)</span>
     <span class="k">if</span> <span class="n">pdf_2d</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">parameter_key_pairs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;2D PDF analysis requires input parameter_key_pairs&quot;</span><span class="p">)</span>
+
         <span class="k">for</span> <span class="n">key_1</span><span class="p">,</span> <span class="n">key_2</span> <span class="ow">in</span> <span class="n">parameter_key_pairs</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;2D post. PDF of&quot;</span><span class="p">,</span> <span class="n">key_1</span><span class="p">,</span> <span class="s2">&quot;vs&quot;</span><span class="p">,</span> <span class="n">key_2</span><span class="p">)</span>
 
@@ -360,28 +384,34 @@
             <span class="n">value_2</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="n">key_2</span><span class="p">]</span><span class="o">.</span><span class="n">value</span>
             <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value_1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value_2</span><span class="p">)</span>
 
-            <span class="n">binedges_1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
-                                     <span class="n">pdf_size</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">binedges_1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span>
+                <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">pdf_size</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="p">)</span>
             <span class="n">bins_1</span> <span class="o">=</span> <span class="p">(</span><span class="n">binedges_1</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">binedges_1</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="o">/</span> <span class="mi">2</span>
-            <span class="n">binedges_2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
-                                     <span class="n">pdf_size</span><span class="p">)</span>
+            <span class="n">binedges_2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">pdf_size</span><span class="p">)</span>
             <span class="n">bins_2</span> <span class="o">=</span> <span class="p">(</span><span class="n">binedges_2</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">binedges_2</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="o">/</span> <span class="mi">2</span>
 
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">v1_grid</span><span class="p">,</span> <span class="n">v2_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">bins_1</span><span class="p">,</span> <span class="n">bins_2</span><span class="p">,</span> <span class="n">indexing</span><span class="o">=</span><span class="s2">&quot;ij&quot;</span><span class="p">)</span>
                 <span class="n">kde</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">gaussian_kde</span><span class="p">(</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">value_2</span><span class="p">[</span><span class="n">mask</span><span class="p">]]),</span>
-                    <span class="n">weights</span><span class="o">=</span><span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">value_2</span><span class="p">[</span><span class="n">mask</span><span class="p">]]),</span> <span class="n">weights</span><span class="o">=</span><span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+                <span class="p">)</span>
                 <span class="n">pdf</span> <span class="o">=</span> <span class="n">kde</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">v1_grid</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">v2_grid</span><span class="o">.</span><span class="n">flatten</span><span class="p">()]))</span>
                 <span class="n">pdf</span> <span class="o">=</span> <span class="n">pdf</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">v1_grid</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;There was an error during KDE estimation: &quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span>
-                      <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Computing PDF from histogram&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="s2">&quot;There was an error during KDE estimation: &quot;</span><span class="p">,</span>
+                    <span class="n">e</span><span class="p">,</span>
+                    <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Computing PDF from histogram&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
                 <span class="n">pdf</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram2d</span><span class="p">(</span>
-                    <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">value_2</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">weights</span><span class="o">=</span><span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
+                    <span class="n">value_1</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
+                    <span class="n">value_2</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
+                    <span class="n">weights</span><span class="o">=</span><span class="n">posterior</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
                     <span class="n">density</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                    <span class="n">bins</span><span class="o">=</span><span class="p">[</span><span class="n">binedges_1</span><span class="p">,</span> <span class="n">binedges_2</span><span class="p">])</span>
- 
+                    <span class="n">bins</span><span class="o">=</span><span class="p">[</span><span class="n">binedges_1</span><span class="p">,</span> <span class="n">binedges_2</span><span class="p">],</span>
+                <span class="p">)</span>
+
             <span class="n">hdr</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">Header</span><span class="p">()</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;AXIS0&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">key_1</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;AXIS1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">key_2</span>
@@ -389,23 +419,20 @@
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A0_INI&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A0_END&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_1</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A0_DELTA&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_1</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">bins_1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
- 
+
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A1_INI&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A1_END&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_2</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
             <span class="n">hdr</span><span class="p">[</span><span class="s2">&quot;A1_DELTA&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">bins_2</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">bins_2</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
             <span class="n">k1</span> <span class="o">=</span> <span class="n">key_1</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">parameter_prefix</span> <span class="o">+</span> <span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
             <span class="n">k2</span> <span class="o">=</span> <span class="n">key_2</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">parameter_prefix</span> <span class="o">+</span> <span class="s2">&quot;--&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
-            <span class="n">output_hdul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">pdf</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="n">hdr</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k1</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">k2</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+            <span class="n">output_hdul</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fits</span><span class="o">.</span><span class="n">ImageHDU</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">pdf</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="n">hdr</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k1</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">k2</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
 
             <span class="k">if</span> <span class="n">plot</span><span class="p">:</span>
                 <span class="n">fraction</span> <span class="o">=</span> <span class="n">compute_fraction_from_map</span><span class="p">(</span><span class="n">pdf</span><span class="p">)</span>
                 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
                 <span class="n">ax</span><span class="o">.</span><span class="n">pcolormesh</span><span class="p">(</span><span class="n">bins_2</span><span class="p">,</span> <span class="n">bins_1</span><span class="p">,</span> <span class="n">pdf</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">&quot;Greys&quot;</span><span class="p">)</span>
-                <span class="n">ax</span><span class="o">.</span><span class="n">contour</span><span class="p">(</span>
-                    <span class="n">bins_1</span><span class="p">,</span> <span class="n">bins_2</span><span class="p">,</span> <span class="n">fraction</span><span class="p">,</span> <span class="n">levels</span><span class="o">=</span><span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">]</span>
-                <span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">contour</span><span class="p">(</span><span class="n">bins_1</span><span class="p">,</span> <span class="n">bins_2</span><span class="p">,</span> <span class="n">fraction</span><span class="p">,</span> <span class="n">levels</span><span class="o">=</span><span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">])</span>
                 <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">k2</span><span class="p">)</span>
                 <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">k1</span><span class="p">)</span>
 
@@ -414,10 +441,14 @@
                 <span class="k">if</span> <span class="n">real_values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key_2</span> <span class="ow">in</span> <span class="n">real_values</span><span class="p">:</span>
                     <span class="n">ax</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="n">real_values</span><span class="p">[</span><span class="n">key_2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
 
-                <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_filename</span><span class="p">),</span>
-                    <span class="sa">f</span><span class="s2">&quot;stat_analysis_pdf_</span><span class="si">{</span><span class="n">key_1</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">key_2</span><span class="si">}</span><span class="s2">.png&quot;</span><span class="p">),</span>
-                            <span class="n">dpi</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s1">&#39;tight&#39;</span><span class="p">)</span>
+                <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+                        <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_filename</span><span class="p">),</span>
+                        <span class="sa">f</span><span class="s2">&quot;stat_analysis_pdf_</span><span class="si">{</span><span class="n">key_1</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">key_2</span><span class="si">}</span><span class="s2">.png&quot;</span><span class="p">,</span>
+                    <span class="p">),</span>
+                    <span class="n">dpi</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+                    <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
                 <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
                     <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
                 <span class="k">else</span><span class="p">:</span>
@@ -427,12 +458,14 @@
     <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">extra_info</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">primary</span><span class="o">.</span><span class="n">header</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">,</span> <span class="s2">&quot;user-provided information&quot;</span>
     <span class="n">output_hdul</span> <span class="o">=</span> <span class="n">fits</span><span class="o">.</span><span class="n">HDUList</span><span class="p">([</span><span class="n">primary</span><span class="p">,</span> <span class="o">*</span><span class="n">output_hdul</span><span class="p">])</span>
-    <span class="n">output_hdul</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">output_filename</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">output_filename</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">output_hdul</span><span class="o">.</span><span class="n">writeto</span><span class="p">(</span><span class="n">output_filename</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">output_hdul</span></div>
 
 
+
 <div class="viewcode-block" id="make_plot_chains">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.make_plot_chains">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.make_plot_chains">[docs]</a>
 <span class="k">def</span> <span class="nf">make_plot_chains</span><span class="p">(</span><span class="n">chain_results</span><span class="p">,</span> <span class="n">truth_values</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="s2">&quot;.&quot;</span><span class="p">):</span>
     <span class="n">parameters</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span> <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="n">chain_results</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">par</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">truth_values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -453,7 +486,7 @@
 
 
 <div class="viewcode-block" id="compute_chain_percentiles">
-<a class="viewcode-back" href="../../hbsps.html#besta.postprocess.compute_chain_percentiles">[docs]</a>
+<a class="viewcode-back" href="../../api.html#besta.postprocess.compute_chain_percentiles">[docs]</a>
 <span class="k">def</span> <span class="nf">compute_chain_percentiles</span><span class="p">(</span><span class="n">chain_results</span><span class="p">,</span> <span class="n">pct</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.16</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.84</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">]):</span>
     <span class="n">parameters</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span> <span class="k">for</span> <span class="n">par</span> <span class="ow">in</span> <span class="n">chain_results</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;parameters&quot;</span> <span class="ow">in</span> <span class="n">par</span><span class="p">]</span>
     <span class="n">pct_resutls</span> <span class="o">=</span> <span class="p">{}</span>
@@ -488,12 +521,12 @@
         <span class="c1">#                 &#39;parameters--logssfr_over_8.70_yr&#39;,</span>
         <span class="c1">#                 &#39;parameters--logssfr_over_8.48_yr&#39;],</span>
         <span class="n">parameter_key_pairs</span><span class="o">=</span><span class="p">[</span>
-            <span class="p">[</span><span class="s1">&#39;parameters--logssfr_over_8.48_yr&#39;</span><span class="p">,</span> <span class="s1">&#39;parameters--logssfr_over_9.00_yr&#39;</span><span class="p">]</span>
-            <span class="p">],</span>
+            <span class="p">[</span><span class="s2">&quot;parameters--logssfr_over_8.48_yr&quot;</span><span class="p">,</span> <span class="s2">&quot;parameters--logssfr_over_9.00_yr&quot;</span><span class="p">]</span>
+        <span class="p">],</span>
         <span class="n">pdf_2d</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
         <span class="n">plot</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="n">pdf_size</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
-        <span class="n">output_filename</span><span class="o">=</span><span class="s2">&quot;/home/pcorchoc/Research/Euclid/test.table.fits&quot;</span>
+        <span class="n">output_filename</span><span class="o">=</span><span class="s2">&quot;/home/pcorchoc/Research/Euclid/test.table.fits&quot;</span><span class="p">,</span>
     <span class="p">)</span>
 </pre></div>
 

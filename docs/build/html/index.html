@@ -6,16 +6,17 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bayesian Estimator for Stellar Population Analysis (BESTA) &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.222.g1df10a7.dirty documentation</title>
+  <title>Bayesian Estimator for Stellar Population Analysis (BESTA) &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.237.g211f258.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=7f5de030"></script>
+      <script src="_static/documentation_options.js?v=9c7d7888"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -45,7 +46,11 @@
               <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">besta</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Pipeline Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuring BESTA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="manager.html">Pipeline Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
 </ul>
 
         </div>
@@ -74,7 +79,7 @@
              
   <section id="bayesian-estimator-for-stellar-population-analysis-besta">
 <h1>Bayesian Estimator for Stellar Population Analysis (BESTA)<a class="headerlink" href="#bayesian-estimator-for-stellar-population-analysis-besta" title="Link to this heading"></a></h1>
-<p>BESTA (Bayesian Estimator for Stellar Populations Analysis) is an advanced software tool designed to infer the physical properties of galaxies using state-of-the-art Bayesian inference and Monte Carlo techniques. By analyzing both galaxy spectra and photometric data, BESTA provides robust and statistically rigorous estimates of key astrophysical parameters, such as stellar mass, star formation history, metallicity, and dust extinction.</p>
+<p>BESTA (Bayesian Estimator for Stellar Populations Analysis) is an advanced software tool designed to infer the physical properties of galaxies using state-of-the-art Bayesian inference and Monte Carlo techniques <a class="reference internal" href="#zunt-15" id="id1"><span>[Zunt+15]</span></a>. By analyzing both galaxy spectra and photometric data, BESTA provides robust and statistically rigorous estimates of key astrophysical parameters, such as stellar mass, star formation history, metallicity, and dust extinction.</p>
 <p>Modern astrophysical observations demand sophisticated tools to extract meaningful insights from complex datasets. BESTA addresses this challenge by combining:
 - Bayesian Framework: Offers a probabilistic approach to quantify uncertainties and model degeneracies inherent in the analysis of galaxy properties.
 - Monte Carlo Simulations: Employs efficient sampling techniques to explore high-dimensional parameter spaces and deliver posterior probability distributions.</p>
@@ -82,15 +87,12 @@
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#system-requirements">System Requirements</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-besta">Installing BESTA</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#installing-from-source">Installing from Source</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="modules.html">besta</a><ul class="simple">
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Pipeline Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuring BESTA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="manager.html">Pipeline Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API</a></li>
 </ul>
 </div>
 </section>
@@ -101,6 +103,12 @@
 <li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
 <li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
 </ul>
+<div role="list" class="citation-list">
+<div class="citation" id="zunt-15" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Zunt+15</a><span class="fn-bracket">]</span></span>
+<p><a class="reference external" href="https://ui.adsabs.harvard.edu/abs/2015A%26C....12...45Z/abstract">CosmoSIS: Modular cosmological parameter estimation</a></p>
+</div>
+</div>
 </section>
 
 
