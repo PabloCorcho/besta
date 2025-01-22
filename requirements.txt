@@ -1,5 +1,5 @@
 cosmosis>=3.12
-pst
+population-synthesis-toolkit
 numpy>=1.2
 matplotlib>=3.9
 scipy>=1.13
