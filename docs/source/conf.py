@@ -17,7 +17,6 @@ sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../../src'))
     )
 
-
 # Avoid build failures on read the docs
 try:
     import numpy
@@ -27,6 +26,10 @@ except ImportError:
     MOCK_MODULES = [
         'numpy',
         'astropy',
+        'astropy.modeling',
+        'astropy.modeling.models',
+        'astropy.convolution.kernels',
+        'astropy.table',
         'astropy.convolution',
         'astropy.io',
         'astropy.wcs',
@@ -39,13 +42,18 @@ except ImportError:
         'scipy.ndimage.interpolation',
         'scipy.optimize',
         'scipy.signal',
+        'scipy.special',
+        "sklearn",
+        "sklearn.decomposition",
+        "pst",
+        "pst.observables",
         "past",
         "past.utils",
-        "cosmosis"
+        "yaml"
     ]
     sys.modules.update((mod_name, MagicMock()) for mod_name in MOCK_MODULES)
 
-
+import besta
 
 # -- Project information -----------------------------------------------------
 
@@ -53,8 +61,6 @@ project = 'Bayesian Estimator for Stellar Population Analysis'
 copyright = '2024, Corcho-Caballero P.'
 author = 'Corcho-Caballero P.'
 
-
-import besta
 version = '.'.join(besta.__version__.split(".")[0:2])
 # The full version, including alpha/beta/rc tags.
 release = besta.__version__
@@ -66,7 +72,6 @@ source_suffix = '.rst'
 
 # The master toctree document.
 master_doc = 'index'
-
 
 
 # -- General configuration ---------------------------------------------------
@@ -120,7 +125,8 @@ html_theme_options = {
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'python': ('https://docs.python.org/3/', None),
                        'astropy': ('https://docs.astropy.org/en/stable/', None),
-                       'numpy': ('https://numpy.org/doc/stable/', None)}
+                       'numpy': ('https://numpy.org/doc/stable/', None),
+                       'cosmosis': ('https://cosmosis.readthedocs.io/en/latest/', None)}
 
 # -- Options for todo extension ----------------------------------------------
 
