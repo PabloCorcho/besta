@@ -16,6 +16,12 @@ build:
     # golang: "1.19"
   apt_packages:
     - gfortran
+    - liblapack-dev
+    - libopenblas-dev
+    - openmpi-bin
+    - openmpi-common
+    - libopenmpi-dev
+    - libgtk2.0-dev
       
     # 
 # Build documentation in the "docs/" directory with Sphinx
