@@ -103,6 +103,13 @@ class BaseModule(ClassModule):
             weights = np.array(np.loadtxt(options["mask"]), dtype=float)
         else:
             weights = np.ones_like(flux)
+        # Load the instrumental LSF
+        if options.has_value("lsf"):
+            lsf_wl, lsf_fwhm = np.loadtxt(options["lsf"])
+            instrumental_lsf = np.array(np.interp(wavelength, lsf_wl, lsf_fwhm),
+                                        dtype=float)
+        else:
+            instrumental_lsf = np.zeros_like(wavelength)
         # Apply redshift
         print(f"Setting to restframe with respect to input redshift: {redshift}")
         wavelength /= 1.0 + redshift
@@ -114,6 +121,7 @@ class BaseModule(ClassModule):
         flux = flux[good_idx]
         cov = error[good_idx] ** 2
         weights = weights[good_idx]
+        instrumental_lsf = instrumental_lsf[good_idx]
         print("Number of selected pixels within wavelength range: ", good_idx.size)
         if options.has_value("velscale"):
             velscale = options["velscale"]
@@ -127,7 +135,10 @@ class BaseModule(ClassModule):
         )
         cov, _, _ = spectrum.log_rebin(wavelength, cov, velscale=velscale)
         weights, _, _ = spectrum.log_rebin(wavelength, weights, velscale=velscale)
+        instrumental_lsf, _, _ = spectrum.log_rebin(wavelength,
+                                                    instrumental_lsf, velscale=velscale)
         wavelength = np.exp(ln_wave)
+
         print("Number of pixels after interpolation: ", wavelength.size)
         # Normalize spectra
         if normalize:
@@ -156,6 +167,7 @@ class BaseModule(ClassModule):
         self.config["wavelength"] = wavelength << u.angstrom
         self.config["ln_wave"] = ln_wave
         self.config["weights"] = weights
+        self.config["lsf"] = instrumental_lsf
         print("-> Configuration done.")
 
     def prepare_observed_photometry(self, options):
@@ -266,6 +278,14 @@ class BaseModule(ClassModule):
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bin_edges))
         print("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
+
+        # Convolve with instrumental LSF
+        if "lsf" in self.config:
+            inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
+                                 self.config["lsf"])
+            # effective_lsf = inst_lsf**2 - ssp_lsf**2
+            effective_lsf = inst_lsf
+            lsf_pixels = inst_lsf / np.diff(10**lnlam_bin_edges) / 2.355
 
         if normalize and wl_norm_range is not None:
             print("Normalizing SSP model SED within range ", wl_norm_range)

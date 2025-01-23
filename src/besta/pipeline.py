@@ -170,8 +170,8 @@ class MainPipeline(object):
             alpha=0.5,
         )
         ax.plot(
-            module.config["wavelength"], module.config["flux"], c="k", label="Observed"
-        )
+            module.config["wavelength"], module.config["flux"], c="k", label="Observed",
+            lw=0.7)
         # Show masked pixels
         mask = (weights * module.config["weights"]) == 0
         ax.plot(
@@ -183,7 +183,8 @@ class MainPipeline(object):
             label="Masked",
         )
         # Plot model
-        ax.plot(module.config["wavelength"], flux_model, c="b", label="Model")
+        ax.plot(module.config["wavelength"], flux_model, c="b", label="Model",
+                lw=0.7)
         # Plot residuals
         residuals = flux_model - module.config["flux"]
         ax.plot(
@@ -205,7 +206,7 @@ class MainPipeline(object):
         ax.plot(module.config["wavelength"], chi2, c="k", lw=0.7)
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
-        ax.set_yscale("symlog", linthresh=0.1)
+        ax.set_yscale("symlog", linthresh=1.0)
         ax.set_xlabel("Wavelenth (AA)")
         inax = ax.inset_axes((1.05, 0, 0.3, 1), sharey=ax)
         inax.hist(
