@@ -138,6 +138,35 @@ def convolve_spectra_with_kernel(spectra, kernel):
         spectra, kernel, boundary="fill", fill_value=0.0, normalize_kernel=True
     )
 
+def convolve_ssp_with_lsf(ssp, lsf_sigma_pixels):
+    """Convolve a given SSP model with an LSF.
+    
+    Parameters
+    ----------
+    ssp : pst.SSP.SSPBase
+    lsf_sigma_pixels : float, np.ndarray
+        Gaussian standard deviation of the LSF.
+    """
+    # Account for LSF variability
+    if lsf_sigma_pixels.size == ssp.wavelength.size:
+        ssp.L_lambda = np.array([
+            fftconvolve(
+                ssp.L_lambda.value,
+                losvd(np.arange(-config.kinematics["lsf_sigma_truncation"] * sigma,
+                                config.kinematics["lsf_sigma_truncation"] * sigma),
+                                sigma_pixel=sigma)[np.newaxis, np.newaxis],
+                                mode="same", axes=2)[:, :, ith]
+            for ith, sigma in enumerate(lsf_sigma_pixels)]) * ssp.L_lambda.unit
+    # Constant LSF
+    elif np.atleast_1d(lsf_sigma_pixels).size == 1:
+        ssp.L_lambda = fftconvolve(
+                ssp.L_lambda.value,
+                losvd(np.arange(-config.kinematics["lsf_sigma_truncation"] * lsf_sigma_pixels,
+                                config.kinematics["lsf_sigma_truncation"] * lsf_sigma_pixels),
+                                sigma_pixel=lsf_sigma_pixels)[np.newaxis, np.newaxis],
+                                mode="same", axes=2) * ssp.L_lambda.unit
+    else:
+        raise ArithmeticError("Dimensions of SSP and LSF do not match")
 
 def convolve_ssp(config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
     velscale = config["velscale"]
