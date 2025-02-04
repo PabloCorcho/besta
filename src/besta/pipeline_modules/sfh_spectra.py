@@ -4,7 +4,7 @@ import numpy as np
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
-
+from besta import spectrum
 
 class SFHSpectraModule(BaseModule):
     name = "SFHSpectra"
@@ -53,6 +53,7 @@ class SFHSpectraModule(BaseModule):
                 self.config["ssp_model"], a_v=av
             )
 
+    @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         sfh_model = self.config["sfh_model"]
         if parse:
