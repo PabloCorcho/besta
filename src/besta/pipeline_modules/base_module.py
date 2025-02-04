@@ -359,6 +359,22 @@ class BaseModule(ClassModule):
         self.config["sfh_model"] = sfh_model
         print("-> Configuration done")
 
+    def prepare_legendre_polynomials(self, options):
+        """Prepare the set of Legendre polynomials used during the fit.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        print("\n-> Configuring multiplicative polynomial")
+        if options.has_value("legendre_deg"):
+            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}")
+            self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
+                self.config["wavelength"], options["legendre_deg"])            
+        else:
+            print(f"Not using multiplicative Legendre polynomials")
+        print("-> Configuration done")
     def log_like(self, data, model, cov):
         """Compute the likelihood between an input data set and a model.
 
