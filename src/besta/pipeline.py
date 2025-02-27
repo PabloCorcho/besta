@@ -222,7 +222,7 @@ class MainPipeline(object):
 
         output_file = os.path.join(
             os.path.dirname(pipe_config["output"]["filename"]),
-            f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png",
+            f"{pipe_config['pipeline']['modules']}_{pipe_config['output']['figurename']}_best_fit_spectra.png",
         )
         fig.savefig(
             output_file,
