@@ -220,10 +220,11 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        output_file = os.path.join(
-            os.path.dirname(pipe_config["output"]["filename"]),
-            f"{pipe_config['pipeline']['modules']}_best_fit_spectra.png",
-        )
+        figname = os.path.basename(pipe_config["output"].get("figurename", pipe_config["output"]["filename"]))
+        output_file = os.path.join(os.path.dirname(pipe_config["output"]["filename"]),
+                                   f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
+                                   )
+
         fig.savefig(
             output_file,
             bbox_inches="tight",
