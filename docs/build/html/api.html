@@ -1,23 +1,22 @@
+
+
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" data-content_root="./">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.240.gd685f05.dirty documentation</title>
+  <title>API &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.259.g2935e0a.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
-      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script src="_static/jquery.js?v=5d32c60e"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-        <script src="_static/documentation_options.js?v=8ae04785"></script>
-        <script src="_static/doctools.js?v=9bcbadda"></script>
-        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=a7d38b97"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -53,7 +52,12 @@
 <li class="toctree-l1"><a class="reference internal" href="manager.html">Pipeline Manager</a></li>
 <li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#pipeline-modules">Pipeline Modules</a><ul class="simple">
+<li class="toctree-l2"><a class="reference internal" href="#pipeline-modules">Pipeline Modules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html"><code class="docutils literal notranslate"><span class="pre">BaseModule</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule"><code class="docutils literal notranslate"><span class="pre">KinDustModule</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#module-besta.kinematics">Kinematics</a><ul>
@@ -65,12 +69,53 @@
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.losvd"><code class="docutils literal notranslate"><span class="pre">losvd()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.get_losvd_kernel"><code class="docutils literal notranslate"><span class="pre">get_losvd_kernel()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_spectra_with_kernel"><code class="docutils literal notranslate"><span class="pre">convolve_spectra_with_kernel()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_ssp_with_lsf"><code class="docutils literal notranslate"><span class="pre">convolve_ssp_with_lsf()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_ssp"><code class="docutils literal notranslate"><span class="pre">convolve_ssp()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_ssp_model"><code class="docutils literal notranslate"><span class="pre">convolve_ssp_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.normal_cdf"><code class="docutils literal notranslate"><span class="pre">normal_cdf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_variable_gaussian_kernel"><code class="docutils literal notranslate"><span class="pre">convolve_variable_gaussian_kernel()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#input-output">Input/Output</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#pipeline-manager">Pipeline Manager</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-besta.output">Input/Output</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#besta.output.make_ini_file"><code class="docutils literal notranslate"><span class="pre">make_ini_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.output.make_values_file"><code class="docutils literal notranslate"><span class="pre">make_values_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.output.Reader"><code class="docutils literal notranslate"><span class="pre">Reader</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.ini_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini"><code class="docutils literal notranslate"><span class="pre">Reader.ini</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_data"><code class="docutils literal notranslate"><span class="pre">Reader.ini_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.config"><code class="docutils literal notranslate"><span class="pre">Reader.config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.last_module"><code class="docutils literal notranslate"><span class="pre">Reader.last_module</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">Reader.last_module</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.results_table"><code class="docutils literal notranslate"><span class="pre">Reader.results_table</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">Reader.ini_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">Reader.ini</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_values"><code class="docutils literal notranslate"><span class="pre">Reader.ini_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">Reader.config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.load_results"><code class="docutils literal notranslate"><span class="pre">Reader.load_results()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">Reader.get_chain_percentiles()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_maxlike_solution"><code class="docutils literal notranslate"><span class="pre">Reader.get_maxlike_solution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.solution_to_datablock"><code class="docutils literal notranslate"><span class="pre">Reader.solution_to_datablock()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_pct_solutions"><code class="docutils literal notranslate"><span class="pre">Reader.get_pct_solutions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.read_ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.read_ini_values_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_values_file()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#pipeline-manager">Pipeline Manager</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#besta.pipeline.MainPipeline"><code class="docutils literal notranslate"><span class="pre">MainPipeline</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.pipelines_config"><code class="docutils literal notranslate"><span class="pre">MainPipeline.pipelines_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.n_cores_list"><code class="docutils literal notranslate"><span class="pre">MainPipeline.n_cores_list</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.ini_files"><code class="docutils literal notranslate"><span class="pre">MainPipeline.ini_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.ini_values_files"><code class="docutils literal notranslate"><span class="pre">MainPipeline.ini_values_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.run_command"><code class="docutils literal notranslate"><span class="pre">MainPipeline.run_command()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.execute_pipeline"><code class="docutils literal notranslate"><span class="pre">MainPipeline.execute_pipeline()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.execute_all"><code class="docutils literal notranslate"><span class="pre">MainPipeline.execute_all()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.plot_fit"><code class="docutils literal notranslate"><span class="pre">MainPipeline.plot_fit()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#module-besta.postprocess">Postprocessing</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#besta.postprocess.weighted_sample_mean"><code class="docutils literal notranslate"><span class="pre">weighted_sample_mean()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.postprocess.weighted_sample_covariance"><code class="docutils literal notranslate"><span class="pre">weighted_sample_covariance()</span></code></a></li>
@@ -82,7 +127,85 @@
 <li class="toctree-l3"><a class="reference internal" href="#besta.postprocess.compute_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">compute_chain_percentiles()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#star-formation-histories">Star formation histories</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-besta.sfh">Star formation histories</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.SFHBase"><code class="docutils literal notranslate"><span class="pre">SFHBase</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.free_params"><code class="docutils literal notranslate"><span class="pre">SFHBase.free_params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.redshift"><code class="docutils literal notranslate"><span class="pre">SFHBase.redshift</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.today"><code class="docutils literal notranslate"><span class="pre">SFHBase.today</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">SFHBase.free_params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.make_ini"><code class="docutils literal notranslate"><span class="pre">SFHBase.make_ini()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.parse_free_params"><code class="docutils literal notranslate"><span class="pre">SFHBase.parse_free_params()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.parse_datablock"><code class="docutils literal notranslate"><span class="pre">SFHBase.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.ZPowerLawMixin"><code class="docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ZPowerLawMixin.free_params"><code class="docutils literal notranslate"><span class="pre">ZPowerLawMixin.free_params</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin"><code class="docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin.sfh_bin_keys"><code class="docutils literal notranslate"><span class="pre">PieceWiseSFHMixin.sfh_bin_keys</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin.get_sfh_parameters_array"><code class="docutils literal notranslate"><span class="pre">PieceWiseSFHMixin.get_sfh_parameters_array()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.FixedTimeSFH"><code class="docutils literal notranslate"><span class="pre">FixedTimeSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTimeSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">FixedTimeSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTimeSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">FixedTimeSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.FixedCosmicTimeSFH"><code class="docutils literal notranslate"><span class="pre">FixedCosmicTimeSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedCosmicTimeSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">FixedCosmicTimeSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedCosmicTimeSFH.update_mass"><code class="docutils literal notranslate"><span class="pre">FixedCosmicTimeSFH.update_mass()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedCosmicTimeSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">FixedCosmicTimeSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.FlexibleCosmicTimeSFH"><code class="docutils literal notranslate"><span class="pre">FlexibleCosmicTimeSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FlexibleCosmicTimeSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">FlexibleCosmicTimeSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FlexibleCosmicTimeSFH.update_mass"><code class="docutils literal notranslate"><span class="pre">FlexibleCosmicTimeSFH.update_mass()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FlexibleCosmicTimeSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">FlexibleCosmicTimeSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.FixedTime_sSFR_SFH"><code class="docutils literal notranslate"><span class="pre">FixedTime_sSFR_SFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTime_sSFR_SFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">FixedTime_sSFR_SFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedTime_sSFR_SFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">FixedTime_sSFR_SFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.FixedMassFracSFH"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedMassFracSFH.mass_fractions"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH.mass_fractions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedMassFracSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.FixedMassFracSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">FixedMassFracSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.ExponentialSFH"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ExponentialSFH.time"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH.time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ExponentialSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.ExponentialSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">ExponentialSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.DelayedTauSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauSFH.time"><code class="docutils literal notranslate"><span class="pre">DelayedTauSFH.time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">DelayedTauSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.DelayedTauQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">DelayedTauQuenchedSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauQuenchedSFH.time"><code class="docutils literal notranslate"><span class="pre">DelayedTauQuenchedSFH.time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.DelayedTauQuenchedSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">DelayedTauQuenchedSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.LogNormalSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalSFH.time"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH.time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalSFH.free_params"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH.free_params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">LogNormalSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.sfh.LogNormalQuenchedSFH"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalQuenchedSFH.time"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH.time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalQuenchedSFH.lookback_time"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH.lookback_time</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.sfh.LogNormalQuenchedSFH.parse_datablock"><code class="docutils literal notranslate"><span class="pre">LogNormalQuenchedSFH.parse_datablock()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -116,6 +239,13 @@
 <section id="pipeline-modules">
 <h2>Pipeline Modules<a class="headerlink" href="#pipeline-modules" title="Link to this heading"></a></h2>
 <div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html"><code class="docutils literal notranslate"><span class="pre">BaseModule</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule"><code class="docutils literal notranslate"><span class="pre">FullSpectralFitModule</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.kin_dust.KinDustModule"><code class="docutils literal notranslate"><span class="pre">KinDustModule</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule"><code class="docutils literal notranslate"><span class="pre">SFHPhotometryModule</span></code></a></li>
+<li class="toctree-l1"><a class="reference internal" href="besta.pipeline_modules.html#besta.pipeline_modules.SFHSpectraModule"><code class="docutils literal notranslate"><span class="pre">SFHSpectraModule</span></code></a></li>
+</ul>
 </div>
 </section>
 <section id="module-besta.kinematics">
@@ -183,6 +313,20 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="besta.kinematics.convolve_ssp_with_lsf">
+<span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">convolve_ssp_with_lsf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ssp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lsf_sigma_pixels</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#convolve_ssp_with_lsf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.convolve_ssp_with_lsf" title="Link to this definition"></a></dt>
+<dd><p>Convolve a given SSP model with an LSF.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ssp</strong> (<em>pst.SSP.SSPBase</em>)</p></li>
+<li><p><strong>lsf_sigma_pixels</strong> (<em>float, np.ndarray</em>) – Gaussian standard deviation of the LSF.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="besta.kinematics.convolve_ssp">
 <span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">convolve_ssp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_vel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_h3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_h4</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#convolve_ssp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.convolve_ssp" title="Link to this definition"></a></dt>
 <dd></dd></dl>
@@ -192,15 +336,313 @@ If iterable is specified the tuple is initialized from iterable’s items.</p>
 <span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">convolve_ssp_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">los_vel</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h4</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#convolve_ssp_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.convolve_ssp_model" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.kinematics.normal_cdf">
+<span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">normal_cdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mu</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#normal_cdf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.normal_cdf" title="Link to this definition"></a></dt>
+<dd><p>Normal cumulative density function.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.kinematics.convolve_variable_gaussian_kernel">
+<span class="sig-prename descclassname"><span class="pre">besta.kinematics.</span></span><span class="sig-name descname"><span class="pre">convolve_variable_gaussian_kernel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spectra</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma_pixel</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/kinematics.html#convolve_variable_gaussian_kernel"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.kinematics.convolve_variable_gaussian_kernel" title="Link to this definition"></a></dt>
+<dd><p>Convolve an input spectra with a Gaussian kernel of varying width.</p>
+</dd></dl>
+
 </section>
-<section id="input-output">
-<h2>Input/Output<a class="headerlink" href="#input-output" title="Link to this heading"></a></h2>
+<section id="module-besta.output">
+<span id="input-output"></span><h2>Input/Output<a class="headerlink" href="#module-besta.output" title="Link to this heading"></a></h2>
+<p>Module dedicated to read and manipulate the output products of BESTA.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.output.make_ini_file">
+<span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">make_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#make_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.make_ini_file" title="Link to this definition"></a></dt>
+<dd><p>Create a .ini file from an input configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filename</strong> (<em>str</em>) – Output file name.</p></li>
+<li><p><strong>config</strong> (<em>dict</em>) – Dictionary containing the configuration parameters.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.output.make_values_file">
+<span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">make_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#make_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.make_values_file" title="Link to this definition"></a></dt>
+<dd><p>Make a values.ini file from the configuration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>config</strong> (<em>dict</em>) – Configuration parameters</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.output.Reader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">Reader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ini_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Cosmosis Data Reader</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.output.Reader.ini_file">
+<span class="sig-name descname"><span class="pre">ini_file</span></span><a class="headerlink" href="#besta.output.Reader.ini_file" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.output.Reader.ini">
+<span class="sig-name descname"><span class="pre">ini</span></span><a class="headerlink" href="#besta.output.Reader.ini" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.output.Reader.ini_data">
+<span class="sig-name descname"><span class="pre">ini_data</span></span><a class="headerlink" href="#besta.output.Reader.ini_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.output.Reader.config">
+<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#besta.output.Reader.config" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.output.Reader.last_module">
+<span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#besta.output.Reader.last_module" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id0">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
+<dd><p>Last module used in the pipeline.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.output.Reader.results_table">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">results_table</span></span><a class="headerlink" href="#besta.output.Reader.results_table" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id2">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_file</span></span><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis configuration file path.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id3">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini</span></span><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis .ini configuration file</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.output.Reader.ini_values">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_values</span></span><a class="headerlink" href="#besta.output.Reader.ini_values" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis configuration values.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id4">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
+<dd><p>Pipeline configuration.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.load_results">
+<span class="sig-name descname"><span class="pre">load_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.load_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.load_results" title="Link to this definition"></a></dt>
+<dd><p>Load the cosmosis run results associated to the <code class="docutils literal notranslate"><span class="pre">ini</span></code> file.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.get_chain_percentiles">
+<span class="sig-name descname"><span class="pre">get_chain_percentiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_chain_percentiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_chain_percentiles" title="Link to this definition"></a></dt>
+<dd><p>Compute the percentile values of the parameter chains.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>pct</strong> (<em>list</em>) – List of input percentiles.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>pct_results</strong> (<em>dict</em>) – Dictionary containing the percentiles associated to each parameter.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.get_maxlike_solution">
+<span class="sig-name descname"><span class="pre">get_maxlike_solution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_maxlike_solution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_maxlike_solution" title="Link to this definition"></a></dt>
+<dd><p>Get the maximum likelihood solution.</p>
+<p>Obtain the maximum likelihood solution from the <code class="docutils literal notranslate"><span class="pre">results_table</span></code></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>solution</strong> (<em>dict</em>) – Dictionary containing the solution with the maximum likelihood.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.solution_to_datablock">
+<span class="sig-name descname"><span class="pre">solution_to_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">solution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.solution_to_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.solution_to_datablock" title="Link to this definition"></a></dt>
+<dd><p>Convert a solution into a DataBlock.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>solution</strong> (<em>dict</em>) – A dictionary containing the parameter values.</p></li>
+<li><p><strong>section</strong> (<em>str, optional</em>) – Name of the DataBlock section where to store the solution. Default
+is <code class="docutils literal notranslate"><span class="pre">parameters</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>datablock</strong> (<em>DataBlock</em>) – The DataBlock containing the input solution.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.get_pct_solutions">
+<span class="sig-name descname"><span class="pre">get_pct_solutions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_pct_solutions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_pct_solutions" title="Link to this definition"></a></dt>
+<dd><p>Return the top percentile solutions.</p>
+<p>This method sorts all solutions based on their posterior probablity
+and returns a given fraction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pct</strong> (<em>float, optional</em>) – Fraction of the solutions to return, e.g. <code class="docutils literal notranslate"><span class="pre">pct=99</span></code> will return
+the 1 per cent with the highest probability.</p></li>
+<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>all_solutions</strong> (<em>list</em>) – A list containing the solutions in the form of dictionaries.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.read_ini_file">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.read_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.read_ini_file" title="Link to this definition"></a></dt>
+<dd><p>Read the cosmosis configuration .ini file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ini</strong> (<em>dict</em>) – Dictionary containing the information from the ini file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.output.Reader.read_ini_values_file">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.read_ini_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.read_ini_values_file" title="Link to this definition"></a></dt>
+<dd><p>Read the cosmosis configuration .ini file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ini_values</strong> (<em>dict</em>) – Dictionary containing the ini_values information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="pipeline-manager">
 <h2>Pipeline Manager<a class="headerlink" href="#pipeline-manager" title="Link to this heading"></a></h2>
+<p id="module-besta.pipeline"><span id="api-pipeline"></span>This module contains the pipeline manager to concatenate multiple modules.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.pipeline.</span></span><span class="sig-name descname"><span class="pre">MainPipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pipeline_configuration_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cores_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_values_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>BESTA Pipeline manager.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.pipelines_config">
+<span class="sig-name descname"><span class="pre">pipelines_config</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.pipelines_config" title="Link to this definition"></a></dt>
+<dd><dl class="simple">
+<dt>List of dictionaries containing the configuration parameters for each</dt><dd><p>subpipeplie.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.n_cores_list">
+<span class="sig-name descname"><span class="pre">n_cores_list</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.n_cores_list" title="Link to this definition"></a></dt>
+<dd><p>List containing the number of cores to be used on each run. If None,
+every subpipeline will use one single core during runtime.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a>, optional, default=None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.ini_files">
+<span class="sig-name descname"><span class="pre">ini_files</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.ini_files" title="Link to this definition"></a></dt>
+<dd><p>List of .ini filenames</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.ini_values_files">
+<span class="sig-name descname"><span class="pre">ini_values_files</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.ini_values_files" title="Link to this definition"></a></dt>
+<dd><p>List of files containing the priors associated to <code class="docutils literal notranslate"><span class="pre">ini_files</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.run_command">
+<span class="sig-name descname"><span class="pre">run_command</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">command</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.run_command"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.run_command" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.execute_pipeline">
+<span class="sig-name descname"><span class="pre">execute_pipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cores</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_values_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.execute_pipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.execute_pipeline" title="Link to this definition"></a></dt>
+<dd><p>Execute a sub-pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<em>dict</em>) – Dictionary containing the configuration parameters for setting up
+the subpipeline.</p></li>
+<li><p><strong>n_cores</strong> (<em>int</em>) – Number of cores to used during runtime.</p></li>
+<li><p><strong>ini_filename</strong> (<em>str, optional, default=None</em>) – If provided, this file is used to run cosmosis.</p></li>
+<li><p><strong>ini_values_filename</strong> (<em>str, optional, default=None</em>) – If provided, use this file to set the prior values.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.execute_all">
+<span class="sig-name descname"><span class="pre">execute_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plot_result</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.execute_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.execute_all" title="Link to this definition"></a></dt>
+<dd><p>Execute all sub-pipelines.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.plot_fit">
+<span class="sig-name descname"><span class="pre">plot_fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pipe_config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.plot_fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.plot_fit" title="Link to this definition"></a></dt>
+<dd><p>Plot the fit.</p>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="module-besta.postprocess">
-<span id="postprocessing"></span><span id="api-pipeline"></span><h2>Postprocessing<a class="headerlink" href="#module-besta.postprocess" title="Link to this heading"></a></h2>
+<span id="postprocessing"></span><h2>Postprocessing<a class="headerlink" href="#module-besta.postprocess" title="Link to this heading"></a></h2>
 <p>Module dedicated to the post-processing of data produced by BESTA.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.postprocess.weighted_sample_mean">
@@ -309,8 +751,481 @@ to the sample dimension.</p></li>
 <dd></dd></dl>
 
 </section>
-<section id="star-formation-histories">
-<h2>Star formation histories<a class="headerlink" href="#star-formation-histories" title="Link to this heading"></a></h2>
+<section id="module-besta.sfh">
+<span id="star-formation-histories"></span><h2>Star formation histories<a class="headerlink" href="#module-besta.sfh" title="Link to this heading"></a></h2>
+<p>Star formation history fitting module</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">SFHBase</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#SFHBase"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.SFHBase" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/abc.html#abc.ABC" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></a></p>
+<p>Star formation history model.</p>
+<section id="description">
+<h3>Description<a class="headerlink" href="#description" title="Link to this heading"></a></h3>
+<p>This class serves as an interface between the sampler and PST SFH models.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.free_params">
+<span class="sig-name descname"><span class="pre">free_params</span></span><a class="headerlink" href="#besta.sfh.SFHBase.free_params" title="Link to this definition"></a></dt>
+<dd><p>Dictionary containing the free parameters of the model and their
+respective range of validity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)">dict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.redshift">
+<span class="sig-name descname"><span class="pre">redshift</span></span><a class="headerlink" href="#besta.sfh.SFHBase.redshift" title="Link to this definition"></a></dt>
+<dd><p>Cosmological redshift at the time of the observation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)">float</a>, optional, default=0.0</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.today">
+<span class="sig-name descname"><span class="pre">today</span></span><a class="headerlink" href="#besta.sfh.SFHBase.today" title="Link to this definition"></a></dt>
+<dd><p>Age of the universe at the time of observation. If not provided,
+it is computed using the default cosmology and the value of <code class="docutils literal notranslate"><span class="pre">redshift</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id5">
+<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#id5" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.make_ini">
+<span class="sig-name descname"><span class="pre">make_ini</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ini_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#SFHBase.make_ini"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.SFHBase.make_ini" title="Link to this definition"></a></dt>
+<dd><p>Create a cosmosis .ini file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ini_file</strong> (<em>str</em>) – Path to the output .ini file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.parse_free_params">
+<span class="sig-name descname"><span class="pre">parse_free_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">free_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#SFHBase.parse_free_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.SFHBase.parse_free_params" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>free_params</strong> (<em>dict</em>) – Dictionary containing the SFH model free parameters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.SFHBase.parse_datablock">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#SFHBase.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.SFHBase.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.ZPowerLawMixin">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">ZPowerLawMixin</span></span><a class="reference internal" href="_modules/besta/sfh.html#ZPowerLawMixin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.ZPowerLawMixin" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Metallicity evolution as a power law in terms of the stellar mass formed.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.ZPowerLawMixin.free_params">
+<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'alpha_powerlaw':</span> <span class="pre">[0,</span> <span class="pre">0.5,</span> <span class="pre">3],</span> <span class="pre">'ism_metallicity_today':</span> <span class="pre">[0.005,</span> <span class="pre">0.01,</span> <span class="pre">0.08]}</span></em><a class="headerlink" href="#besta.sfh.ZPowerLawMixin.free_params" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.PieceWiseSFHMixin">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">PieceWiseSFHMixin</span></span><a class="reference internal" href="_modules/besta/sfh.html#PieceWiseSFHMixin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.PieceWiseSFHMixin" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Piece-wise star formation history model mixin.</p>
+<p>This mixing provides the common properties of piece-wise SFH models.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.sfh.PieceWiseSFHMixin.sfh_bin_keys">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sfh_bin_keys</span></span><a class="headerlink" href="#besta.sfh.PieceWiseSFHMixin.sfh_bin_keys" title="Link to this definition"></a></dt>
+<dd><p>Keys associated to the bins of the SFH model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.PieceWiseSFHMixin.get_sfh_parameters_array">
+<span class="sig-name descname"><span class="pre">get_sfh_parameters_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock:</span> <span class="pre">~cosmosis.datablock.cosmosis_py.block.DataBlock</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype=&lt;class</span> <span class="pre">'float'&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#PieceWiseSFHMixin.get_sfh_parameters_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.PieceWiseSFHMixin.get_sfh_parameters_array" title="Link to this definition"></a></dt>
+<dd><p>Get an array containing the values of each bin of the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>databloc</strong> (<em>DataBlock</em>) – The datablock containing the values of each parameter of the SFH.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.FixedTimeSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTimeSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
+<p>A SFH model with fixed time bins.</p>
+<section id="id6">
+<h3>Description<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as a stepwise function where the free
+parameters correspond to the mass fraction formed on each bin.</p>
+<p>Upon initializaiton, the free parameters are set between -8 to 0 in terms
+of log(M/Msun). The starting point corresponds to the mass fraction formed
+assuming a constant star formation history.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FixedTimeSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.FixedTimeSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><p>Lookback time bin edges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FixedTimeSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTimeSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTimeSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.FixedCosmicTimeSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedCosmicTimeSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
+<p>A SFH model with fixed time bins.</p>
+<section id="id7">
+<h3>Description<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as a stepwise function where the free
+parameters correspond to … #TODO</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FixedCosmicTimeSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.FixedCosmicTimeSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><p>Lookback time bin edges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FixedCosmicTimeSFH.update_mass">
+<span class="sig-name descname"><span class="pre">update_mass</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coeff</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedCosmicTimeSFH.update_mass"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedCosmicTimeSFH.update_mass" title="Link to this definition"></a></dt>
+<dd><p>Update a bin of the stellar mass fraction formed.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FixedCosmicTimeSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedCosmicTimeSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedCosmicTimeSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.FlexibleCosmicTimeSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FlexibleCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_times</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FlexibleCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FlexibleCosmicTimeSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
+<p>A SFH model with fixed time bins.</p>
+<section id="id8">
+<h3>Description<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as a stepwise function where the free
+parameters correspond to … #TODO</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FlexibleCosmicTimeSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.FlexibleCosmicTimeSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><p>Lookback time bin edges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FlexibleCosmicTimeSFH.update_mass">
+<span class="sig-name descname"><span class="pre">update_mass</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coeff</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FlexibleCosmicTimeSFH.update_mass"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FlexibleCosmicTimeSFH.update_mass" title="Link to this definition"></a></dt>
+<dd><p>Update a bin of the stellar mass fraction formed.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FlexibleCosmicTimeSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FlexibleCosmicTimeSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FlexibleCosmicTimeSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.FixedTime_sSFR_SFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTime_sSFR_SFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTime_sSFR_SFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTime_sSFR_SFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
+<p>A SFH model with fixed time bins.</p>
+<section id="id9">
+<h3>Description<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as a stepwise function where the free
+parameters correspond to the average sSFR over the last <code class="docutils literal notranslate"><span class="pre">lookback_time</span></code>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FixedTime_sSFR_SFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.FixedTime_sSFR_SFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><p>Lookback time bin edges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FixedTime_sSFR_SFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTime_sSFR_SFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTime_sSFR_SFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.FixedMassFracSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedMassFracSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mass_fraction</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedMassFracSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedMassFracSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
+<p>A SFH model with fixed mass fraction bins.</p>
+<section id="id10">
+<h3>Description<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as a stepwise function where the free
+parameters correspond to the time at which a given fraction of the total stellar mass was
+formed.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FixedMassFracSFH.mass_fractions">
+<span class="sig-name descname"><span class="pre">mass_fractions</span></span><a class="headerlink" href="#besta.sfh.FixedMassFracSFH.mass_fractions" title="Link to this definition"></a></dt>
+<dd><p>SFH mass fractions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.FixedMassFracSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.FixedMassFracSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><p>Lookback time bin edges.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.FixedMassFracSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedMassFracSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedMassFracSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.ExponentialSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">ExponentialSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#ExponentialSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.ExponentialSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An analytical exponentially declining SFH model.</p>
+<section id="id11">
+<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.ExponentialSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#besta.sfh.ExponentialSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.ExponentialSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.ExponentialSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.ExponentialSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#ExponentialSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.ExponentialSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An exponentially declining delayed-tau SFH model.</p>
+<section id="id12">
+<h3>Description<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
+<div class="math notranslate nohighlight">
+\[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#besta.sfh.DelayedTauSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauQuenchedSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauQuenchedSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An exponentially declining delayed-tau SFH model with a quenching event.</p>
+<section id="id13">
+<h3>Description<a class="headerlink" href="#id13" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
+<div class="math notranslate nohighlight">
+\[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
+<p>After the quenching event, taking place at <span class="math notranslate nohighlight">\(t_{quench}\)</span>, the
+stellas mass will be <span class="math notranslate nohighlight">\(M_\star(t)=M_\star(t_{quench})\)</span> for all times
+larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauQuenchedSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#besta.sfh.DelayedTauQuenchedSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.DelayedTauQuenchedSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauQuenchedSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauQuenchedSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An analytical log-normal declining SFH model.</p>
+<section id="id14">
+<h3>Description<a class="headerlink" href="#id14" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an log-normal declining function.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#besta.sfh.LogNormalSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.LogNormalSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalSFH.free_params">
+<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'alpha_powerlaw':</span> <span class="pre">[0,</span> <span class="pre">1,</span> <span class="pre">10],</span> <span class="pre">'ism_metallicity_today':</span> <span class="pre">[0.005,</span> <span class="pre">0.01,</span> <span class="pre">0.08],</span> <span class="pre">'scale':</span> <span class="pre">[0.1,</span> <span class="pre">0.5,</span> <span class="pre">3.0],</span> <span class="pre">'t0':</span> <span class="pre">[0.1,</span> <span class="pre">3.0,</span> <span class="pre">30.0]}</span></em><a class="headerlink" href="#besta.sfh.LogNormalSFH.free_params" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalQuenchedSFH">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
+<p>An analytical log-normal declining SFH model including a quenching event.</p>
+<section id="id15">
+<h3>Description<a class="headerlink" href="#id15" title="Link to this heading"></a></h3>
+<p>The SFH of a galaxy is modelled as an log-normal declining function. A quenching
+event is modelled as an additional exponentially declining function that is
+applied after the time of quenching.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalQuenchedSFH.time">
+<span class="sig-name descname"><span class="pre">time</span></span><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH.time" title="Link to this definition"></a></dt>
+<dd><p>Time bins to evaluate the SFH.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalQuenchedSFH.lookback_time">
+<span class="sig-name descname"><span class="pre">lookback_time</span></span><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH.lookback_time" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.units.Quantity.html#astropy.units.Quantity" title="(in Astropy v7.0)">astropy.units.Quantity</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.sfh.LogNormalQuenchedSFH.parse_datablock">
+<span class="sig-name descname"><span class="pre">parse_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datablock</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalQuenchedSFH.parse_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH.parse_datablock" title="Link to this definition"></a></dt>
+<dd><p>Parse the SFH model free parameters from a DataBlock.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
 </section>
 </section>
 
