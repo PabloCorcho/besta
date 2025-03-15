@@ -5,7 +5,7 @@ from scipy.optimize import nnls
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
-
+from besta import spectrum
 
 class KinDustModule(BaseModule):
     name = "KinDust"
@@ -32,7 +32,9 @@ class KinDustModule(BaseModule):
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_extinction_law(options)
+        self.prepare_legendre_polynomials(options)
 
+    @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         dust_model = self.config["extinction_law"]
