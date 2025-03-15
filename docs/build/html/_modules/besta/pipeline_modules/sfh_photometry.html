@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.pipeline_modules.sfh_photometry &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.237.g211f258.dirty documentation</title>
+  <title>besta.pipeline_modules.sfh_photometry &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=9c7d7888"></script>
+      <script src="../../../_static/documentation_options.js?v=9f2d8144"></script>
       <script src="../../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
@@ -75,15 +75,16 @@
            <div itemprop="articleBody">
              
   <h1>Source code for besta.pipeline_modules.sfh_photometry</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span> <span class="nn">besta.pipeline_modules.base_module</span> <span class="kn">import</span> <span class="n">BaseModule</span>
+<span></span><span class="kn">import</span> <span class="nn">pickle</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-
 <span class="kn">from</span> <span class="nn">astropy</span> <span class="kn">import</span> <span class="n">units</span> <span class="k">as</span> <span class="n">u</span>
 
 <span class="kn">from</span> <span class="nn">cosmosis.datablock</span> <span class="kn">import</span> <span class="n">names</span> <span class="k">as</span> <span class="n">section_names</span>
 <span class="kn">from</span> <span class="nn">cosmosis.datablock</span> <span class="kn">import</span> <span class="n">SectionOptions</span>
-<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">kinematics</span>
 
+<span class="kn">from</span> <span class="nn">besta.pipeline_modules.base_module</span> <span class="kn">import</span> <span class="n">BaseModule</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">kinematics</span>
+<span class="kn">from</span> <span class="nn">besta.config</span> <span class="kn">import</span> <span class="n">extinction</span> <span class="k">as</span> <span class="n">extinction_conf</span>
 
 <div class="viewcode-block" id="SFHPhotometryModule">
 <a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.SFHPhotometryModule">[docs]</a>
@@ -137,27 +138,38 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">],</span> <span class="n">av</span>
             <span class="p">)</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Producing photometry extinction grid&quot;</span><span class="p">)</span>
-        <span class="n">dust_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;extinction_law&quot;</span><span class="p">]</span>
-        <span class="n">a_v_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
-        <span class="n">ssps</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">dust_model</span><span class="o">.</span><span class="n">redden_ssp_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">],</span> <span class="n">a_v</span><span class="o">=</span><span class="n">av</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">av</span> <span class="ow">in</span> <span class="n">a_v_array</span>
-        <span class="p">]</span>
-        <span class="n">all_photometry</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
-            <span class="p">(</span>
-                <span class="n">a_v_array</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
-                <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">]),</span>
-                <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
-            <span class="p">)</span>
-        <span class="p">)</span> <span class="o">*</span> <span class="n">u</span><span class="o">.</span><span class="n">Quantity</span><span class="p">(</span><span class="s2">&quot;3631e-9 Jy / Msun&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;PhotometryGrid&quot;</span><span class="p">):</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;PhotometryGrid&quot;</span><span class="p">],</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+                <span class="n">all_photometry</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Producing photometry extinction grid&quot;</span><span class="p">)</span>
+            <span class="n">dust_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;extinction_law&quot;</span><span class="p">]</span>
+            <span class="n">av_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">extinction_conf</span><span class="p">[</span><span class="s2">&quot;a_v&quot;</span><span class="p">][</span><span class="s2">&quot;min&quot;</span><span class="p">],</span>
+                                <span class="n">extinction_conf</span><span class="p">[</span><span class="s2">&quot;a_v&quot;</span><span class="p">][</span><span class="s2">&quot;max&quot;</span><span class="p">],</span>
+                                <span class="n">extinction_conf</span><span class="p">[</span><span class="s2">&quot;a_v&quot;</span><span class="p">][</span><span class="s2">&quot;steps&quot;</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;av_grid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">av_grid</span>
+            <span class="n">ssps</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">dust_model</span><span class="o">.</span><span class="n">redden_ssp_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">],</span> <span class="n">a_v</span><span class="o">=</span><span class="n">av</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">av</span> <span class="ow">in</span> <span class="n">av_grid</span>
+            <span class="p">]</span>
+            <span class="n">all_photometry</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="n">av_grid</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">]),</span>
+                    <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;ssp_model&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                <span class="p">)</span>
+            <span class="p">)</span> <span class="o">*</span> <span class="n">u</span><span class="o">.</span><span class="n">Quantity</span><span class="p">(</span><span class="s2">&quot;3631e-9 Jy / Msun&quot;</span><span class="p">)</span>
 
-        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">ssp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ssps</span><span class="p">):</span>
-            <span class="n">photo</span> <span class="o">=</span> <span class="n">ssp</span><span class="o">.</span><span class="n">compute_photometry</span><span class="p">(</span>
-                <span class="n">filter_list</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">],</span> <span class="n">z_obs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;redshift&quot;</span><span class="p">]</span>
-            <span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s2">&quot;3631e-9 Jy / Msun&quot;</span><span class="p">)</span>
-            <span class="n">all_photometry</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">photo</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;av_grid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">a_v_array</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">ssp</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ssps</span><span class="p">):</span>
+                <span class="n">photo</span> <span class="o">=</span> <span class="n">ssp</span><span class="o">.</span><span class="n">compute_photometry</span><span class="p">(</span>
+                    <span class="n">filter_list</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">],</span> <span class="n">z_obs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;redshift&quot;</span><span class="p">]</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s2">&quot;3631e-9 Jy / Msun&quot;</span><span class="p">)</span>
+                <span class="n">all_photometry</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">photo</span>
+
+            <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;SavePhotometryGrid&quot;</span><span class="p">):</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">options</span><span class="p">[</span><span class="s2">&quot;SavePhotometryGrid&quot;</span><span class="p">],</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+                    <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">ssp</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="n">pickle</span><span class="o">.</span><span class="n">HIGHEST_PROTOCOL</span><span class="p">)</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;photometry_grid&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_photometry</span></div>
 
 
@@ -207,28 +219,19 @@
 
 
 
-<div class="viewcode-block" id="setup">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.setup">[docs]</a>
 <span class="k">def</span> <span class="nf">setup</span><span class="p">(</span><span class="n">options</span><span class="p">):</span>
     <span class="n">options</span> <span class="o">=</span> <span class="n">SectionOptions</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
     <span class="n">mod</span> <span class="o">=</span> <span class="n">SFHPhotometryModule</span><span class="p">(</span><span class="n">options</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">mod</span></div>
+    <span class="k">return</span> <span class="n">mod</span>
 
 
-
-<div class="viewcode-block" id="execute">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.execute">[docs]</a>
 <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">mod</span><span class="p">):</span>
     <span class="n">mod</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">block</span><span class="p">)</span>
-    <span class="k">return</span> <span class="mi">0</span></div>
+    <span class="k">return</span> <span class="mi">0</span>
 
 
-
-<div class="viewcode-block" id="cleanup">
-<a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.sfh_photometry.cleanup">[docs]</a>
 <span class="k">def</span> <span class="nf">cleanup</span><span class="p">(</span><span class="n">mod</span><span class="p">):</span>
-    <span class="n">mod</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span></div>
-
+    <span class="n">mod</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span>
 </pre></div>
 
            </div>

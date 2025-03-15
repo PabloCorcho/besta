@@ -40,3 +40,9 @@ if "kinematics" in config_file:
         kinematics["lsf_sigma_truncation"] = 5
     if not "extra_velocity_buffer" in kinematics:
         kinematics["extra_velocity_buffer"] = 800.0
+
+# Dust extinction
+if "extinction" in config_file:
+    extinction = config_file["extinction"]
+    if not "a_v" in extinction:
+        extinction["a_v"] = {"min": 0.0, "max": 3.0, "steps": 30}

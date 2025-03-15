@@ -1,12 +1,13 @@
-from besta.pipeline_modules.base_module import BaseModule
+import pickle
 import numpy as np
-
 from astropy import units as u
 
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
-from besta import kinematics
 
+from besta.pipeline_modules.base_module import BaseModule
+from besta import kinematics
+from besta.config import extinction as extinction_conf
 
 class SFHPhotometryModule(BaseModule):
     name = "SFHPhotometry"
@@ -56,27 +57,38 @@ class SFHPhotometryModule(BaseModule):
                 self.config["ssp_model"], av
             )
 
-        print("Producing photometry extinction grid")
-        dust_model = self.config["extinction_law"]
-        a_v_array = np.linspace(0, 3, 30)
-        ssps = [
-            dust_model.redden_ssp_model(self.config["ssp_model"], a_v=av)
-            for av in a_v_array
-        ]
-        all_photometry = np.zeros(
-            (
-                a_v_array.size,
-                len(self.config["filters"]),
-                *self.config["ssp_model"].L_lambda.shape[:-1],
-            )
-        ) * u.Quantity("3631e-9 Jy / Msun")
+        if options.has_value("PhotometryGrid"):
+            with open(options["PhotometryGrid"], 'rb') as file:
+                all_photometry = pickle.load(file)
+        else:
+            print("Producing photometry extinction grid")
+            dust_model = self.config["extinction_law"]
+            av_grid = np.linspace(extinction_conf["a_v"]["min"],
+                                extinction_conf["a_v"]["max"],
+                                extinction_conf["a_v"]["steps"])
+            self.config["av_grid"] = av_grid
+            ssps = [
+                dust_model.redden_ssp_model(self.config["ssp_model"], a_v=av)
+                for av in av_grid
+            ]
+            all_photometry = np.zeros(
+                (
+                    av_grid.size,
+                    len(self.config["filters"]),
+                    *self.config["ssp_model"].L_lambda.shape[:-1],
+                )
+            ) * u.Quantity("3631e-9 Jy / Msun")
 
-        for j, ssp in enumerate(ssps):
-            photo = ssp.compute_photometry(
-                filter_list=self.config["filters"], z_obs=self.config["redshift"]
-            ).to("3631e-9 Jy / Msun")
-            all_photometry[j] = photo
-        self.config["av_grid"] = a_v_array
+            for j, ssp in enumerate(ssps):
+                photo = ssp.compute_photometry(
+                    filter_list=self.config["filters"], z_obs=self.config["redshift"]
+                ).to("3631e-9 Jy / Msun")
+                all_photometry[j] = photo
+
+            if options.has_value("SavePhotometryGrid"):
+                with open(options["SavePhotometryGrid"], 'wb') as file:
+                    pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
+
         self.config["photometry_grid"] = all_photometry
 
     def make_observable(self, block, parse=False):

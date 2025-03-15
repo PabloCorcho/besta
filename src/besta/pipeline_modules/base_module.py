@@ -4,6 +4,7 @@ pipeline modules in BESTA.
 """
 from abc import abstractmethod
 import os
+import pickle
 import sys
 
 import numpy as np
@@ -18,6 +19,7 @@ from pst.observables import Filter
 from pst import SSP, dust
 
 from besta import spectrum
+from besta import kinematics
 from besta import sfh
 from besta.config import cosmology
 
@@ -105,7 +107,7 @@ class BaseModule(ClassModule):
             weights = np.ones_like(flux)
         # Load the instrumental LSF
         if options.has_value("lsf"):
-            lsf_wl, lsf_fwhm = np.loadtxt(options["lsf"])
+            lsf_wl, lsf_fwhm = np.loadtxt(options["lsf"], unpack=True)
             instrumental_lsf = np.array(np.interp(wavelength, lsf_wl, lsf_fwhm),
                                         dtype=float)
         else:
@@ -218,6 +220,30 @@ class BaseModule(ClassModule):
         """
         print("\n-> Configuring SSP model")
 
+        if options.has_value("SSPModelFromPickle"):
+            print("\n-> Loading preconfigured SSP model from pickle")
+            if not os.path.isfile(options["SSPModelFromPickle"]):
+                raise FileNotFoundError(
+                    f"Input pickle file {options['SSPModelFromPickle']} not found")
+
+            # Load the SSP model
+            with open(options["SSPModelFromPickle"], 'rb') as file:
+                ssp = pickle.load(file)
+
+            self.config["ssp_model"] = ssp
+            self.config["ssp_sed"] = ssp.L_lambda.value.reshape(
+            (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1],
+             ssp.L_lambda.shape[2]))
+            self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
+            # Grid parameters
+            velscale = options["velscale"]
+            dlnlam = velscale / spectrum.constants.c.to("km/s").value
+            extra_offset_pixel = int(velocity_buffer / velscale)
+            self.config["velscale"] = velscale
+            self.config["extra_pixels"] = extra_offset_pixel
+            print("-> Configuration done.")
+            return
+
         ssp_name = options["SSPModel"]
         ssp_dir = options["SSPDir"]
 
@@ -281,11 +307,19 @@ class BaseModule(ClassModule):
 
         # Convolve with instrumental LSF
         if "lsf" in self.config:
+            print("Convolving SSP model with instrumental LSF")
             inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
                                  self.config["lsf"])
+            # TODO: include ssp lsf
             # effective_lsf = inst_lsf**2 - ssp_lsf**2
             effective_lsf = inst_lsf
-            lsf_pixels = inst_lsf / np.diff(10**lnlam_bin_edges) / 2.355
+            lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
+            # ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
+            #     ssp.L_lambda, lsf_sigma_pixels)
+
+            for ith in range(ssp.L_lambda.shape[0]):
+                ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
+                ssp.L_lambda[ith], lsf_sigma_pixels)
 
         if normalize and wl_norm_range is not None:
             print("Normalizing SSP model SED within range ", wl_norm_range)
@@ -309,7 +343,7 @@ class BaseModule(ClassModule):
             pca = NMF(n_components=n_nmf, alpha_H=1.0, max_iter=n_nmf * 1000)
             pca.fit(ssp_sed)
             ssp_sed = pca.components_
-        # ------------------------------------------------------------------------ #
+
         self.config["ssp_model"] = ssp
         self.config["ssp_sed"] = ssp_sed
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
@@ -317,6 +351,9 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         print("-> Configuration done.")
+        if options.has_value("SaveSSPModel"):
+            with open(options["SaveSSPModel"], 'wb') as file:
+                pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
         return
 
     def prepare_extinction_law(self, options):
@@ -357,6 +394,31 @@ class BaseModule(ClassModule):
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **self.config)
         self.config["sfh_model"] = sfh_model
+        print("-> Configuration done")
+
+    def prepare_legendre_polynomials(self, options):
+        """Prepare the set of Legendre polynomials used during the fit.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        print("\n-> Configuring multiplicative polynomial")
+        if options.has_value("legendre_deg"):
+            kwargs = {}
+            if options.has_value("legendre_bounds"):
+                kwargs["bounds"] = options["legendre_bounds"]
+            if options.has_value("legendre_scale"):
+                kwargs["scale"] = options["legendre_scale"]
+            if options.has_value("legendre_clip_first_zero"):
+                kwargs["clip_first_zero"] = options["legendre_clip_first_zero"]
+            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
+                  "\nAdditional arguments: ", kwargs)
+            self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
+                self.config["wavelength"], options["legendre_deg"], **kwargs)
+        else:
+            print(f"Not using multiplicative Legendre polynomials")
         print("-> Configuration done")
 
     def log_like(self, data, model, cov):

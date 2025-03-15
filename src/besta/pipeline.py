@@ -158,7 +158,8 @@ class MainPipeline(object):
         else:
             weights = np.ones_like(flux_model)
 
-        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True)
+        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True,
+                                figsize=(np.round(flux_model.size / 300, 0), 6))
         plt.suptitle(f"Module: {module.name}")
         ax = axs[0]
         # Plot input spectra
@@ -173,13 +174,13 @@ class MainPipeline(object):
             module.config["wavelength"], module.config["flux"], c="k", label="Observed",
             lw=0.7)
         # Show masked pixels
-        mask = (weights * module.config["weights"]) == 0
+        nan_mask = np.ones_like(module.config["flux"])
+        nan_mask[(weights * module.config["weights"]) == 0] = np.nan
         ax.plot(
-            module.config["wavelength"][mask],
-            module.config["flux"][mask],
+            module.config["wavelength"],
+            module.config["flux"] * nan_mask,
             c="r",
-            marker="x",
-            lw=0,
+            lw=0.7,
             label="Masked",
         )
         # Plot model
@@ -192,6 +193,7 @@ class MainPipeline(object):
             residuals,
             c="orange",
             label="Residuals",
+            lw=0.7
         )
         ax.axhline(0, ls="--", color="k", alpha=0.2)
         ax.set_ylabel("Flux")
@@ -220,15 +222,24 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        figname = os.path.basename(pipe_config["output"].get("figurename", pipe_config["output"]["filename"]))
-        output_file = os.path.join(os.path.dirname(pipe_config["output"]["filename"]),
-                                   f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
-                                   )
+<<<<<<< HEAD
+        figname = os.path.basename(
+            pipe_config["output"].get("figurename",
+                                      pipe_config["output"]["filename"]))
+        output_file = os.path.join(
+            os.path.dirname(pipe_config["output"]["filename"]),
+            f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
+            )
 
+=======
+        output_file = (pipe_config["output"]["filename"]
+                       + f"{pipe_config['pipeline']['modules']}"
+                       + "_best_fit_spectra.pdf"
+                       )
+>>>>>>> 68b4384 (update plot)
         fig.savefig(
             output_file,
             bbox_inches="tight",
-            dpi=200,
         )
         print(f"Fit plot saved at: {output_file}")
         plt.close()

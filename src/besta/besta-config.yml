@@ -18,3 +18,12 @@ kinematics:
     # Velocity offset that will result in extra pixels included in the model
     # spectra to minimize convolution problems at the edges.
     extra_velocity_buffer: 800.0
+
+####################
+# Dust extinction
+####################
+extinction:
+    a_v: 
+        min: 0.0
+        max: 3.0
+        steps: 30

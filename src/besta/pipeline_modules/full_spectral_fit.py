@@ -4,7 +4,7 @@ import numpy as np
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
-
+from besta import spectrum
 
 class FullSpectralFitModule(BaseModule):
     name = "FullSpectralFit"
@@ -25,7 +25,9 @@ class FullSpectralFitModule(BaseModule):
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)
         self.prepare_extinction_law(options)
+        self.prepare_legendre_polynomials(options)
 
+    @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
@@ -49,12 +51,11 @@ class FullSpectralFitModule(BaseModule):
             h3=block["parameters", "los_h3"],
             h4=block["parameters", "los_h4"],
         )
+        kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
+                                      None) + 1
         kernel = kinematics.get_losvd_kernel(
             kernel_model,
-            x_size=10
-            * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1, None)
-            + 1
-            # x_size=flux_model.size
+            x_size=kernel_n_pixel
         )
         # Perform the convolution
         flux_model = kinematics.convolve_spectra_with_kernel(flux_model, kernel)

@@ -2,6 +2,7 @@
 import numpy as np
 import re
 from scipy.signal import fftconvolve
+from scipy.special import erf
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.models import Gaussian1D, Hermite1D
 from astropy.convolution.kernels import Model1DKernel
@@ -232,3 +233,40 @@ def convolve_ssp_model(config, los_sigma, los_vel, h3=0.0, h4=0.0):
     mask[: int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel)] = False
     mask[-int(config.kinematics["lsf_sigma_truncation"] * sigma_pixel) :] = False
     return ssp, mask
+
+def normal_cdf(x, mu=0.0, sigma=1.0):
+    """Normal cumulative density function."""
+    return (1.0 + erf((x - mu) / sigma / np.sqrt(2.0))) / 2.0
+
+def convolve_variable_gaussian_kernel(spectra, sigma_pixel):
+    """Convolve an input spectra with a Gaussian kernel of varying width.
+    
+    Parameters
+    ----------
+    spectra : :class:`np.ndarray` or :class:`u.Quantity`
+        N-dimensional spectra. The last dimension must correspond to the wavelength
+        axis.
+    sigma_pixel : :class:`np.ndarray`
+        Value of the standard deviation of the Gaussian LSF for each spectral
+        resolution element.
+
+    Returns
+    -------
+    convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`
+        A convolved version of ``spectra``.
+    """
+
+    mean_pixel = (np.arange(-0.5, sigma_pixel.size + 0.5, 1)[np.newaxis]
+                  - np.arange(0, sigma_pixel.size, 1)[:, np.newaxis])
+    cmf = normal_cdf(mean_pixel / sigma_pixel[:, np.newaxis])
+    weights = cmf[:, 1:] - cmf[:, :-1]
+    # Ensure that it is normalized
+    weights /= np.sum(weights, axis=1)[:, np.newaxis]
+    extra_dim = spectra.ndim - 1
+    if extra_dim > 0:
+        axis = [dim for dim in np.arange(0, extra_dim, 1)]
+        weights = np.expand_dims(weights, axis=axis)
+    return np.sum(np.expand_dims(spectra, axis=-1) * weights, axis=-1)
+
+
+

@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.237.g211f258.dirty documentation</title>
+  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=9c7d7888"></script>
+      <script src="../../_static/documentation_options.js?v=9f2d8144"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -79,6 +79,7 @@
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">from</span> <span class="nn">scipy.signal</span> <span class="kn">import</span> <span class="n">fftconvolve</span>
+<span class="kn">from</span> <span class="nn">scipy.special</span> <span class="kn">import</span> <span class="n">erf</span>
 <span class="kn">from</span> <span class="nn">astropy.modeling</span> <span class="kn">import</span> <span class="n">Fittable1DModel</span>
 <span class="kn">from</span> <span class="nn">astropy.modeling.models</span> <span class="kn">import</span> <span class="n">Gaussian1D</span><span class="p">,</span> <span class="n">Hermite1D</span>
 <span class="kn">from</span> <span class="nn">astropy.convolution.kernels</span> <span class="kn">import</span> <span class="n">Model1DKernel</span>
@@ -230,6 +231,38 @@
     <span class="p">)</span></div>
 
 
+<div class="viewcode-block" id="convolve_ssp_with_lsf">
+<a class="viewcode-back" href="../../api.html#besta.kinematics.convolve_ssp_with_lsf">[docs]</a>
+<span class="k">def</span> <span class="nf">convolve_ssp_with_lsf</span><span class="p">(</span><span class="n">ssp</span><span class="p">,</span> <span class="n">lsf_sigma_pixels</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve a given SSP model with an LSF.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ssp : pst.SSP.SSPBase</span>
+<span class="sd">    lsf_sigma_pixels : float, np.ndarray</span>
+<span class="sd">        Gaussian standard deviation of the LSF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Account for LSF variability</span>
+    <span class="k">if</span> <span class="n">lsf_sigma_pixels</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">ssp</span><span class="o">.</span><span class="n">wavelength</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+        <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+            <span class="n">fftconvolve</span><span class="p">(</span>
+                <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+                <span class="n">losvd</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">,</span>
+                                <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">),</span>
+                                <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">sigma</span><span class="p">)[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">],</span>
+                                <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;same&quot;</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="mi">2</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="n">ith</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">ith</span><span class="p">,</span> <span class="n">sigma</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lsf_sigma_pixels</span><span class="p">)])</span> <span class="o">*</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">unit</span>
+    <span class="c1"># Constant LSF</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">lsf_sigma_pixels</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span> <span class="o">=</span> <span class="n">fftconvolve</span><span class="p">(</span>
+                <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">value</span><span class="p">,</span>
+                <span class="n">losvd</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">lsf_sigma_pixels</span><span class="p">,</span>
+                                <span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">lsf_sigma_pixels</span><span class="p">),</span>
+                                <span class="n">sigma_pixel</span><span class="o">=</span><span class="n">lsf_sigma_pixels</span><span class="p">)[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">],</span>
+                                <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;same&quot;</span><span class="p">,</span> <span class="n">axes</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">ssp</span><span class="o">.</span><span class="n">L_lambda</span><span class="o">.</span><span class="n">unit</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ArithmeticError</span><span class="p">(</span><span class="s2">&quot;Dimensions of SSP and LSF do not match&quot;</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="convolve_ssp">
 <a class="viewcode-back" href="../../api.html#besta.kinematics.convolve_ssp">[docs]</a>
@@ -300,6 +333,49 @@
     <span class="n">mask</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">mask</span><span class="p">[</span><span class="o">-</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">kinematics</span><span class="p">[</span><span class="s2">&quot;lsf_sigma_truncation&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">sigma_pixel</span><span class="p">)</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="n">ssp</span><span class="p">,</span> <span class="n">mask</span></div>
+
+
+<div class="viewcode-block" id="normal_cdf">
+<a class="viewcode-back" href="../../api.html#besta.kinematics.normal_cdf">[docs]</a>
+<span class="k">def</span> <span class="nf">normal_cdf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Normal cumulative density function.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">erf</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">mu</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)))</span> <span class="o">/</span> <span class="mf">2.0</span></div>
+
+
+<div class="viewcode-block" id="convolve_variable_gaussian_kernel">
+<a class="viewcode-back" href="../../api.html#besta.kinematics.convolve_variable_gaussian_kernel">[docs]</a>
+<span class="k">def</span> <span class="nf">convolve_variable_gaussian_kernel</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve an input spectra with a Gaussian kernel of varying width.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    spectra : :class:`np.ndarray` or :class:`u.Quantity`</span>
+<span class="sd">        N-dimensional spectra. The last dimension must correspond to the wavelength</span>
+<span class="sd">        axis.</span>
+<span class="sd">    sigma_pixel : :class:`np.ndarray`</span>
+<span class="sd">        Value of the standard deviation of the Gaussian LSF for each spectral</span>
+<span class="sd">        resolution element.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`</span>
+<span class="sd">        A convolved version of ``spectra``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">mean_pixel</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">.</span><span class="n">size</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+                  <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">])</span>
+    <span class="n">cmf</span> <span class="o">=</span> <span class="n">normal_cdf</span><span class="p">(</span><span class="n">mean_pixel</span> <span class="o">/</span> <span class="n">sigma_pixel</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">])</span>
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">cmf</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span> <span class="o">-</span> <span class="n">cmf</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1"># Ensure that it is normalized</span>
+    <span class="n">weights</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+    <span class="n">extra_dim</span> <span class="o">=</span> <span class="n">spectra</span><span class="o">.</span><span class="n">ndim</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">extra_dim</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">axis</span> <span class="o">=</span> <span class="p">[</span><span class="n">dim</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">extra_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">weights</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">expand_dims</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">weights</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+
 
 </pre></div>
 

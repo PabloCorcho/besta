@@ -8,7 +8,7 @@ import scipy
 from scipy import ndimage
 from scipy.special import legendre
 from astropy import constants
-
+from astropy import units as u
 
 def log_rebin(lam, spec, velscale=None, oversample=1, flux=False):
     """
@@ -133,79 +133,8 @@ def log_rebin(lam, spec, velscale=None, oversample=1, flux=False):
 
     return specNew, ln_lam, velscale
 
-
-def smoothSpectrum(wavelength, spectrum, sigma):
-    """Smooth spectrum to a given velocity dispersion.
-
-    Args:
-            wavelength: wavelength-array of the spectrum (should
-                    be logarithmic for constant sigma-smoothing).
-            spectrum: numpy array with spectral data.
-            sigma: required velocity dispersion (km/s)
-
-    Returns:
-            spectrumSmooth: smoothed version of the spectrum.
-
-    """
-
-    clight = 299792.458
-    cdelt = np.log(wavelength[1]) - np.log(wavelength[0])
-    sigmaPixel = sigma / (clight * cdelt)
-    smoothSpectrum = smoothSpectrumFast(spectrum, sigmaPixel)
-
-    return smoothSpectrum
-
-
-def smoothSpectra(wavelength, S, sigma):
-    """Smooth spectra in matrix with stellar spectra to a given velocity dispersion.
-
-    Args:
-            wavelength: wavelength-array of the spectra (should
-                    be logarithmic for constant sigma smoothing).
-            S: matrix with stellar templates, spectra are assumed to be
-                    int the columns of the matrix.
-            spectrum: numpy array with spectral data.
-            sigma: required velocity dispersion (km/s)
-
-    Returns:
-            S: smoothed version of the spectra in S.
-
-    """
-    clight = 299792.458
-    cdelt = np.log(wavelength[1]) - np.log(wavelength[0])
-    sigmaPixel = sigma / (clight * cdelt)
-
-    nTemplates = S.shape[1]
-    for tIdx in range(nTemplates):
-        S[:, tIdx] = smoothSpectrumFast(S[:, tIdx], sigmaPixel)
-
-    return S
-
-
-def smoothSpectrumFast(spectrum, sigmaPixel):
-    """Fast spectrum smoothing.
-
-    This function smooths a spectrum given the
-    standard deviation in pixel space.
-
-    Args:
-            spectrum: the input spectrum.
-            sigmaPixel: smoothing scale in pixel space.
-
-    Returns:
-            smoothSpectrum: a smoothed version of the
-                    input spectrum.
-
-    """
-
-    smoothSpectrum = scipy.ndimage.gaussian_filter(
-        spectrum, sigma=(sigmaPixel), order=0
-    )
-
-    return smoothSpectrum
-
-
-def get_legendre_polynomial_array(wavelength, order, bounds=None):
+def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
+                                  clip_first_zero=True):
     """
     Compute an array of Legendre polynomials evaluated at normalized wavelengths.
 
@@ -219,6 +148,14 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None):
         A tuple specifying the minimum and maximum bounds for normalization
         (bounds[0], bounds[1]). If None, the normalization is based on the
         minimum and maximum of the `wavelength` array.
+    scale : float, optional
+        A maximum scale to probe by the polynomials. If provided, the set of
+        polynomial will comprise the range that is sensitive to scales smaller
+        the input value (i.e. lower order polynomials are not included).
+    clip_first_zero : bool, optional
+        If ``True``, the values of each polynomial below the first and las zero
+        of the Legendre polynomial are set to 0. This prevents the edges to reach
+        extremelly large values when the order of the polynomial is high.
 
     Returns
     -------
@@ -228,13 +165,44 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None):
         The shape of the array is (order + 1, len(wavelength)).
     """
     if bounds == None:
-        norm_wl = (
-            2 * (wavelength - wavelength.min()) / (wavelength.max() - wavelength.min())
-            - 1
-        )
+        bounds = wavelength.min(), wavelength.max()
+    
+    norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
+    norm_wl = norm_wl.clip(-1, 1)
+
+    if scale is not None:
+        min_order = np.round((bounds[1].value - bounds[0].value) / scale, 0)
     else:
-        norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
-    legendre_arr = np.array(
-        [np.array(legendre(deg)(norm_wl)) for deg in np.arange(0, order + 1)]
-    )
+        min_order = 1
+
+    if isinstance(norm_wl, u.Quantity):
+        norm_wl = norm_wl.decompose().value
+    print("Pol order == ", np.arange(min_order, min_order + order + 1))
+    poly_set = []
+    for deg in [0, *np.arange(min_order, min_order + order)]:
+        pol = legendre(deg)
+        pol_wl = pol(norm_wl)
+        # Clip the values on the edges to avoid extremes
+        if clip_first_zero:
+            first_zero = pol.roots.real.min()
+            pol_wl[(norm_wl < first_zero) | (norm_wl > -first_zero)] = 0
+        poly_set.append(pol_wl)
+
+    legendre_arr = np.array(poly_set)
     return legendre_arr
+
+def legendre_decorator(make_observable_mthd):
+    """Include multiplicative Legendre polynomials during a fit."""
+    def wrapper(*args, **kwargs):
+        if "legendre_pol" in args[0].config:
+            legendre_pol = args[0].config["legendre_pol"]
+            # Get the coefficients from the input DataBlock
+            coeffs = np.array([1.0] + [args[1]["parameters", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
+            output = make_observable_mthd(*args, **kwargs)
+            if isinstance(output, tuple):
+                return output[0] * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0), output[1]
+            else:
+                return output * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0)
+        else:
+            return make_observable_mthd(*args, **kwargs)
+    return wrapper
