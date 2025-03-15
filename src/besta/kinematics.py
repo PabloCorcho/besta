@@ -239,7 +239,22 @@ def normal_cdf(x, mu=0.0, sigma=1.0):
     return (1.0 + erf((x - mu) / sigma / np.sqrt(2.0))) / 2.0
 
 def convolve_variable_gaussian_kernel(spectra, sigma_pixel):
-    """Convolve an input spectra with a Gaussian kernel of varying width."""
+    """Convolve an input spectra with a Gaussian kernel of varying width.
+    
+    Parameters
+    ----------
+    spectra : :class:`np.ndarray` or :class:`u.Quantity`
+        N-dimensional spectra. The last dimension must correspond to the wavelength
+        axis.
+    sigma_pixel : :class:`np.ndarray`
+        Value of the standard deviation of the Gaussian LSF for each spectral
+        resolution element.
+
+    Returns
+    -------
+    convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`
+        A convolved version of ``spectra``.
+    """
 
     mean_pixel = (np.arange(-0.5, sigma_pixel.size + 0.5, 1)[np.newaxis]
                   - np.arange(0, sigma_pixel.size, 1)[:, np.newaxis])
