@@ -133,79 +133,8 @@ def log_rebin(lam, spec, velscale=None, oversample=1, flux=False):
 
     return specNew, ln_lam, velscale
 
-
-def smoothSpectrum(wavelength, spectrum, sigma):
-    """Smooth spectrum to a given velocity dispersion.
-
-    Args:
-            wavelength: wavelength-array of the spectrum (should
-                    be logarithmic for constant sigma-smoothing).
-            spectrum: numpy array with spectral data.
-            sigma: required velocity dispersion (km/s)
-
-    Returns:
-            spectrumSmooth: smoothed version of the spectrum.
-
-    """
-
-    clight = 299792.458
-    cdelt = np.log(wavelength[1]) - np.log(wavelength[0])
-    sigmaPixel = sigma / (clight * cdelt)
-    smoothSpectrum = smoothSpectrumFast(spectrum, sigmaPixel)
-
-    return smoothSpectrum
-
-
-def smoothSpectra(wavelength, S, sigma):
-    """Smooth spectra in matrix with stellar spectra to a given velocity dispersion.
-
-    Args:
-            wavelength: wavelength-array of the spectra (should
-                    be logarithmic for constant sigma smoothing).
-            S: matrix with stellar templates, spectra are assumed to be
-                    int the columns of the matrix.
-            spectrum: numpy array with spectral data.
-            sigma: required velocity dispersion (km/s)
-
-    Returns:
-            S: smoothed version of the spectra in S.
-
-    """
-    clight = 299792.458
-    cdelt = np.log(wavelength[1]) - np.log(wavelength[0])
-    sigmaPixel = sigma / (clight * cdelt)
-
-    nTemplates = S.shape[1]
-    for tIdx in range(nTemplates):
-        S[:, tIdx] = smoothSpectrumFast(S[:, tIdx], sigmaPixel)
-
-    return S
-
-
-def smoothSpectrumFast(spectrum, sigmaPixel):
-    """Fast spectrum smoothing.
-
-    This function smooths a spectrum given the
-    standard deviation in pixel space.
-
-    Args:
-            spectrum: the input spectrum.
-            sigmaPixel: smoothing scale in pixel space.
-
-    Returns:
-            smoothSpectrum: a smoothed version of the
-                    input spectrum.
-
-    """
-
-    smoothSpectrum = scipy.ndimage.gaussian_filter(
-        spectrum, sigma=(sigmaPixel), order=0
-    )
-
-    return smoothSpectrum
-
-
-def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=100):
+def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
+                                  clip_first_zero=True):
     """
     Compute an array of Legendre polynomials evaluated at normalized wavelengths.
 
@@ -223,6 +152,10 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=100):
         A maximum scale to probe by the polynomials. If provided, the set of
         polynomial will comprise the range that is sensitive to scales smaller
         the input value (i.e. lower order polynomials are not included).
+    clip_first_zero : bool, optional
+        If ``True``, the values of each polynomial below the first and las zero
+        of the Legendre polynomial are set to 0. This prevents the edges to reach
+        extremelly large values when the order of the polynomial is high.
 
     Returns
     -------
@@ -235,6 +168,7 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=100):
         bounds = wavelength.min(), wavelength.max()
     
     norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
+    norm_wl = norm_wl.clip(-1, 1)
 
     if scale is not None:
         min_order = np.round((bounds[1].value - bounds[0].value) / scale, 0)
@@ -244,9 +178,17 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=100):
     if isinstance(norm_wl, u.Quantity):
         norm_wl = norm_wl.decompose().value
     print("Pol order == ", np.arange(min_order, min_order + order + 1))
-    legendre_arr = np.array(
-        [np.array(legendre(deg)(norm_wl)) for deg in [0, *np.arange(min_order, min_order + order)]]
-    )
+    poly_set = []
+    for deg in [0, *np.arange(min_order, min_order + order)]:
+        pol = legendre(deg)
+        pol_wl = pol(norm_wl)
+        # Clip the values on the edges to avoid extremes
+        if clip_first_zero:
+            first_zero = pol.roots.real.min()
+            pol_wl[(norm_wl < first_zero) | (norm_wl > -first_zero)] = 0
+        poly_set.append(pol_wl)
+
+    legendre_arr = np.array(poly_set)
     return legendre_arr
 
 def legendre_decorator(make_observable_mthd):
