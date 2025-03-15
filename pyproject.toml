@@ -8,7 +8,7 @@ dynamic = ["version", "dependencies"]
 authors = [
   { name="Pablo Corcho-Caballero", email="p.corcho.caballero@rug.nl" },
 ]
-description = "Hierarchical Bayesian Stelllar Population Synthesis"
+description = "Bayesian Estimator for Stellar Population Analysis"
 readme = "README.md"
 keywords = ["astronomy", "SPS"]
 license = {text = "BSD-3-Clause"}
@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.8"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
