@@ -72,3 +72,31 @@ instrumental line spread function that remains constant across measurements.
 
 Specifies the path to a pre-saved pickle file containing an SSP model, allowing
 reuse of previously configured models.
+
+
+Mulitplicative polynomials
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When fitting spectra, users can include a multiplicative polynomial as part of
+the model to account for flux calibration inhomogeneities or inaccuracies in models.
+In the pipeline module configuration, users may specify an integer value for
+``legendre_deg``, which defines the highest polynomial degree.
+
+Additionally, users can specify the following optional parameters:
+
+- ``legendre_bounds``: Specifies the minimum and maximum wavelength values used
+to renormalize the wavelength vector and evaluate the polynomial. If not
+provided, the edges of the observed spectra are used as boundaries.
+
+- ``legendre_scale``: Defines the characteristic scale in Angstroms that the
+polynomial is sensitive to. If provided, the minimum polynomial order is estimated as:
+
+    .. code-block:: python
+
+        min_order = np.round((wl_max - wl_min / scale))
+
+    The polynomial orders used will range from ``min_order`` to ``min_order + legendre_deg``.
+
+- ``legendre_clip_first_zero``: If set, values of each polynomial below (above)
+the first (last) zero are set to 0. This helps prevent the polynomials from
+oscillating dramatically at the edges.

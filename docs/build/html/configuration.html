@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuring BESTA &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.259.g2935e0a.dirty documentation</title>
+  <title>Configuring BESTA &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=a7d38b97"></script>
+      <script src="_static/documentation_options.js?v=9f2d8144"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
@@ -52,6 +52,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#besta-configuration-file">BESTA configuration file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pipeline-modules-configuration">Pipeline modules configuration</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#single-stellar-population-models">Single Stellar Population models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#mulitplicative-polynomials">Mulitplicative polynomials</a></li>
 </ul>
 </li>
 </ul>
@@ -145,6 +146,34 @@ instrumental line spread function that remains constant across measurements.</p>
 </ul>
 <p>Specifies the path to a pre-saved pickle file containing an SSP model, allowing
 reuse of previously configured models.</p>
+</section>
+<section id="mulitplicative-polynomials">
+<h3>Mulitplicative polynomials<a class="headerlink" href="#mulitplicative-polynomials" title="Link to this heading"></a></h3>
+<p>When fitting spectra, users can include a multiplicative polynomial as part of
+the model to account for flux calibration inhomogeneities or inaccuracies in models.
+In the pipeline module configuration, users may specify an integer value for
+<code class="docutils literal notranslate"><span class="pre">legendre_deg</span></code>, which defines the highest polynomial degree.</p>
+<p>Additionally, users can specify the following optional parameters:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">legendre_bounds</span></code>: Specifies the minimum and maximum wavelength values used</p></li>
+</ul>
+<p>to renormalize the wavelength vector and evaluate the polynomial. If not
+provided, the edges of the observed spectra are used as boundaries.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">legendre_scale</span></code>: Defines the characteristic scale in Angstroms that the</p></li>
+</ul>
+<p>polynomial is sensitive to. If provided, the minimum polynomial order is estimated as:</p>
+<blockquote>
+<div><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">min_order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">((</span><span class="n">wl_max</span> <span class="o">-</span> <span class="n">wl_min</span> <span class="o">/</span> <span class="n">scale</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>The polynomial orders used will range from <code class="docutils literal notranslate"><span class="pre">min_order</span></code> to <code class="docutils literal notranslate"><span class="pre">min_order</span> <span class="pre">+</span> <span class="pre">legendre_deg</span></code>.</p>
+</div></blockquote>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">legendre_clip_first_zero</span></code>: If set, values of each polynomial below (above)</p></li>
+</ul>
+<p>the first (last) zero are set to 0. This helps prevent the polynomials from
+oscillating dramatically at the edges.</p>
 </section>
 </section>
 </section>

@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.259.g2935e0a.dirty documentation</title>
+  <title>besta.kinematics &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=a7d38b97"></script>
+      <script src="../../_static/documentation_options.js?v=9f2d8144"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -345,7 +345,22 @@
 <div class="viewcode-block" id="convolve_variable_gaussian_kernel">
 <a class="viewcode-back" href="../../api.html#besta.kinematics.convolve_variable_gaussian_kernel">[docs]</a>
 <span class="k">def</span> <span class="nf">convolve_variable_gaussian_kernel</span><span class="p">(</span><span class="n">spectra</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve an input spectra with a Gaussian kernel of varying width.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convolve an input spectra with a Gaussian kernel of varying width.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    spectra : :class:`np.ndarray` or :class:`u.Quantity`</span>
+<span class="sd">        N-dimensional spectra. The last dimension must correspond to the wavelength</span>
+<span class="sd">        axis.</span>
+<span class="sd">    sigma_pixel : :class:`np.ndarray`</span>
+<span class="sd">        Value of the standard deviation of the Gaussian LSF for each spectral</span>
+<span class="sd">        resolution element.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`</span>
+<span class="sd">        A convolved version of ``spectra``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">mean_pixel</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">.</span><span class="n">size</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
                   <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sigma_pixel</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">])</span>

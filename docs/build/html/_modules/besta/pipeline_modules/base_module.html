@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.259.g2935e0a.dirty documentation</title>
+  <title>besta.pipeline_modules.base_module &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../../_static/documentation_options.js?v=a7d38b97"></script>
+      <script src="../../../_static/documentation_options.js?v=9f2d8144"></script>
       <script src="../../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
@@ -514,12 +514,21 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">-&gt; Configuring multiplicative polynomial&quot;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;legendre_deg&quot;</span><span class="p">):</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using Legendre polynomials up to degree </span><span class="si">{</span><span class="n">options</span><span class="p">[</span><span class="s1">&#39;legendre_deg&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;legendre_bounds&quot;</span><span class="p">):</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;bounds&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;legendre_bounds&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;legendre_scale&quot;</span><span class="p">):</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;scale&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;legendre_scale&quot;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">has_value</span><span class="p">(</span><span class="s2">&quot;legendre_clip_first_zero&quot;</span><span class="p">):</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;clip_first_zero&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;legendre_clip_first_zero&quot;</span><span class="p">]</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using Legendre polynomials up to degree </span><span class="si">{</span><span class="n">options</span><span class="p">[</span><span class="s1">&#39;legendre_deg&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                  <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Additional arguments: &quot;</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;legendre_pol&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">spectrum</span><span class="o">.</span><span class="n">get_legendre_polynomial_array</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;wavelength&quot;</span><span class="p">],</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;legendre_deg&quot;</span><span class="p">])</span>            
+                <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;wavelength&quot;</span><span class="p">],</span> <span class="n">options</span><span class="p">[</span><span class="s2">&quot;legendre_deg&quot;</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Not using multiplicative Legendre polynomials&quot;</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;-&gt; Configuration done&quot;</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="BaseModule.log_like">
 <a class="viewcode-back" href="../../../besta.pipeline_modules.html#besta.pipeline_modules.base_module.BaseModule.log_like">[docs]</a>
