@@ -406,12 +406,21 @@ class BaseModule(ClassModule):
         """
         print("\n-> Configuring multiplicative polynomial")
         if options.has_value("legendre_deg"):
-            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}")
+            kwargs = {}
+            if options.has_value("legendre_bounds"):
+                kwargs["bounds"] = options["legendre_bounds"]
+            if options.has_value("legendre_scale"):
+                kwargs["scale"] = options["legendre_scale"]
+            if options.has_value("legendre_clip_first_zero"):
+                kwargs["clip_first_zero"] = options["legendre_clip_first_zero"]
+            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
+                  "\nAdditional arguments: ", kwargs)
             self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
-                self.config["wavelength"], options["legendre_deg"])            
+                self.config["wavelength"], options["legendre_deg"], **kwargs)
         else:
             print(f"Not using multiplicative Legendre polynomials")
         print("-> Configuration done")
+
     def log_like(self, data, model, cov):
         """Compute the likelihood between an input data set and a model.
 
