@@ -6,14 +6,14 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.270.gc7cf8cb.dirty documentation</title>
+  <title>API &mdash; Bayesian Estimator for Stellar Population Analysis 0.0.1+0.g4c8784c.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="_static/documentation_options.js?v=9f2d8144"></script>
+      <script src="_static/documentation_options.js?v=3cdd81ad"></script>
       <script src="_static/doctools.js?v=9bcbadda"></script>
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -76,33 +76,48 @@
 <li class="toctree-l3"><a class="reference internal" href="#besta.kinematics.convolve_variable_gaussian_kernel"><code class="docutils literal notranslate"><span class="pre">convolve_variable_gaussian_kernel()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#module-besta.output">Input/Output</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#besta.output.make_ini_file"><code class="docutils literal notranslate"><span class="pre">make_ini_file()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#besta.output.make_values_file"><code class="docutils literal notranslate"><span class="pre">make_values_file()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#besta.output.Reader"><code class="docutils literal notranslate"><span class="pre">Reader</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.ini_file</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini"><code class="docutils literal notranslate"><span class="pre">Reader.ini</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_data"><code class="docutils literal notranslate"><span class="pre">Reader.ini_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.config"><code class="docutils literal notranslate"><span class="pre">Reader.config</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.last_module"><code class="docutils literal notranslate"><span class="pre">Reader.last_module</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">Reader.last_module</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.results_table"><code class="docutils literal notranslate"><span class="pre">Reader.results_table</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">Reader.ini_file</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id3"><code class="docutils literal notranslate"><span class="pre">Reader.ini</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.ini_values"><code class="docutils literal notranslate"><span class="pre">Reader.ini_values</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id4"><code class="docutils literal notranslate"><span class="pre">Reader.config</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.load_results"><code class="docutils literal notranslate"><span class="pre">Reader.load_results()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_chain_percentiles"><code class="docutils literal notranslate"><span class="pre">Reader.get_chain_percentiles()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_maxlike_solution"><code class="docutils literal notranslate"><span class="pre">Reader.get_maxlike_solution()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.solution_to_datablock"><code class="docutils literal notranslate"><span class="pre">Reader.solution_to_datablock()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.get_pct_solutions"><code class="docutils literal notranslate"><span class="pre">Reader.get_pct_solutions()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.read_ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_file()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#besta.output.Reader.read_ini_values_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_values_file()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-besta.io">Input/Output</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#besta.io.make_ini_file"><code class="docutils literal notranslate"><span class="pre">make_ini_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.io.make_values_file"><code class="docutils literal notranslate"><span class="pre">make_values_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.io.read_results_file"><code class="docutils literal notranslate"><span class="pre">read_results_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#besta.io.Reader"><code class="docutils literal notranslate"><span class="pre">Reader</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.values_file"><code class="docutils literal notranslate"><span class="pre">Reader.values_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.last_module_name"><code class="docutils literal notranslate"><span class="pre">Reader.last_module_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.last_module"><code class="docutils literal notranslate"><span class="pre">Reader.last_module</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.results_table"><code class="docutils literal notranslate"><span class="pre">Reader.results_table</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.ini_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.results_file"><code class="docutils literal notranslate"><span class="pre">Reader.results_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.ini"><code class="docutils literal notranslate"><span class="pre">Reader.ini</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.ini_values"><code class="docutils literal notranslate"><span class="pre">Reader.ini_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.config"><code class="docutils literal notranslate"><span class="pre">Reader.config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.load_results"><code class="docutils literal notranslate"><span class="pre">Reader.load_results()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.get_maxlike_solution"><code class="docutils literal notranslate"><span class="pre">Reader.get_maxlike_solution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.get_top_frac_solutions"><code class="docutils literal notranslate"><span class="pre">Reader.get_top_frac_solutions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.get_pct_solutions"><code class="docutils literal notranslate"><span class="pre">Reader.get_pct_solutions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.solution_to_datablock"><code class="docutils literal notranslate"><span class="pre">Reader.solution_to_datablock()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.read_ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.read_ini_file_from_results"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_file_from_results()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.read_ini_values_file"><code class="docutils literal notranslate"><span class="pre">Reader.read_ini_values_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.from_ini_file"><code class="docutils literal notranslate"><span class="pre">Reader.from_ini_file()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.io.Reader.from_results_file"><code class="docutils literal notranslate"><span class="pre">Reader.from_results_file()</span></code></a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#pipeline-manager">Pipeline Manager</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pipeline-manager">Pipeline Manager</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#besta.pipeline.MainPipeline"><code class="docutils literal notranslate"><span class="pre">MainPipeline</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.pipelines_config"><code class="docutils literal notranslate"><span class="pre">MainPipeline.pipelines_config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.n_cores_list"><code class="docutils literal notranslate"><span class="pre">MainPipeline.n_cores_list</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.ini_files"><code class="docutils literal notranslate"><span class="pre">MainPipeline.ini_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.ini_values_files"><code class="docutils literal notranslate"><span class="pre">MainPipeline.ini_values_files</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.run_command"><code class="docutils literal notranslate"><span class="pre">MainPipeline.run_command()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.execute_pipeline"><code class="docutils literal notranslate"><span class="pre">MainPipeline.execute_pipeline()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.execute_all"><code class="docutils literal notranslate"><span class="pre">MainPipeline.execute_all()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#besta.pipeline.MainPipeline.plot_fit"><code class="docutils literal notranslate"><span class="pre">MainPipeline.plot_fit()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#module-besta.postprocess">Postprocessing</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#besta.postprocess.weighted_sample_mean"><code class="docutils literal notranslate"><span class="pre">weighted_sample_mean()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#besta.postprocess.weighted_sample_covariance"><code class="docutils literal notranslate"><span class="pre">weighted_sample_covariance()</span></code></a></li>
@@ -119,7 +134,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.free_params"><code class="docutils literal notranslate"><span class="pre">SFHBase.free_params</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.redshift"><code class="docutils literal notranslate"><span class="pre">SFHBase.redshift</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.today"><code class="docutils literal notranslate"><span class="pre">SFHBase.today</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#id5"><code class="docutils literal notranslate"><span class="pre">SFHBase.free_params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">SFHBase.free_params</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.make_ini"><code class="docutils literal notranslate"><span class="pre">SFHBase.make_ini()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.parse_free_params"><code class="docutils literal notranslate"><span class="pre">SFHBase.parse_free_params()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#besta.sfh.SFHBase.parse_datablock"><code class="docutils literal notranslate"><span class="pre">SFHBase.parse_datablock()</span></code></a></li>
@@ -349,12 +364,12 @@ resolution element.</p></li>
 </dd></dl>
 
 </section>
-<section id="module-besta.output">
-<span id="input-output"></span><h2>Input/Output<a class="headerlink" href="#module-besta.output" title="Link to this heading"></a></h2>
+<section id="module-besta.io">
+<span id="input-output"></span><h2>Input/Output<a class="headerlink" href="#module-besta.io" title="Link to this heading"></a></h2>
 <p>Module dedicated to read and manipulate the output products of BESTA.</p>
 <dl class="py function">
-<dt class="sig sig-object py" id="besta.output.make_ini_file">
-<span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">make_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#make_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.make_ini_file" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.make_ini_file">
+<span class="sig-prename descclassname"><span class="pre">besta.io.</span></span><span class="sig-name descname"><span class="pre">make_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#make_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.make_ini_file" title="Link to this definition"></a></dt>
 <dd><p>Create a .ini file from an input configuration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -367,8 +382,8 @@ resolution element.</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="besta.output.make_values_file">
-<span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">make_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#make_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.make_values_file" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.make_values_file">
+<span class="sig-prename descclassname"><span class="pre">besta.io.</span></span><span class="sig-name descname"><span class="pre">make_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#make_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.make_values_file" title="Link to this definition"></a></dt>
 <dd><p>Make a values.ini file from the configuration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -377,110 +392,217 @@ resolution element.</p></li>
 </dl>
 </dd></dl>
 
-<dl class="py class">
-<dt class="sig sig-object py" id="besta.output.Reader">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.output.</span></span><span class="sig-name descname"><span class="pre">Reader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ini_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader" title="Link to this definition"></a></dt>
-<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
-<p>Cosmosis Data Reader</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="besta.output.Reader.ini_file">
-<span class="sig-name descname"><span class="pre">ini_file</span></span><a class="headerlink" href="#besta.output.Reader.ini_file" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="besta.output.Reader.ini">
-<span class="sig-name descname"><span class="pre">ini</span></span><a class="headerlink" href="#besta.output.Reader.ini" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="besta.output.Reader.ini_data">
-<span class="sig-name descname"><span class="pre">ini_data</span></span><a class="headerlink" href="#besta.output.Reader.ini_data" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="besta.output.Reader.config">
-<span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#besta.output.Reader.config" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="besta.output.Reader.last_module">
-<span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#besta.output.Reader.last_module" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="id0">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
-<dd><p>Last module used in the pipeline.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="besta.output.Reader.results_table">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">results_table</span></span><a class="headerlink" href="#besta.output.Reader.results_table" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="id2">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_file</span></span><a class="headerlink" href="#id2" title="Link to this definition"></a></dt>
-<dd><p>Cosmosis configuration file path.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="id3">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini</span></span><a class="headerlink" href="#id3" title="Link to this definition"></a></dt>
-<dd><p>Cosmosis .ini configuration file</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="besta.output.Reader.ini_values">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_values</span></span><a class="headerlink" href="#besta.output.Reader.ini_values" title="Link to this definition"></a></dt>
-<dd><p>Cosmosis configuration values.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="id4">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config</span></span><a class="headerlink" href="#id4" title="Link to this definition"></a></dt>
-<dd><p>Pipeline configuration.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.load_results">
-<span class="sig-name descname"><span class="pre">load_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.load_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.load_results" title="Link to this definition"></a></dt>
-<dd><p>Load the cosmosis run results associated to the <code class="docutils literal notranslate"><span class="pre">ini</span></code> file.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.get_chain_percentiles">
-<span class="sig-name descname"><span class="pre">get_chain_percentiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.16,</span> <span class="pre">0.5,</span> <span class="pre">0.84,</span> <span class="pre">0.95]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_chain_percentiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_chain_percentiles" title="Link to this definition"></a></dt>
-<dd><p>Compute the percentile values of the parameter chains.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="besta.io.read_results_file">
+<span class="sig-prename descclassname"><span class="pre">besta.io.</span></span><span class="sig-name descname"><span class="pre">read_results_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#read_results_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.read_results_file" title="Link to this definition"></a></dt>
+<dd><p>Read the results produced during a CosmoSIS run.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>pct</strong> (<em>list</em>) – List of input percentiles.</p>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path to the file containing the cosmosis results</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>pct_results</strong> (<em>dict</em>) – Dictionary containing the percentiles associated to each parameter.</p>
+<dd class="field-even"><p><strong>table</strong> (<a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.table.Table.html#astropy.table.Table" title="(in Astropy v7.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">astropy.table.Table</span></code></a>) – Table containing the results.</p>
 </dd>
 </dl>
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.io.Reader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.io.</span></span><span class="sig-name descname"><span class="pre">Reader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ini_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">results_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>CosmoSIS run results reader.</p>
+<p>This class is meant to improve the accessibility to the results from a
+CosmoSIS run.</p>
+<p>The Reader can be initialised either from a .ini conguration file or from
+the file containing the results of the run (which implicitly includes the
+configuration information in the header).</p>
+<p>Currently, there are two factory methods to initialise the <code class="docutils literal notranslate"><span class="pre">Reader</span></code>.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">besta.io</span> <span class="kn">import</span> <span class="n">Reader</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span> <span class="o">=</span> <span class="n">Reader</span><span class="o">.</span><span class="n">from_ini_file</span><span class="p">(</span><span class="n">path_to_ini_config_file</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span> <span class="o">=</span> <span class="n">Reader</span><span class="o">.</span><span class="n">from_results_file</span><span class="p">(</span><span class="n">path_to_results_file</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>From here, users may want to load the results of the run into a table:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span><span class="o">.</span><span class="n">load_results</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span><span class="o">.</span><span class="n">results_table</span><span class="o">.</span><span class="n">info</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">Reader</span></code> also provides tools for extracting some solutions among the full
+run. For instance, users may be interested on using the solution that maximizes
+the likelihood (i.e., the best-fit solution):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">best_fit</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">get_maxlike_solution</span><span class="p">(</span><span class="n">log_prob</span><span class="o">=</span><span class="s2">&quot;post&quot;</span><span class="p">,</span> <span class="n">as_datablock</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The first argument tells the function to use the row with the highest
+value of <code class="docutils literal notranslate"><span class="pre">&quot;post&quot;</span></code> (the column naming convention depends on the CosmoSIS
+sampler used).</p>
+<p>Alternatively, users might be interested in selecting a set of solutions based
+on their posterior probability or likelihood. For that purpose, the <code class="docutils literal notranslate"><span class="pre">Reader</span></code>
+includes two methods that allow to pull a subset of the solutions:</p>
+<ul class="simple">
+<li><p>Users can retrieve a fraction of the solutions with the highest posterior</p></li>
+</ul>
+<p>by calling:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span><span class="o">.</span><span class="n">get_top_frac_solutions</span><span class="p">(</span><span class="n">frac</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>which will return the first top percent of all the solutions.</p>
+<ul class="simple">
+<li><p>Users can retrieve a fraction of the solutions that accounts for a given</p></li>
+</ul>
+<p>fraction of the cumulative posterior.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">reader</span><span class="o">.</span><span class="n">get_pct_solutions</span><span class="p">(</span><span class="n">pct</span><span class="o">=</span><span class="mi">99</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>which will return the solutions that account for 99% of the total posterior.</p>
+<p>Besides selecting solutions, the <code class="docutils literal notranslate"><span class="pre">Reader</span></code> also provides access to the
+modules used during the sampling, allowing to recompute the observable quantities
+or to evaluate the fit:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">module</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">last_module</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">flux_model</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">make_observable</span><span class="p">(</span><span class="n">best_fit</span><span class="p">,</span> <span class="n">parse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.values_file">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">values_file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#besta.io.Reader.values_file" title="Link to this definition"></a></dt>
+<dd><p>Path to the CosmoSIS (prior) values configuration file.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.last_module_name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_module_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#besta.io.Reader.last_module_name" title="Link to this definition"></a></dt>
+<dd><p>Name of the last module used in the pipeline.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.last_module">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_module</span></span><a class="headerlink" href="#besta.io.Reader.last_module" title="Link to this definition"></a></dt>
+<dd><p>An instance of the last pipeline module used in the run.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.results_table">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">results_table</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.astropy.org/en/stable/api/astropy.table.Table.html#astropy.table.Table" title="(in Astropy v7.0)"><span class="pre">Table</span></a></em><a class="headerlink" href="#besta.io.Reader.results_table" title="Link to this definition"></a></dt>
+<dd><p>Table containing the CosmoSIS run results.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.ini_file">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#besta.io.Reader.ini_file" title="Link to this definition"></a></dt>
+<dd><p>Path to the CosmoSIS configuration file.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.results_file">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">results_file</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.13)"><span class="pre">str</span></a></em><a class="headerlink" href="#besta.io.Reader.results_file" title="Link to this definition"></a></dt>
+<dd><p>Path to the file containing the CosmoSIS run results.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.ini">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#besta.io.Reader.ini" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis .ini configuration file</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.ini_values">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ini_values</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#besta.io.Reader.ini_values" title="Link to this definition"></a></dt>
+<dd><p>Cosmosis configuration values.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="besta.io.Reader.config">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.13)"><span class="pre">dict</span></a></em><a class="headerlink" href="#besta.io.Reader.config" title="Link to this definition"></a></dt>
+<dd><p>Pipeline module configuration.</p>
+</dd></dl>
+
 <dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.get_maxlike_solution">
-<span class="sig-name descname"><span class="pre">get_maxlike_solution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_maxlike_solution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_maxlike_solution" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.Reader.load_results">
+<span class="sig-name descname"><span class="pre">load_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.load_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.load_results" title="Link to this definition"></a></dt>
+<dd><p>Load the cosmosis run results associated to the <code class="docutils literal notranslate"><span class="pre">ini</span></code> file.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.get_maxlike_solution">
+<span class="sig-name descname"><span class="pre">get_maxlike_solution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">as_datablock</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.get_maxlike_solution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.get_maxlike_solution" title="Link to this definition"></a></dt>
 <dd><p>Get the maximum likelihood solution.</p>
 <p>Obtain the maximum likelihood solution from the <code class="docutils literal notranslate"><span class="pre">results_table</span></code></p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
-<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
+<li><p><strong>as_datablock</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the solution is converted to a <code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>.</p></li>
+<li><p><strong>**kwargs</strong> – Additional arguments for converting the solution into a DataBlock.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>solution</strong> (<em>dict</em>) – Dictionary containing the solution with the maximum likelihood.</p>
 </dd>
 </dl>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#besta.io.Reader.solution_to_datablock" title="besta.io.Reader.solution_to_datablock"><code class="xref py py-func docutils literal notranslate"><span class="pre">solution_to_datablock()</span></code></a></p>
+</div>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.solution_to_datablock">
-<span class="sig-name descname"><span class="pre">solution_to_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">solution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.solution_to_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.solution_to_datablock" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.Reader.get_top_frac_solutions">
+<span class="sig-name descname"><span class="pre">get_top_frac_solutions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">as_datablock</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.get_top_frac_solutions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.get_top_frac_solutions" title="Link to this definition"></a></dt>
+<dd><p>Return a fraction of the solutions sorted by their posterior probability.</p>
+<p>This method provides a given fraction of the solutions with the highest
+posterior probability.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>frac</strong> (<em>float, optional</em>) – Fraction of the solutions to return, e.g. <code class="docutils literal notranslate"><span class="pre">pct=1</span></code> will return
+the top 1 per cent with the highest probability.</p></li>
+<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
+<li><p><strong>as_datablock</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the solution is converted to a <code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>.</p></li>
+<li><p><strong>**kwargs</strong> – Additional arguments for converting the solution into a DataBlock.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>all_solutions</strong> (<em>list</em>) – A list containing the solutions.</p>
+</dd>
+</dl>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#besta.io.Reader.solution_to_datablock" title="besta.io.Reader.solution_to_datablock"><code class="xref py py-func docutils literal notranslate"><span class="pre">solution_to_datablock()</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.get_pct_solutions">
+<span class="sig-name descname"><span class="pre">get_pct_solutions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">as_datablock</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.get_pct_solutions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.get_pct_solutions" title="Link to this definition"></a></dt>
+<dd><p>Return the top percentile solutions.</p>
+<p>This method sorts all solutions based on their posterior probablity
+and returns a given fraction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pct</strong> (<em>float, optional</em>) – Fraction of the solutions to return, e.g. <code class="docutils literal notranslate"><span class="pre">pct=99</span></code> will return
+the top 1 per cent with the highest probability.</p></li>
+<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
+<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
+<li><p><strong>as_datablock</strong> (<em>bool, optional</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the solution is converted to a <code class="xref py py-class docutils literal notranslate"><span class="pre">DataBlock</span></code>.</p></li>
+<li><p><strong>**kwargs</strong> – Additional arguments for converting the solution into a DataBlock.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>all_solutions</strong> (<em>list</em>) – A list containing the solutions.</p>
+</dd>
+</dl>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#besta.io.Reader.solution_to_datablock" title="besta.io.Reader.solution_to_datablock"><code class="xref py py-func docutils literal notranslate"><span class="pre">solution_to_datablock()</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.solution_to_datablock">
+<span class="sig-name descname"><span class="pre">solution_to_datablock</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">solution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">section</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'parameters'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.solution_to_datablock"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.solution_to_datablock" title="Link to this definition"></a></dt>
 <dd><p>Convert a solution into a DataBlock.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -497,29 +619,8 @@ is <code class="docutils literal notranslate"><span class="pre">parameters</span
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.get_pct_solutions">
-<span class="sig-name descname"><span class="pre">get_pct_solutions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pct</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_prob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'post'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.get_pct_solutions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.get_pct_solutions" title="Link to this definition"></a></dt>
-<dd><p>Return the top percentile solutions.</p>
-<p>This method sorts all solutions based on their posterior probablity
-and returns a given fraction.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>pct</strong> (<em>float, optional</em>) – Fraction of the solutions to return, e.g. <code class="docutils literal notranslate"><span class="pre">pct=99</span></code> will return
-the 1 per cent with the highest probability.</p></li>
-<li><p><strong>log_prob</strong> (<em>str, optional</em>) – Column name to use for computing the maximum likelihood. Default is
-<code class="docutils literal notranslate"><span class="pre">post</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>all_solutions</strong> (<em>list</em>) – A list containing the solutions in the form of dictionaries.</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.read_ini_file">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.read_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.read_ini_file" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.Reader.read_ini_file">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.read_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.read_ini_file" title="Link to this definition"></a></dt>
 <dd><p>Read the cosmosis configuration .ini file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -532,8 +633,13 @@ the 1 per cent with the highest probability.</p></li>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="besta.output.Reader.read_ini_values_file">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/output.html#Reader.read_ini_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.output.Reader.read_ini_values_file" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="besta.io.Reader.read_ini_file_from_results">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_file_from_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.read_ini_file_from_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.read_ini_file_from_results" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.read_ini_values_file">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read_ini_values_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.read_ini_values_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.read_ini_values_file" title="Link to this definition"></a></dt>
 <dd><p>Read the cosmosis configuration .ini file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -545,14 +651,114 @@ the 1 per cent with the highest probability.</p></li>
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.from_ini_file">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_ini_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_to_ini</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.from_ini_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.from_ini_file" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.io.Reader.from_results_file">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_results_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_to_results</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/io.html#Reader.from_results_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.io.Reader.from_results_file" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 </section>
 <section id="pipeline-manager">
 <h2>Pipeline Manager<a class="headerlink" href="#pipeline-manager" title="Link to this heading"></a></h2>
+<p id="module-besta.pipeline"><span id="api-pipeline"></span>This module contains the pipeline manager to concatenate multiple modules.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.pipeline.</span></span><span class="sig-name descname"><span class="pre">MainPipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pipeline_configuration_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cores_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_values_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>BESTA Pipeline manager.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.pipelines_config">
+<span class="sig-name descname"><span class="pre">pipelines_config</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.pipelines_config" title="Link to this definition"></a></dt>
+<dd><dl class="simple">
+<dt>List of dictionaries containing the configuration parameters for each</dt><dd><p>subpipeplie.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.n_cores_list">
+<span class="sig-name descname"><span class="pre">n_cores_list</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.n_cores_list" title="Link to this definition"></a></dt>
+<dd><p>List containing the number of cores to be used on each run. If None,
+every subpipeline will use one single core during runtime.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a>, optional, default=None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.ini_files">
+<span class="sig-name descname"><span class="pre">ini_files</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.ini_files" title="Link to this definition"></a></dt>
+<dd><p>List of .ini filenames</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.ini_values_files">
+<span class="sig-name descname"><span class="pre">ini_values_files</span></span><a class="headerlink" href="#besta.pipeline.MainPipeline.ini_values_files" title="Link to this definition"></a></dt>
+<dd><p>List of files containing the priors associated to <code class="docutils literal notranslate"><span class="pre">ini_files</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.13)">list</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.run_command">
+<span class="sig-name descname"><span class="pre">run_command</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">command</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.run_command"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.run_command" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.execute_pipeline">
+<span class="sig-name descname"><span class="pre">execute_pipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cores</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ini_values_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.execute_pipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.execute_pipeline" title="Link to this definition"></a></dt>
+<dd><p>Execute a sub-pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<em>dict</em>) – Dictionary containing the configuration parameters for setting up
+the subpipeline.</p></li>
+<li><p><strong>n_cores</strong> (<em>int</em>) – Number of cores to used during runtime.</p></li>
+<li><p><strong>ini_filename</strong> (<em>str, optional, default=None</em>) – If provided, this file is used to run cosmosis.</p></li>
+<li><p><strong>ini_values_filename</strong> (<em>str, optional, default=None</em>) – If provided, use this file to set the prior values.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.execute_all">
+<span class="sig-name descname"><span class="pre">execute_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plot_result</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.execute_all"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.execute_all" title="Link to this definition"></a></dt>
+<dd><p>Execute all sub-pipelines.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="besta.pipeline.MainPipeline.plot_fit">
+<span class="sig-name descname"><span class="pre">plot_fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataBlock</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pipe_config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/pipeline.html#MainPipeline.plot_fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.pipeline.MainPipeline.plot_fit" title="Link to this definition"></a></dt>
+<dd><p>Plot the fit.</p>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="module-besta.postprocess">
-<span id="postprocessing"></span><span id="api-pipeline"></span><h2>Postprocessing<a class="headerlink" href="#module-besta.postprocess" title="Link to this heading"></a></h2>
+<span id="postprocessing"></span><h2>Postprocessing<a class="headerlink" href="#module-besta.postprocess" title="Link to this heading"></a></h2>
 <p>Module dedicated to the post-processing of data produced by BESTA.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="besta.postprocess.weighted_sample_mean">
@@ -708,8 +914,8 @@ it is computed using the default cosmology and the value of <code class="docutil
 </dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="id5">
-<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#id5" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">free_params</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="headerlink" href="#id0" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -785,8 +991,8 @@ it is computed using the default cosmology and the value of <code class="docutil
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id6">
-<h3>Description<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<section id="id2">
+<h3>Description<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the mass fraction formed on each bin.</p>
 <p>Upon initializaiton, the free parameters are set between -8 to 0 in terms
@@ -817,8 +1023,8 @@ assuming a constant star formation history.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time_bins</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedCosmicTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id7">
-<h3>Description<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
+<section id="id3">
+<h3>Description<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to … #TODO</p>
 <dl class="py attribute">
@@ -852,8 +1058,8 @@ parameters correspond to … #TODO</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FlexibleCosmicTimeSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_times</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FlexibleCosmicTimeSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FlexibleCosmicTimeSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id8">
-<h3>Description<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
+<section id="id4">
+<h3>Description<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to … #TODO</p>
 <dl class="py attribute">
@@ -887,8 +1093,8 @@ parameters correspond to … #TODO</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedTime_sSFR_SFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lookback_time</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedTime_sSFR_SFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedTime_sSFR_SFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed time bins.</p>
-<section id="id9">
-<h3>Description<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
+<section id="id5">
+<h3>Description<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the average sSFR over the last <code class="docutils literal notranslate"><span class="pre">lookback_time</span></code>.</p>
 <dl class="py attribute">
@@ -916,8 +1122,8 @@ parameters correspond to the average sSFR over the last <code class="docutils li
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">FixedMassFracSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mass_fraction</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#FixedMassFracSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.FixedMassFracSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a>, <a class="reference internal" href="#besta.sfh.PieceWiseSFHMixin" title="besta.sfh.PieceWiseSFHMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">PieceWiseSFHMixin</span></code></a></p>
 <p>A SFH model with fixed mass fraction bins.</p>
-<section id="id10">
-<h3>Description<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
+<section id="id6">
+<h3>Description<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as a stepwise function where the free
 parameters correspond to the time at which a given fraction of the total stellar mass was
 formed.</p>
@@ -957,8 +1163,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">ExponentialSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#ExponentialSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.ExponentialSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical exponentially declining SFH model.</p>
-<section id="id11">
-<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<section id="id7">
+<h3>Description<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="besta.sfh.ExponentialSFH.time">
@@ -995,8 +1201,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An exponentially declining delayed-tau SFH model.</p>
-<section id="id12">
-<h3>Description<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
+<section id="id8">
+<h3>Description<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
 <div class="math notranslate nohighlight">
 \[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
@@ -1025,8 +1231,8 @@ formed.</p>
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">DelayedTauQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#DelayedTauQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.DelayedTauQuenchedSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An exponentially declining delayed-tau SFH model with a quenching event.</p>
-<section id="id13">
-<h3>Description<a class="headerlink" href="#id13" title="Link to this heading"></a></h3>
+<section id="id9">
+<h3>Description<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an exponentially declining function.</p>
 <div class="math notranslate nohighlight">
 \[M_\star(t) = M_{inf} \cdot (1 - e^{-t/\tau} \frac{t + \tau}{\tau})\]</div>
@@ -1058,8 +1264,8 @@ larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model.</p>
-<section id="id14">
-<h3>Description<a class="headerlink" href="#id14" title="Link to this heading"></a></h3>
+<section id="id10">
+<h3>Description<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="besta.sfh.LogNormalSFH.time">
@@ -1101,8 +1307,8 @@ larget than <span class="math notranslate nohighlight">\(t_{quench}\)</span>.</p
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">besta.sfh.</span></span><span class="sig-name descname"><span class="pre">LogNormalQuenchedSFH</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/besta/sfh.html#LogNormalQuenchedSFH"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#besta.sfh.LogNormalQuenchedSFH" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#besta.sfh.ZPowerLawMixin" title="besta.sfh.ZPowerLawMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ZPowerLawMixin</span></code></a>, <a class="reference internal" href="#besta.sfh.SFHBase" title="besta.sfh.SFHBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">SFHBase</span></code></a></p>
 <p>An analytical log-normal declining SFH model including a quenching event.</p>
-<section id="id15">
-<h3>Description<a class="headerlink" href="#id15" title="Link to this heading"></a></h3>
+<section id="id11">
+<h3>Description<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
 <p>The SFH of a galaxy is modelled as an log-normal declining function. A quenching
 event is modelled as an additional exponentially declining function that is
 applied after the time of quenching.</p>

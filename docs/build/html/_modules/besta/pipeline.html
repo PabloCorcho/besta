@@ -5,14 +5,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>besta.pipeline &mdash; Bayesian Estimator for Stellar Population Analysis 0+untagged.259.g2935e0a.dirty documentation</title>
+  <title>besta.pipeline &mdash; Bayesian Estimator for Stellar Population Analysis 0.0.1+0.g4c8784c.dirty documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=a7d38b97"></script>
+      <script src="../../_static/documentation_options.js?v=3cdd81ad"></script>
       <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
@@ -87,7 +87,7 @@
 
 <span class="kn">from</span> <span class="nn">cosmosis</span> <span class="kn">import</span> <span class="n">DataBlock</span>
 
-<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">output</span>
+<span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">io</span>
 <span class="kn">from</span> <span class="nn">besta</span> <span class="kn">import</span> <span class="n">pipeline_modules</span>
 
 
@@ -167,12 +167,12 @@
                 <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]),</span>
                 <span class="n">config</span><span class="p">[</span><span class="s2">&quot;pipeline&quot;</span><span class="p">][</span><span class="s2">&quot;modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_auto.ini&quot;</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="n">output</span><span class="o">.</span><span class="n">make_ini_file</span><span class="p">(</span><span class="n">ini_filename</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+            <span class="n">io</span><span class="o">.</span><span class="n">make_ini_file</span><span class="p">(</span><span class="n">ini_filename</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">ini_filename</span><span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ini_filename</span><span class="si">}</span><span class="s2"> not found&quot;</span>
 
         <span class="k">if</span> <span class="n">ini_values_filename</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">output</span><span class="o">.</span><span class="n">make_values_file</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+            <span class="n">io</span><span class="o">.</span><span class="n">make_values_file</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span>
                 <span class="n">ini_values_filename</span>
@@ -221,7 +221,7 @@
             <span class="p">)</span>
             <span class="c1"># Extract best solution</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Extracting results from the run&quot;</span><span class="p">)</span>
-            <span class="n">reader</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">Reader</span><span class="p">(</span><span class="n">ini_filename</span><span class="p">)</span>
+            <span class="n">reader</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">Reader</span><span class="p">(</span><span class="n">ini_filename</span><span class="p">)</span>
             <span class="n">reader</span><span class="o">.</span><span class="n">load_results</span><span class="p">()</span>
             <span class="n">solution</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">get_maxlike_solution</span><span class="p">()</span>
             <span class="n">prev_solution</span> <span class="o">=</span> <span class="n">solution</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -229,8 +229,7 @@
 
             <span class="k">if</span> <span class="n">plot_result</span><span class="p">:</span>
                 <span class="c1"># Initialise the module to reconstruct the solution</span>
-                <span class="n">module</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">pipeline_modules</span><span class="p">,</span> <span class="n">reader</span><span class="o">.</span><span class="n">last_module</span> <span class="o">+</span> <span class="s2">&quot;Module&quot;</span><span class="p">)</span>
-                <span class="n">pipeline_module</span> <span class="o">=</span> <span class="n">module</span><span class="p">(</span><span class="n">reader</span><span class="o">.</span><span class="n">ini</span><span class="p">)</span>
+                <span class="n">pipeline_module</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">last_module</span>
                 <span class="n">solution_datablock</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">solution_to_datablock</span><span class="p">(</span><span class="n">prev_solution</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">plot_fit</span><span class="p">(</span>
                     <span class="n">pipeline_module</span><span class="p">,</span> <span class="n">solution_datablock</span><span class="p">,</span> <span class="n">pipe_config</span><span class="o">=</span><span class="n">subpipe_config</span>
@@ -312,10 +311,14 @@
         <span class="n">inax</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">visible</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">inax</span><span class="o">.</span><span class="n">tick_params</span><span class="p">(</span><span class="n">labelleft</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
-        <span class="n">output_file</span> <span class="o">=</span> <span class="p">(</span><span class="n">pipe_config</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]</span>
-                       <span class="o">+</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">pipe_config</span><span class="p">[</span><span class="s1">&#39;pipeline&#39;</span><span class="p">][</span><span class="s1">&#39;modules&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
-                       <span class="o">+</span> <span class="s2">&quot;_best_fit_spectra.pdf&quot;</span>
-                       <span class="p">)</span>
+        <span class="n">figname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span>
+            <span class="n">pipe_config</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;figurename&quot;</span><span class="p">,</span>
+                                      <span class="n">pipe_config</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]))</span>
+        <span class="n">output_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">pipe_config</span><span class="p">[</span><span class="s2">&quot;output&quot;</span><span class="p">][</span><span class="s2">&quot;filename&quot;</span><span class="p">]),</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">pipe_config</span><span class="p">[</span><span class="s1">&#39;pipeline&#39;</span><span class="p">][</span><span class="s1">&#39;modules&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">figname</span><span class="si">}</span><span class="s2">_best_fit_spectra.png&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+
         <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span>
             <span class="n">output_file</span><span class="p">,</span>
             <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">,</span>
