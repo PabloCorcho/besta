@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 
 from cosmosis import DataBlock
 
-from besta import output
+from besta import io
 from besta import pipeline_modules
 
 
@@ -83,12 +83,12 @@ class MainPipeline(object):
                 os.path.dirname(config["output"]["filename"]),
                 config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini",
             )
-            output.make_ini_file(ini_filename, config)
+            io.make_ini_file(ini_filename, config)
         else:
             assert os.path.isfile(ini_filename), f"{ini_filename} not found"
 
         if ini_values_filename is None:
-            output.make_values_file(config)
+            io.make_values_file(config)
         else:
             assert os.path.isfile(
                 ini_values_filename
@@ -134,7 +134,7 @@ class MainPipeline(object):
             )
             # Extract best solution
             print("Extracting results from the run")
-            reader = output.Reader(ini_filename)
+            reader = io.Reader(ini_filename)
             reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
@@ -142,8 +142,7 @@ class MainPipeline(object):
 
             if plot_result:
                 # Initialise the module to reconstruct the solution
-                module = getattr(pipeline_modules, reader.last_module + "Module")
-                pipeline_module = module(reader.ini)
+                pipeline_module = reader.last_module
                 solution_datablock = reader.solution_to_datablock(prev_solution)
                 self.plot_fit(
                     pipeline_module, solution_datablock, pipe_config=subpipe_config
@@ -222,7 +221,6 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-<<<<<<< HEAD
         figname = os.path.basename(
             pipe_config["output"].get("figurename",
                                       pipe_config["output"]["filename"]))
@@ -231,12 +229,6 @@ class MainPipeline(object):
             f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
             )
 
-=======
-        output_file = (pipe_config["output"]["filename"]
-                       + f"{pipe_config['pipeline']['modules']}"
-                       + "_best_fit_spectra.pdf"
-                       )
->>>>>>> 68b4384 (update plot)
         fig.savefig(
             output_file,
             bbox_inches="tight",
