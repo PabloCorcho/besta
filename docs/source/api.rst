@@ -23,7 +23,7 @@ Kinematics
 Input/Output
 ************
 
-.. automodule:: besta.output
+.. automodule:: besta.io
    :members:
    :undoc-members:
    :show-inheritance:
