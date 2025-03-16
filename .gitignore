@@ -9,3 +9,4 @@ cosmosis-standard-library/
 output/
 test_data/
 src/besta.egg-info
+docs/build
