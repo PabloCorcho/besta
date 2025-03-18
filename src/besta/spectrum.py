@@ -166,7 +166,6 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
     """
     if bounds == None:
         bounds = wavelength.min(), wavelength.max()
-    
     norm_wl = 2 * (wavelength - bounds[0]) / (bounds[1] - bounds[0]) - 1
     norm_wl = norm_wl.clip(-1, 1)
 
@@ -183,7 +182,7 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
         pol = legendre(deg)
         pol_wl = pol(norm_wl)
         # Clip the values on the edges to avoid extremes
-        if clip_first_zero:
+        if clip_first_zero and deg > 0:
             first_zero = pol.roots.real.min()
             pol_wl[(norm_wl < first_zero) | (norm_wl > -first_zero)] = 0
         poly_set.append(pol_wl)
