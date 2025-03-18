@@ -310,13 +310,23 @@ class BaseModule(ClassModule):
             print("Convolving SSP model with instrumental LSF")
             inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
                                  self.config["lsf"])
-            # TODO: include ssp lsf
-            # effective_lsf = inst_lsf**2 - ssp_lsf**2
-            effective_lsf = inst_lsf
-            lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
-            # ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
-            #     ssp.L_lambda, lsf_sigma_pixels)
 
+            if options.has_value("SSPLSF"):
+                print("Including SSP resolution")
+                ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(options["SSPLSF"],
+                                                      unpack=True, usecols=(0, 1))
+                ssp_lsf_fwhm = np.interp(ssp.wavelength,
+                                         ssp_lsf_wl << u.AA, ssp_lsf_fwhm)
+            else:
+                ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
+            # Assume both LSF are Gaussian
+            effective_lsf = np.sqrt(inst_lsf**2 - ssp_lsf_fwhm**2)
+
+            if (effective_lsf < 0).any():
+                raise ValueError("Effective SSP LSF cannot be negative!"
+                                 + "SSP models do not have enough resolution")
+            lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
+            # Do a loop along metallicity axis to prevent memory overflows
             for ith in range(ssp.L_lambda.shape[0]):
                 ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                 ssp.L_lambda[ith], lsf_sigma_pixels)
