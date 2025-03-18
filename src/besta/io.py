@@ -308,13 +308,13 @@ class Reader(object):
         """
         good_sample = self.results_table[log_prob] != 0
         post_sort = np.argsort(self.results_table[log_prob][good_sample])
-        first_row = int(post_sort / 100 * frac)
-        solutions = self.results_table[log_prob][post_sort][-first_row:]
+        first_row = int(post_sort.size / 100 * frac)
+        solutions = self.results_table[post_sort][-first_row:]
         if as_datablock:
-            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
-        else:
             all_solutions = [self.solution_to_datablock(
                 dict(zip(solutions.keys(), sol[:]))) for sol in solutions]
+        else:
+            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
         return all_solutions
 
     def get_pct_solutions(self, pct=99, log_prob="post", as_datablock=False,

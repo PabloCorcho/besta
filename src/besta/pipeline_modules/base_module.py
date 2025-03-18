@@ -15,6 +15,7 @@ from cosmosis import ClassModule
 from cosmosis import DataBlock
 from cosmosis.datablock import SectionOptions, option_section
 
+from pst.utils import flux_conserving_interpolation
 from pst.observables import Filter
 from pst import SSP, dust
 
@@ -132,14 +133,19 @@ class BaseModule(ClassModule):
             velscale = None
         print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
         # Update the value of velscale
-        flux, ln_wave, velscale = spectrum.log_rebin(
-            wavelength, flux, velscale=velscale
-        )
-        cov, _, _ = spectrum.log_rebin(wavelength, cov, velscale=velscale)
-        weights, _, _ = spectrum.log_rebin(wavelength, weights, velscale=velscale)
-        instrumental_lsf, _, _ = spectrum.log_rebin(wavelength,
-                                                    instrumental_lsf, velscale=velscale)
-        wavelength = np.exp(ln_wave)
+        if velscale is not None:
+            dlnlam = velscale / spectrum.constants.c.to("km/s").value
+            ln_wave = np.arange(np.log(wl_range[0]), np.log(wl_range[1]) + dlnlam,
+                            dlnlam)
+
+            flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
+            cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
+            weights = np.interp(ln_wave, np.log(wavelength), weights)
+            instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
+
+            wavelength = np.exp(ln_wave)
+        else:
+            ln_wave = np.log(wavelength)
 
         print("Number of pixels after interpolation: ", wavelength.size)
         # Normalize spectra
