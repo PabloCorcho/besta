@@ -215,8 +215,11 @@ class MainPipeline(object):
             bins=np.geomspace(0.01, 100),
             orientation="horizontal",
             color="k",
-            histtype="step",
+            histtype="step"
         )
+        inax.annotate(f"Median: {np.nanmedian(chi2):.1f}",
+                      xy=(0.05, 0.95), xycoords="axes fraction", va="top")
+
         inax.set_xlabel("No. pixels")
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
