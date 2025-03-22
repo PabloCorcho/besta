@@ -454,6 +454,6 @@ class BaseModule(ClassModule):
         loglike : np.ndarray
             The log-likelihood associated to the model given the data.
         """
-        chi = (model - data) / cov
-        loglike = -0.5 * np.sum(chi * chi)
+        chi2 = (model - data)**2 / cov
+        loglike = -0.5 * np.sum(chi2)
         return loglike
