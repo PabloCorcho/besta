@@ -437,7 +437,7 @@ class BaseModule(ClassModule):
             print(f"Not using multiplicative Legendre polynomials")
         print("-> Configuration done")
 
-    def log_like(self, data, model, cov):
+    def log_like(self, data, model, cov, weights=None):
         """Compute the likelihood between an input data set and a model.
 
         Parameters
@@ -455,5 +455,9 @@ class BaseModule(ClassModule):
             The log-likelihood associated to the model given the data.
         """
         chi2 = (model - data)**2 / cov
-        loglike = -0.5 * np.sum(chi2)
+        if weights is not None:
+            loglike = -0.5 * np.sum(chi2 * weights) / np.sum(weights)
+        else:
+            loglike = -0.5 * np.sum(chi2)
+
         return loglike

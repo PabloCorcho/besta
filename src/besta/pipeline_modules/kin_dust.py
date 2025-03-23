@@ -70,7 +70,10 @@ class KinDustModule(BaseModule):
         cov = self.config["cov"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
-        like = self.log_like(self.config["flux"] * weights, flux_model * weights, cov)
+        good_pixels = weights > 0
+        like = self.log_like(self.config["flux"][good_pixels],
+                             flux_model[good_pixels], cov[good_pixels],
+                             weights=weights[good_pixels])
         # Final posterior for sampling
         block[section_names.likelihoods, "KinDust_like"] = like
         return 0
