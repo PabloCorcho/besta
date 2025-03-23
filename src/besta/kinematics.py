@@ -117,7 +117,7 @@ def get_losvd_kernel(kernel_model, x_size):
     kernel : :class:`Model1DKernel`
         Kernel model
     """
-    return Model1DKernel(kernel_model, x_size=x_size, mode="oversample", factor=10)
+    return Model1DKernel(kernel_model, x_size=x_size, mode="center")
 
 
 def convolve_spectra_with_kernel(spectra, kernel):
