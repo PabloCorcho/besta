@@ -87,7 +87,7 @@ class SFHPhotometryModule(BaseModule):
 
             if options.has_value("SavePhotometryGrid"):
                 with open(options["SavePhotometryGrid"], 'wb') as file:
-                    pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
+                    pickle.dump(all_photometry, file, pickle.HIGHEST_PROTOCOL)
 
         self.config["photometry_grid"] = all_photometry
 
