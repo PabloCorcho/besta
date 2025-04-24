@@ -58,8 +58,11 @@ class SFHPhotometryModule(BaseModule):
             )
 
         if options.has_value("PhotometryGrid"):
+            # Load pre-computed grid
             with open(options["PhotometryGrid"], 'rb') as file:
-                all_photometry = pickle.load(file)
+                grid = pickle.load(file)
+                self.config["photometry_grid"] = grid["photometry_grid"]
+                self.config["av_grid"] = grid["av_grid"]
         else:
             print("Producing photometry extinction grid")
             dust_model = self.config["extinction_law"]
@@ -85,11 +88,13 @@ class SFHPhotometryModule(BaseModule):
                 ).to("3631e-9 Jy / Msun")
                 all_photometry[j] = photo
 
+            self.config["photometry_grid"] = all_photometry
+            # Save the photometry grid and the values of Av
             if options.has_value("SavePhotometryGrid"):
                 with open(options["SavePhotometryGrid"], 'wb') as file:
-                    pickle.dump(all_photometry, file, pickle.HIGHEST_PROTOCOL)
-
-        self.config["photometry_grid"] = all_photometry
+                    pickle.dump({"photometry_grid": all_photometry,
+                                 "av_grid": av_grid},
+                                 file, pickle.HIGHEST_PROTOCOL)
 
     def make_observable(self, block, parse=False):
         sfh_model = self.config["sfh_model"]
