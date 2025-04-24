@@ -142,8 +142,10 @@ class BaseModule(ClassModule):
             cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
             weights = np.interp(ln_wave, np.log(wavelength), weights)
             instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
-
-            wavelength = np.exp(ln_wave)
+    
+            new_wavelength = np.exp(ln_wave)
+            weights[(new_wavelength < wavelength[0]) | (new_wavelength > wavelength[-1])] = 0.0
+            wavelength = new_wavelength
         else:
             ln_wave = np.log(wavelength)
 
