@@ -91,6 +91,8 @@ class SFHPhotometryModule(BaseModule):
             self.config["photometry_grid"] = all_photometry
             # Save the photometry grid and the values of Av
             if options.has_value("SavePhotometryGrid"):
+                print("Saving photometry grid to ",
+                      options["SavePhotometryGrid"])
                 with open(options["SavePhotometryGrid"], 'wb') as file:
                     pickle.dump({"photometry_grid": all_photometry,
                                  "av_grid": av_grid},
