@@ -209,6 +209,16 @@ class BaseModule(ClassModule):
                 filt = Filter.from_svo(filter_name)
             photometric_filters.append(filt)
         self.config["filters"] = photometric_filters
+
+        if options.has_value("flux_to_lum"):
+            if options["flux_to_lum"] == True:
+                print("Converting input fluxes to absolute flux at 10 pc using"
+                      f"input redshift {options['redshift']}")
+                distance = cosmology.luminosity_distance(
+                    options["redshift"]).to_value("10 pc")
+                self.config["photometry_flux"] *= distance**2
+                self.config["photometry_flux_var"] *= distance**4
+
         print("-> Configuration done.")
 
     def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
@@ -368,10 +378,12 @@ class BaseModule(ClassModule):
         # Grid parameters
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
-        print("-> Configuration done.")
         if options.has_value("SaveSSPModel"):
+            print("Saving photometry grid to ",
+                      options["SaveSSPModel"])
             with open(options["SaveSSPModel"], 'wb') as file:
                 pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
+        print("-> Configuration done.")
         return
 
     def prepare_extinction_law(self, options):
