@@ -23,7 +23,9 @@ class SFHPhotometryModule(BaseModule):
         """
         options = self.parse_options(options)
         # Pipeline values file
-        self.config = {"redshift": options["redshift"]}
+        self.config = {"redshift": options["redshift"],
+                       "best_fit": None,
+                       "best_fit_like": -np.inf}
         print(f"Input source redshift: {self.config['redshift']}")
         self.prepare_observed_photometry(options)
         self.prepare_ssp_model(options)
@@ -114,6 +116,7 @@ class SFHPhotometryModule(BaseModule):
         flux_model = sfh_model.model.compute_photometry(
             self.config["ssp_model"], t_obs=sfh_model.today, photometry=photometry
         )
+        # nanomaggie / Msun at 10 parsec
         flux_model = flux_model.to_value("3631e-9 Jy")
         normalization = np.mean(self.config["photometry_flux"] / flux_model)
         block["parameters", "normalization"] = normalization
@@ -122,7 +125,7 @@ class SFHPhotometryModule(BaseModule):
     def execute(self, block):
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            print("Invalid")
+            # print("Invalid")
             block[section_names.likelihoods, "SFHPhotometry_like"] = -1e5 * penalty
             block["parameters", "normalization"] = 0.0
             return 0
@@ -133,9 +136,19 @@ class SFHPhotometryModule(BaseModule):
             flux_model,
             self.config["photometry_flux_var"],
         )
+        if like > self.config["best_fit_like"]:
+            self.config["best_fit"] = flux_model
+            self.config["best_fit_like"] = like
         block[section_names.likelihoods, "SFHPhotometry_like"] = like
         return 0
 
+    def cleanup(self):
+        print("Input flux: ", self.config["photometry_flux"])
+        print("Best fit: ", self.config["best_fit"])
+        print("Best fit like: ", self.config["best_fit_like"])
+        print("Chi square: ", (
+            self.config["best_fit"] - self.config["photometry_flux"]
+            )**2 / self.config["photometry_flux_var"])
 
 def setup(options):
     options = SectionOptions(options)
