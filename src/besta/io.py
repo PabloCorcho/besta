@@ -125,42 +125,65 @@ def check_array_memory(array_shape, dtype=np.float64, unit='MB', safety_margin=0
     return True
 
 
-def expand_env_in_first_arg(func):
+def expand_env_vars(arg_spec=0):
     """
-    Decorator that expands environment variables in the first positional argument.
+    Decorator that expands environment variables in a specified argument.
 
-    This is typically used for functions that take a filename as the first argument
-    and may receive paths like `$HOME/data.txt` or `${LOGDIR}/log.txt`.
+    The target argument can be specified either by position (int) or name (str).
+    If no argument is specified, expands the first positional argument (default).
 
     Parameters
     ----------
-    func : callable
-        The function to decorate. The first positional argument is assumed to be
-        a filename and will be expanded using `os.path.expandvars`.
+    arg_spec : int or str, optional
+        Either the position (0-based index) or name of the argument to expand.
+        Default is 0 (first positional argument).
 
     Returns
     -------
     callable
-        A wrapped function where the first argument has its environment variables expanded.
+        A decorator function that wraps the original function.
 
     Examples
     --------
-    >>> @expand_env_in_first_arg
+    # Expand first positional argument (default)
+    >>> @expand_env_vars()
     ... def load_file(path):
     ...     print(path)
-
     >>> load_file("$HOME/test.txt")
-    /home/yourname/test.txt
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        if args:
-            expanded_arg = os.path.expandvars(args[0])
-            args = (expanded_arg, *args[1:])
-        return func(*args, **kwargs)
-    return wrapper
 
-@expand_env_in_first_arg
+    # Expand named argument
+    >>> @expand_env_vars('filename')
+    ... def process_file(filename, mode='r'):
+    ...     print(filename, mode)
+    >>> process_file("${TMPDIR}/data.txt")
+
+    # Expand argument at position 1
+    >>> @expand_env_vars(1)
+    ... def save_data(header, filepath):
+    ...     print(header, filepath)
+    >>> save_data("results", "$APPDIR/output.dat")
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Handle different argument specifications
+            if isinstance(arg_spec, int):
+                # Positional argument expansion
+                if arg_spec < len(args):
+                    expanded = os.path.expandvars(args[arg_spec])
+                    args = args[:arg_spec] + (expanded,) + args[arg_spec+1:]
+            elif isinstance(arg_spec, str):
+                # Keyword argument expansion
+                if arg_spec in kwargs:
+                    kwargs[arg_spec] = os.path.expandvars(kwargs[arg_spec])
+            else:
+                raise TypeError("arg_spec must be int (position) or str (argument name)")
+
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+@expand_env_vars()
 def make_ini_file(filename, config):
     """Create a .ini file from an input configuration.
 
@@ -224,7 +247,7 @@ def make_values_file(config, overwrite=True):
                     f.write(f"{name} = {lims[0]} {(lims[0] + lims[1]) / 2} {lims[1]}\n")
             f.write(f"; \(ﾟ▽ﾟ)/")
 
-@expand_env_in_first_arg
+@expand_env_vars()
 def read_results_file(path):
     """Read the results produced during a CosmoSIS run.
 
@@ -564,7 +587,7 @@ class Reader(object):
         return datablock
 
     @classmethod
-    @expand_env_in_first_arg
+    @expand_env_vars(1)
     def read_ini_file(cls, path):
         """Read the cosmosis configuration .ini file.
 
@@ -584,7 +607,7 @@ class Reader(object):
             return cls._parse_ini_lines(f.readlines())
 
     @classmethod
-    @expand_env_in_first_arg
+    @expand_env_vars(1)
     def read_ini_file_from_results(cls, path):
         with open(path, "r") as file:
             file_lines = file.readlines()
@@ -630,7 +653,7 @@ class Reader(object):
         return ini_info
 
     @staticmethod
-    @expand_env_in_first_arg
+    @expand_env_vars()
     def read_ini_values_file(path):
         """Read the cosmosis configuration .ini file.
 
@@ -682,11 +705,9 @@ class Reader(object):
         return ini_info
 
     @classmethod
-    @expand_env_in_first_arg
     def from_ini_file(cls, path_to_ini):
         return cls(ini_file=path_to_ini)
 
     @classmethod
-    @expand_env_in_first_arg
     def from_results_file(cls, path_to_results):
         return cls(results_file=path_to_results)
