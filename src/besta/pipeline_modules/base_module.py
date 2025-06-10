@@ -22,7 +22,8 @@ from pst import SSP, dust
 from besta import spectrum
 from besta import kinematics
 from besta import sfh
-from besta.config import cosmology
+from besta import io
+from besta.config import cosmology, memory
 
 
 class BaseModule(ClassModule):
@@ -344,10 +345,28 @@ class BaseModule(ClassModule):
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
-            # Do a loop along metallicity axis to prevent memory overflows
-            for ith in range(ssp.L_lambda.shape[0]):
-                ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
-                ssp.L_lambda[ith], lsf_sigma_pixels)
+            try:
+                io.check_array_memory(
+                (ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
+                 ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
+                dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
+                safety_margin=memory["ram_safety_margin"])
+
+                ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
+                    ssp.L_lambda, lsf_sigma_pixels)
+            except MemoryError:
+                # Do a loop along metallicity axis to prevent memory overflows
+                print("Insufficient memory for full SSP SED convolution")
+                print("Looping along metallicity axis")
+                io.check_array_memory(
+                (ssp.L_lambda.shape[1], ssp.L_lambda.shape[2],
+                 ssp.L_lambda.shape[2]),
+                dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
+                safety_margin=memory["ram_safety_margin"])
+
+                for ith in range(ssp.L_lambda.shape[0]):
+                    ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
+                    ssp.L_lambda[ith], lsf_sigma_pixels)
 
         if normalize and wl_norm_range is not None:
             print("Normalizing SSP model SED within range ", wl_norm_range)
