@@ -356,7 +356,7 @@ class BaseModule(ClassModule):
                     ssp.L_lambda, lsf_sigma_pixels)
             except MemoryError:
                 # Do a loop along metallicity axis to prevent memory overflows
-                print("Insufficient memory for full SSP SED convolution")
+                print("Insufficient RAM memory for full SSP SED convolution")
                 print("Looping along metallicity axis")
                 io.check_array_memory(
                 (ssp.L_lambda.shape[1], ssp.L_lambda.shape[2],
