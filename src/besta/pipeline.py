@@ -85,7 +85,8 @@ class MainPipeline(object):
             )
             io.make_ini_file(ini_filename, config)
         else:
-            assert os.path.isfile(ini_filename), f"{ini_filename} not found"
+            assert os.path.isfile(os.path.expandvars(ini_filename)
+                                  ), f"{os.path.expandvars(ini_filename)} not found"
 
         if ini_values_filename is None:
             io.make_values_file(config)
