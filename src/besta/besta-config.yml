@@ -32,5 +32,4 @@ extinction:
 # Memory usage
 ####################
 memory:
-    ram:
-        safety_margin: 0.1
+    ram_safety_margin: 0.1
