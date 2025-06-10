@@ -1,11 +1,48 @@
 """Module dedicated to read and manipulate the output products of BESTA."""
 import os
+import functools
 import numpy as np
 import cosmosis
 from astropy.table import Table
 
 from besta import pipeline_modules
 
+def expand_env_in_first_arg(func):
+    """
+    Decorator that expands environment variables in the first positional argument.
+
+    This is typically used for functions that take a filename as the first argument
+    and may receive paths like `$HOME/data.txt` or `${LOGDIR}/log.txt`.
+
+    Parameters
+    ----------
+    func : callable
+        The function to decorate. The first positional argument is assumed to be
+        a filename and will be expanded using `os.path.expandvars`.
+
+    Returns
+    -------
+    callable
+        A wrapped function where the first argument has its environment variables expanded.
+
+    Examples
+    --------
+    >>> @expand_env_in_first_arg
+    ... def load_file(path):
+    ...     print(path)
+
+    >>> load_file("$HOME/test.txt")
+    /home/yourname/test.txt
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        if args:
+            expanded_arg = os.path.expandvars(args[0])
+            args = (expanded_arg, *args[1:])
+        return func(*args, **kwargs)
+    return wrapper
+
+@expand_env_in_first_arg
 def make_ini_file(filename, config):
     """Create a .ini file from an input configuration.
 
@@ -48,7 +85,7 @@ def make_values_file(config, overwrite=True):
     config : dict
         Configuration parameters
     """
-    values_filename = config["pipeline"]["values"]
+    values_filename = os.path.expandvars(config["pipeline"]["values"])
     values_section = f"Values"
 
     if os.path.isfile(values_filename):
@@ -69,6 +106,7 @@ def make_values_file(config, overwrite=True):
                     f.write(f"{name} = {lims[0]} {(lims[0] + lims[1]) / 2} {lims[1]}\n")
             f.write(f"; \(ﾟ▽ﾟ)/")
 
+@expand_env_in_first_arg
 def read_results_file(path):
     """Read the results produced during a CosmoSIS run.
 
@@ -408,6 +446,7 @@ class Reader(object):
         return datablock
 
     @classmethod
+    @expand_env_in_first_arg
     def read_ini_file(cls, path):
         """Read the cosmosis configuration .ini file.
 
@@ -427,6 +466,7 @@ class Reader(object):
             return cls._parse_ini_lines(f.readlines())
 
     @classmethod
+    @expand_env_in_first_arg
     def read_ini_file_from_results(cls, path):
         with open(path, "r") as file:
             file_lines = file.readlines()
@@ -472,6 +512,7 @@ class Reader(object):
         return ini_info
 
     @staticmethod
+    @expand_env_in_first_arg
     def read_ini_values_file(path):
         """Read the cosmosis configuration .ini file.
 
@@ -523,9 +564,11 @@ class Reader(object):
         return ini_info
 
     @classmethod
+    @expand_env_in_first_arg
     def from_ini_file(cls, path_to_ini):
         return cls(ini_file=path_to_ini)
 
     @classmethod
+    @expand_env_in_first_arg
     def from_results_file(cls, path_to_results):
         return cls(results_file=path_to_results)
