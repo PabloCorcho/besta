@@ -160,6 +160,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
+            today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
@@ -230,6 +231,7 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
+            today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
@@ -310,6 +312,7 @@ class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
+            today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
@@ -383,6 +386,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
+            today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
@@ -445,6 +449,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=np.ones(self.mass_fractions.size) << u.Gyr,
             masses=self.mass_fractions << u.Msun,
+            today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
@@ -581,6 +586,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
 
         self.model = pst.models.TabularCEM_ZPowerLaw(
             times=self.time,
+            today=self.today,
             mass_today=1 << u.Msun,
             masses=np.ones(self.time.size) << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
