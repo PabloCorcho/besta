@@ -233,9 +233,6 @@ class MainPipeline(object):
             f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
             )
 
-        fig.savefig(
-            output_file,
-            bbox_inches="tight",
-        )
+        fig.savefig(os.path.expandvars(output_file), bbox_inches="tight")
         print(f"Fit plot saved at: {output_file}")
         plt.close()

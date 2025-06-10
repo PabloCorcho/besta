@@ -27,3 +27,9 @@ extinction:
         min: 0.0
         max: 3.0
         steps: 30
+
+####################
+# Memory usage
+####################
+memory:
+    ram_safety_margin: 0.1

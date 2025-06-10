@@ -46,3 +46,9 @@ if "extinction" in config_file:
     extinction = config_file["extinction"]
     if not "a_v" in extinction:
         extinction["a_v"] = {"min": 0.0, "max": 3.0, "steps": 30}
+
+# Memory
+if "memory" in config_file:
+    memory = config_file["memory"]
+else:
+    memory = {"ram_safety_margin": 0.1}
