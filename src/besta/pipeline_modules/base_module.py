@@ -80,7 +80,7 @@ class BaseModule(ClassModule):
             If ``True``, converts the input flux to luminosities.
         """
         print("\n-> Configuring input observed spectra")
-        filename = options["inputSpectrum"]
+        filename = os.path.expandvars(options["inputSpectrum"])
         # Read wavelength and spectra
         print("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
@@ -104,12 +104,14 @@ class BaseModule(ClassModule):
             redshift = 0.0
         # Load mask
         if options.has_value("mask"):
-            weights = np.array(np.loadtxt(options["mask"]), dtype=float)
+            weights = np.array(
+                np.loadtxt(os.path.expandvars(options["mask"])), dtype=float)
         else:
             weights = np.ones_like(flux)
         # Load the instrumental LSF
         if options.has_value("lsf"):
-            lsf_wl, lsf_fwhm = np.loadtxt(options["lsf"], unpack=True)
+            lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
+                                          unpack=True)
             instrumental_lsf = np.array(np.interp(wavelength, lsf_wl, lsf_fwhm),
                                         dtype=float)
         else:
@@ -189,7 +191,7 @@ class BaseModule(ClassModule):
         options : :class:`DataBlock`
         """
         print("\n-> Configuring photometric data")
-        photometry_file = options["inputPhotometry"]
+        photometry_file = os.path.expandvars(options["inputPhotometry"])
 
         # Read the data
         filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
@@ -204,8 +206,8 @@ class BaseModule(ClassModule):
         photometric_filters = []
         for filter_name in filter_names:
             print(f"Loading photometric filter: {filter_name}")
-            if os.path.exists(filter_name):
-                filt = Filter.from_text_file(filter_name)
+            if os.path.exists(os.path.expandvars(filter_name)):
+                filt = Filter.from_text_file(os.path.expandvars(filter_name))
             else:
                 filt = Filter.from_svo(filter_name)
             photometric_filters.append(filt)
@@ -241,12 +243,14 @@ class BaseModule(ClassModule):
 
         if options.has_value("SSPModelFromPickle"):
             print("\n-> Loading preconfigured SSP model from pickle")
-            if not os.path.isfile(options["SSPModelFromPickle"]):
+            if not os.path.isfile(
+                os.path.expandvars(options["SSPModelFromPickle"])):
                 raise FileNotFoundError(
                     f"Input pickle file {options['SSPModelFromPickle']} not found")
 
             # Load the SSP model
-            with open(options["SSPModelFromPickle"], 'rb') as file:
+            with open(
+                os.path.expandvars(options["SSPModelFromPickle"]), 'rb') as file:
                 ssp = pickle.load(file)
 
             self.config["ssp_model"] = ssp
@@ -332,8 +336,9 @@ class BaseModule(ClassModule):
 
             if options.has_value("SSPLSF"):
                 print("Including SSP resolution")
-                ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(options["SSPLSF"],
-                                                      unpack=True, usecols=(0, 1))
+                ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(
+                    os.path.expandvars(options["SSPLSF"]),
+                    unpack=True, usecols=(0, 1))
                 ssp_lsf_fwhm = np.interp(ssp.wavelength,
                                          ssp_lsf_wl << u.AA, ssp_lsf_fwhm)
             else:
@@ -398,9 +403,8 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
-            print("Saving photometry grid to ",
-                      options["SaveSSPModel"])
-            with open(options["SaveSSPModel"], 'wb') as file:
+            print("Saving photometry grid to ", options["SaveSSPModel"])
+            with open(os.path.expandvars(options["SaveSSPModel"]), 'wb') as file:
                 pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
         print("-> Configuration done.")
         return
