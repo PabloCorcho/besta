@@ -38,70 +38,70 @@ class TestPipelineManagerFit(unittest.TestCase):
         with open("values.ini", "w") as file:
             file.write(text)
 
-    # @classmethod
-    # def tearDownClass(cls):
-    #     print("Removing files")
-    #     os.remove("./test_spectra_exp_sfh.dat") 
-    #     os.remove("./values.ini")
-    #     os.remove("./FullSpectralFit_auto.ini")
-    #     os.remove("./full_fit_exponential_sfh.txt")
-    #     os.remove("./full_fit_exponential_sfh.maxlike.txt")
-    #     os.remove("./FullSpectralFit_full_fit_exponential_sfh_best_fit_spectra.png")
+    @classmethod
+    def tearDownClass(cls):
+        print("Removing files")
+        os.remove("./test_spectra_exp_sfh.dat") 
+        os.remove("./values.ini")
+        os.remove("./FullSpectralFit_auto.ini")
+        os.remove("./full_fit_exponential_sfh.txt")
+        os.remove("./full_fit_exponential_sfh.maxlike.txt")
+        os.remove("./FullSpectralFit_full_fit_exponential_sfh_best_fit_spectra.png")
 
-    # def test_fit(self):
-    #     configuration = {
+    def test_fit(self):
+        configuration = {
         
-    #     "runtime": {
-    #         "sampler": "maxlike emcee"
-    #     },
+        "runtime": {
+            "sampler": "maxlike emcee"
+        },
 
-    #     "maxlike": {
-    #         "method": "Nelder-Mead",
-    #         "tolerance": 1e-3,
-    #         "maxiter": 3000,
-    #     },
+        "maxlike": {
+            "method": "Nelder-Mead",
+            "tolerance": 1e-3,
+            "maxiter": 3000,
+        },
 
-    #     "emcee": {
-    #         "walkers": 32,
-    #         "samples": 100,
-    #         "nsteps": 100,
-    #     },
+        "emcee": {
+            "walkers": 32,
+            "samples": 100,
+            "nsteps": 100,
+        },
 
-    #     "output": {
-    #         "filename": "./full_fit_exponential_sfh",
-    #         "format": "text"
-    #     },
+        "output": {
+            "filename": "./full_fit_exponential_sfh",
+            "format": "text"
+        },
 
-    #     "pipeline": {
-    #         "modules": "FullSpectralFit",
-    # #        "values": "./full_fit_values.ini",
-    #         "values": "./values.ini",
-    #         "likelihoods": "FullSpectralFit",
-    #         "quiet": "F",
-    #         "timing": "T",
-    #         "debug": "T",
-    #         "extra_output": "parameters/normalization"
-    #     },
+        "pipeline": {
+            "modules": "FullSpectralFit",
+    #        "values": "./full_fit_values.ini",
+            "values": "./values.ini",
+            "likelihoods": "FullSpectralFit",
+            "quiet": "F",
+            "timing": "T",
+            "debug": "T",
+            "extra_output": "parameters/normalization"
+        },
 
-    #     "FullSpectralFit": {
-    #             "file": FullSpectralFitModule.get_path(),
-    #             "redshift": 0.0,
-    #             "inputSpectrum": "./test_spectra_exp_sfh.dat",
-    #             #"mask": "./a2744_65_mask.txt",
-    #             "SSPModel": "PopStar",
-    #             "SSPModelArgs": "cha",
-    #             "SSPDir": "None",
-    #             "wlRange": [3500.0, 9000.0],
-    #             "SFHModel": "ExponentialSFH",
-    #             "velscale": 50.0,
-    #             "ExtinctionLaw": "ccm89",
-    #             }}
+        "FullSpectralFit": {
+                "file": FullSpectralFitModule.get_path(),
+                "redshift": 0.0,
+                "inputSpectrum": "./test_spectra_exp_sfh.dat",
+                #"mask": "./a2744_65_mask.txt",
+                "SSPModel": "PopStar",
+                "SSPModelArgs": "cha",
+                "SSPDir": "None",
+                "wlRange": [3500.0, 9000.0],
+                "SFHModel": "ExponentialSFH",
+                "velscale": 50.0,
+                "ExtinctionLaw": "ccm89",
+                }}
 
-    #     t0 = time()
-    #     main_pipe = MainPipeline([configuration], n_cores_list=[1])
-    #     main_pipe.execute_all(plot_result=True)
-    #     tend = time()
-    #     print("TOTAL ELAPSED TIME (min): ", (tend - t0) / 60)
+        t0 = time()
+        main_pipe = MainPipeline([configuration], n_cores_list=[1])
+        main_pipe.execute_all(plot_result=True)
+        tend = time()
+        print("TOTAL ELAPSED TIME (min): ", (tend - t0) / 60)
 
     def test_postprocess(self):
         results = Reader.from_results_file("./full_fit_exponential_sfh.txt")
