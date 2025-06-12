@@ -34,6 +34,6 @@ jobs:
         pip install .
     - name: Test with pytest
       run: |
-        pytest tests/test_sfh.py
+        pytest tests/test_sfh.py tests/test_pipeline_module.py tests/test_run.py
         # make test-units
         # make test-notebooks
