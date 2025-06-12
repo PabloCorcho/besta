@@ -1,36 +1,54 @@
 import unittest
+
 import os
+import numpy as np
+
 from cosmosis import DataBlock
 
 from besta.pipeline_modules.kin_dust import KinDustModule
-from besta.pipeline_modules.sfh_spectra import SFHSpectraModule
+from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
+from besta.sfh import ExponentialSFH
+from pst.SSP import PopStar
 
 class TestPipelineModule(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
+    def setUpClass(cls):
         # Setup stuff
-        pass
+
+        print("Creating test spectra using an exponential SFH")
+        # Use the default SSP from PST
+        ssp = PopStar(IMF="cha")
+        # Create a SFH model and generate a synthetic spectra
+        params = {}
+        params['logtau'] = 0.5
+        params['alpha_powerlaw'] = 1
+        params['ism_metallicity_today'] = 0.02
+
+        sfh = ExponentialSFH()
+        sfh.parse_free_params(params)
+        sed = sfh.model.compute_SED(ssp, t_obs=sfh.today)
+
+        np.savetxt("./test_spectra_exp_sfh.dat", np.array([ssp.wavelength,
+                                                           sed, sed * 0.1]).T)
+
+    @classmethod
+    def tearDownClass(cls):
+        print("Removing test spectra")
+        os.remove("./test_spectra_exp_sfh.dat") 
 
     def test_kin_dust(self):
-        
+        print("#" * 23 + "\nTesting KinDust module\n" + "#" * 23)
         kin_configuration = {
             "KinDust": {
-                "save_ssp": "/path/to/ssp_output.txt",
                 "file": KinDustModule.get_path(),
                 "redshift": 0.0,
-                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-besta/generate_mock_data/exponential/input_spectra.dat",
-                "SSPModel": "PyPopStar",
-                "SSPModelArgs": "KRO",
+                "inputSpectrum": "./test_spectra_exp_sfh.dat",
+                "SSPModel": "PopStar",
+                "SSPModelArgs": "cha",
                 "SSPDir": "None",
-                # "SSP-NMF": True, 
-                # "SSP-NMF-N": 10,
-                "SSPSave": "F",
                 "wlRange": [3700.0, 8000.0],
-                "wlNormRange": [5000.0, 5500.0],
-                "velscale": 70.0,
-                "oversampling": 2,
-                "polOrder": 10,
+                "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
             }
         }
@@ -41,34 +59,24 @@ class TestPipelineModule(unittest.TestCase):
         block['parameters', 'los_sigma'] = 100.
         block['parameters', 'los_h3'] = 0
         block['parameters', 'los_h4'] = 0
-        
-        print("Path to module ", KinDustModule.get_path())
+
         kindust_module = KinDustModule(kin_configuration)
         kindust_module.execute(block)
+        print("Module successfully executed")
 
-    def test_sfh_spectra(self):
-        config = {"SFHSpectra": {
-                "file": SFHSpectraModule.get_path(),
+    def test_full_spectral_fit(self):
+        print("#" * 30 + "\nTesting FullSpectralFit module\n" + "#" * 30)
+
+        config = {"FullSpectralFit": {
+                "file": FullSpectralFitModule.get_path(),
                 "redshift": 0.0,
-                "inputSpectrum": "/home/pcorchoc/Develop/tutorial-pst-besta/generate_mock_data/exponential/input_spectra.dat",
-                "SSPModel": "PyPopStar",
-                "SSPModelArgs": "KRO",
+                "inputSpectrum": "./test_spectra_exp_sfh.dat",
+                "SSPModel": "PopStar",
+                "SSPModelArgs": "cha",
                 "SSPDir": "None",
-                # "SSP-NMF": "F",
-                # "SSP-NMF-N": None,
-                #"SSPSave": "F",
                 "wlRange": [3700.0, 6000.0],
-                "wlNormRange": [5000.0, 5500.0],
-                # "SFHModel": "LogNormalQuenchedSFH",
-                # "SFHModel": "LogNormalSFH",
-                "SFHModel": "FixedMassFracSFH",
-                "SFHArgs1": [0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99],
-                "velscale": 70.0,
-                "oversampling": 2,
-                "polOrder": 10,
-                "los_vel": 0.0,
-                "los_sigma": 100.0,
-                "av": 0.0,
+                "SFHModel": "ExponentialSFH",
+                "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
             }}
 
@@ -78,10 +86,13 @@ class TestPipelineModule(unittest.TestCase):
         block['parameters', 'los_sigma'] = 100.
         block['parameters', 'los_h3'] = 0
         block['parameters', 'los_h4'] = 0
+        block['parameters', 'logtau'] = 1
+        block['parameters', 'alpha_powerlaw'] = 1
+        block['parameters', 'ism_metallicity_today'] = 0.02
 
-        sfh_module = SFHSpectraModule(config)
-
-        print("Path to module ", sfh_module.get_path())
+        module = FullSpectralFitModule(config)
+        self.assertFalse(module.execute(block))
+        print("Module successfully executed")
 
 if __name__ == "__main__":
     unittest.main()
