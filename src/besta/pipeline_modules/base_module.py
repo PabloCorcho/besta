@@ -180,7 +180,9 @@ class BaseModule(ClassModule):
         self.config["wavelength"] = wavelength << u.angstrom
         self.config["ln_wave"] = ln_wave
         self.config["weights"] = weights
-        self.config["lsf"] = instrumental_lsf
+        if not (instrumental_lsf == 0).all():
+            self.config["lsf"] = instrumental_lsf
+
         print("-> Configuration done.")
 
     def prepare_observed_photometry(self, options):

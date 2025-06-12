@@ -205,8 +205,8 @@ def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
     veloffset_pixel = los_vel / velscale
     x = (
         np.arange(
-            -module_config.kinematics["lsf_sigma_truncation"] * sigma_pixel,
-            module_config.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+            -CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+             CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
         )
         - veloffset_pixel
     )
