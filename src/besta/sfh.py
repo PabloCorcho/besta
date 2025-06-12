@@ -130,7 +130,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FixedGridSFH model")
+        print("[SFH] Initialising FixedTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = pst.utils.check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
@@ -164,7 +164,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
-            alpha_powerlaw=kwargs.get("alpha", 0.0),
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
         )
 
     def parse_datablock(self, datablock: DataBlock):
@@ -199,7 +199,7 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FixedGridSFH model")
+        print("[SFH] Initialising FixedCosmicTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = pst.utils.check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
@@ -281,12 +281,11 @@ class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, n_times, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FixedGridSFH model")
+        print("[SFH] Initialising FlexibleCosmicTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = (
             np.geomspace(5e-2, self.today.to_value("Gyr"), n_times + 1)[::-1] << u.Gyr
         )
-
         # Lookbacktime [T_univ, t1, ... tn, 0]
         self.lookback_time = np.insert(
             self.lookback_time, self.lookback_time.size, 0 << self.lookback_time.unit
