@@ -346,11 +346,11 @@ class BaseModule(ClassModule):
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
             # Assume both LSF are Gaussian
-            effective_lsf = np.sqrt(inst_lsf**2 - ssp_lsf_fwhm**2)
-
-            if (effective_lsf < 0).any():
+            effective_lsf_disp =inst_lsf**2 - ssp_lsf_fwhm**2
+            if (effective_lsf_disp < 0).any():
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
+            effective_lsf = np.sqrt(effective_lsf_disp)
             lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
             try:
                 io.check_array_memory(
