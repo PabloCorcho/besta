@@ -6,7 +6,7 @@ At the moment, its use is primarily focused on deriving the properties of the un
 
 ## Status
 [![Documentation Status](https://readthedocs.org/projects/besta/badge/?version=latest)](https://besta.readthedocs.io/en/latest/?badge=latest)
-
+[![test](https://github.com/PabloCorcho/besta/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/PabloCorcho/besta/actions/workflows/test.yml)
 # Introduction
 
 ## The framework
