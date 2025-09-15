@@ -2,7 +2,7 @@ import unittest
 import os
 from cosmosis import DataBlock
 
-from hbsps.postprocess import read_results_file, compute_pdf_from_results
+from besta.postprocess import read_results_file, compute_pdf_from_results
 
 class TestPostprocessing(unittest.TestCase):
 
