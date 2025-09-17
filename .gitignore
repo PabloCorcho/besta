@@ -10,3 +10,4 @@ output/
 test_data/
 src/besta.egg-info
 docs/build
+.vscode/
