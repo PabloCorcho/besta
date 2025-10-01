@@ -107,6 +107,36 @@ class PieceWiseSFHMixin:
         return np.array(
             [datablock["parameters", key] for key in self.sfh_bin_keys], dtype=dtype
         )
+  
+    def _softmax(self, theta):
+        """Map Real^(K-1) -> simplex of size K (pivot on last component).
+        
+        Description
+        -----------
+        The softmax function or normalized exponential function converts a tuple
+        of K real numbers into a probability distribution of K possible outcomes.
+
+        This method is desined for using uniform priors ``u`` covering a symmetric
+        real parameter space that roughly corresponds to a uniform prior in
+        ``log(mass_frac)``.
+
+        Parameters
+        ----------
+        theta : np.array
+            A one-dimensional array of parameters (e.g. stellar masses) that will
+            of size ``K-1`` that is mapped to a simplex.
+        
+        Returns
+        -------
+        simplex : np.array
+            An one-dimensional array of ``K`` elements that adds 1.
+        prior : float
+            The prior value.
+        """
+        theta = np.append(theta, 0.0)
+        t = theta - np.max(theta)       # log-sum-exp stability
+        frac = np.exp(t)
+        return frac / frac.sum(), np.log(frac[-1])              # f (length K)
 
 
 class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
@@ -212,9 +242,8 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             (self.today.to(self.lookback_time.unit), 0 << self.lookback_time.unit),
         )
 
-        self.time = self.today - self.lookback_time
         # Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]
-        self.bin_masses = np.zeros(self.time.size - 2)
+        self.time = self.today - self.lookback_time
 
         if (self.time < 0).any():
             print("[SFH] Warning: lookback time bin larger the age of the Universe")
@@ -223,9 +252,9 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.sfh_bin_keys = []
         for lbt in self.lookback_time[1:-1].to_value("Gyr"):
             # Initialise parameters assuming a constant star formation history
-            k = f"coeff_at_{lbt:.3f}"
+            k = f"u_logfrac_at_{lbt:.3f}"
             self.sfh_bin_keys.append(k)
-            self.free_params[k] = [0.0, 0.5, 1.0]
+            self.free_params[k] = [-10.0, 0.0, 10.0]
 
         # Initialise PST
         self.model = pst.models.TabularCEM_ZPowerLaw(
@@ -238,30 +267,21 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             alpha_powerlaw=kwargs.get("alpha", 0.0),
         )
 
-    def update_mass(self, i, coeff):
-        """Update a bin of the stellar mass fraction formed."""
-        self.bin_masses[i] = coeff * (1 - np.sum(self.bin_masses[:i]))
-
     def parse_datablock(self, datablock: DataBlock):
-        coefficients = self.get_sfh_parameters_array(datablock)
         # The first coefficient correspond to the mass fraction between
         # the origin of the universe and the first input time (largest lookback time)
-        self.bin_masses[0] = coefficients[0]
-        # Update the rest of the elements
-        _ = [
-            self.update_mass(i, coefficients[i]) for i in range(1, self.bin_masses.size)
-        ]
-        # Mass formation history. The last bin uses the remanining fraction)
-        cumulative = np.insert(
-            np.cumsum(self.bin_masses), (0, self.bin_masses.size), (0, 1)
-        )
+        coefficients = self.get_sfh_parameters_array(datablock)
+        # Convert the input theta into a simplex that integrates to 1
+        mass_fractions, prior_val = self._softmax(coefficients)
+        # Mass formation history from t=0 -> t=today
+        cumulative = np.insert(np.cumsum(mass_fractions), 0, 0.0)
         # Update the mass of the tabular model
         self.model.table_mass = cumulative << u.Msun
         self.model.alpha_powerlaw = datablock["parameters", "alpha_powerlaw"]
         self.model.ism_metallicity_today = (
             datablock["parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
         )
-        return 1, None
+        return True, prior_val
 
 
 class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
