@@ -123,12 +123,18 @@ class SFHPhotometryModule(BaseModule):
         return flux_model * normalization
 
     def execute(self, block):
+        """Function executed by sampler
+        This is the function that is executed many times by the sampler. The
+        likelihood resulting from this function is the evidence on the basis
+        of which the parameter space is sampled.
+        """
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
             # print("Invalid")
-            block[section_names.likelihoods, "SFHPhotometry_like"] = -1e5 * penalty
+            block[section_names.likelihoods, f"{self.name}_like"] = -1e5 * penalty
             block["parameters", "normalization"] = 0.0
             return 0
+
         flux_model = self.make_observable(block)
         # Final posterior for sampling
         like = self.log_like(
@@ -136,9 +142,14 @@ class SFHPhotometryModule(BaseModule):
             flux_model,
             self.config["photometry_flux_var"],
         )
+        # Add penalty or internal prior value
+        if penalty is not None:
+            like += penalty
+
         if like > self.config["best_fit_like"]:
             self.config["best_fit"] = flux_model
             self.config["best_fit_like"] = like
+
         block[section_names.likelihoods, "SFHPhotometry_like"] = like
         return 0
 

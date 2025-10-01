@@ -103,6 +103,11 @@ class FullSpectralFitModule(BaseModule):
                              flux_model[good_pixels],
                              cov[good_pixels],
                              weights=weights[good_pixels])
+
+        # Add penalty or internal prior value
+        if penalty is not None:
+            like += penalty
+
         # Final posterior for sampling
         block[section_names.likelihoods, f"{self.name}_like"] = like
         return 0
