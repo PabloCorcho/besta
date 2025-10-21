@@ -250,9 +250,9 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         print("[SFH] Setting up free parameters")
         self.sfh_bin_keys = []
-        for lbt in self.lookback_time[1:-1].to_value("Gyr"):
+        for ith, lbt in enumerate(self.lookback_time[1:-1].to_value("Gyr")):
             # Initialise parameters assuming a constant star formation history
-            k = f"u_logfrac_at_{lbt:.3f}"
+            k = f"u_logfrac_{ith}"
             self.sfh_bin_keys.append(k)
             self.free_params[k] = [-10.0, 0.0, 10.0]
 
