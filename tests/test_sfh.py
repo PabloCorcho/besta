@@ -70,7 +70,7 @@ class TestFixedCosmicTimeSFH(unittest.TestCase):
         for key in self.model.sfh_bin_keys:
             self.assertIn(key, self.model.free_params)
             bounds = self.model.free_params[key]
-            self.assertEqual(bounds, [0.0, 0.5, 1.0])
+            self.assertEqual(bounds, [-10.0, 0.0, 10.0])
 
     def test_parse_datablock_valid(self):
         # Simulate coefficient values that sum to < 1 through recursive scheme
@@ -78,26 +78,12 @@ class TestFixedCosmicTimeSFH(unittest.TestCase):
         parameters['alpha_powerlaw'] = 1.0
         parameters['ism_metallicity_today'] = 0.02
         db = DataBlock.from_dict({"parameters": parameters})
-        status, _ = self.model.parse_datablock(db)
-        self.assertEqual(status, 1)
+        status, prior_penalty = self.model.parse_datablock(db)
+        self.assertEqual(int(status), 1)
+        self.assertTrue(np.isfinite(prior_penalty))
         # Check mass table is updated
         self.assertTrue(hasattr(self.model.model, "table_mass"))
-        self.assertEqual(len(self.model.model.table_mass), len(self.model.bin_masses) + 2)
-
-    def test_update_mass_recursive(self):
-        # Test how update_mass distributes values recursively
-        self.model.bin_masses = np.zeros_like(self.model.bin_masses)
-        self.model.update_mass(0, 0.5)
-        self.model.update_mass(1, 0.5)
-        self.model.update_mass(2, 0.5)
-
-        expected = [
-            0.5,
-            0.5 * (1 - 0.5),            # 0.25
-            0.5 * (1 - 0.5 - 0.25),     # 0.125
-        ]
-        np.testing.assert_allclose(self.model.bin_masses, expected, rtol=1e-6)
-
+        self.assertEqual(len(self.model.model.table_mass), len(self.lookback_bins) + 2)
 
 class TestFlexibleCosmicTimeSFH(unittest.TestCase):
 
