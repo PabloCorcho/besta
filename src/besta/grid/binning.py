@@ -48,18 +48,14 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
         return {"mode": "standardize", "mu": mu, "sd": sd, "W": None, "b": None, "kept_dims": slice(None)}
 
     if mode == "pca_whiten":
-        # PCA on covariance of centered data
-        # Use SVD for stability
+        # PCA on covariance of centered data (stable via SVD)
         U, S, Vt = np.linalg.svd(Xc / np.sqrt(max(1, Xc.shape[0] - 1)), full_matrices=False)
-        # S are singular values of scaled data; eigenvalues ~ S^2
         eigvals = S**2
-        # keep top components to reach pca_variance of cumulative energy
         cum = np.cumsum(eigvals) / np.sum(eigvals) if np.sum(eigvals) > 0 else np.ones_like(eigvals)
         r = int(np.searchsorted(cum, float(pca_variance)) + 1)
         r = max(1, min(r, Vt.shape[0]))
         Vr = Vt[:r, :]                   # r x D
         lambdar = eigvals[:r]            # r
-        # Whitening: y = (Vr (x - mu)) / sqrt(lambda)
         inv_sqrt = 1.0 / np.sqrt(np.where(lambdar > 0, lambdar, 1.0))
         W = (Vr * inv_sqrt[:, None])     # r x D
         return {"mode": "pca_whiten", "mu": mu, "sd": None, "W": W, "b": None, "kept_dims": np.arange(r)}
@@ -112,10 +108,6 @@ class BaseBinner:
                    y_native: np.ndarray,
                    sigmas_native: Optional[np.ndarray] = None,
                    **kwargs) -> Tuple[np.ndarray, Optional[int]]:
-        raise NotImplementedError
-
-    @property
-    def dims(self) -> List[int]:
         raise NotImplementedError
 
     def info(self) -> Dict[str, Any]:
@@ -191,6 +183,18 @@ class RectBinner(BaseBinner):
     _grid_n: int = 0
     _D_eff: int = 0
 
+    def __post_init__(self):
+        # normalise and route through setter
+        self.dims = list(self.dims)
+
+    @property
+    def dims(self) -> List[int]:
+        return self._dims
+
+    @dims.setter
+    def dims(self, value: Sequence[int]) -> None:
+        self._dims = list(value)
+
     def fit(self, grid: ModelGrid) -> "RectBinner":
         X = np.asarray(grid.observables[:, self.dims], float)
         self._grid_n = X.shape[0]
@@ -201,8 +205,6 @@ class RectBinner(BaseBinner):
 
         # bounds per dim to build edges
         if self.edges_mode == "quantile":
-            # build quantile edges per level by splitting the unit [0,1] into equal parts
-            qbase = np.linspace(0.0, 1.0, self.base_bins + 1)
             self._edges = []
             self._layers = []
             for lev in range(self.levels):
@@ -211,9 +213,7 @@ class RectBinner(BaseBinner):
                 edges = []
                 for d in range(self._D_eff):
                     xd = Xz[:, d]
-                    # robust quantiles with interpolation
                     ed = np.quantile(xd, q, method="linear")
-                    # pad slightly to avoid digitize overflow
                     span = ed[-1] - ed[0]
                     pad = 1e-6 * (span if span > 0 else 1.0)
                     ed[0] -= pad; ed[-1] += pad
@@ -223,7 +223,7 @@ class RectBinner(BaseBinner):
                 # assign cells
                 cell_idx = self._digitize_nd(Xz, edges)  # (N, D_eff)
                 keys = [tuple(cell_idx[i]) for i in range(Xz.shape[0])]
-                layer: Dict[Tuple[int, ...], list] = {}
+                layer: Dict[Tuple[int, ...], List[int]] = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
                 self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
@@ -240,7 +240,7 @@ class RectBinner(BaseBinner):
                 self._edges.append(edges)
                 cell_idx = self._digitize_nd(Xz, edges)
                 keys = [tuple(cell_idx[i]) for i in range(Xz.shape[0])]
-                layer: Dict[Tuple[int, ...], list] = {}
+                layer: Dict[Tuple[int, ...], List[int]] = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
                 self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
@@ -258,7 +258,6 @@ class RectBinner(BaseBinner):
         return np.stack(idxs, axis=1)
 
     def _choose_level_by_sigma(self, sig_trans: np.ndarray, target_factor: float = 2.0) -> int:
-        # choose level minimizing |log(width / (target_factor*sigma))| averaged across dims
         best_lev, best_score = 0, np.inf
         for lev in range(self.levels):
             widths = np.array([np.diff(e).mean() for e in self._edges[lev]])
@@ -270,8 +269,6 @@ class RectBinner(BaseBinner):
         return best_lev
 
     def _choose_level_by_targetK(self, y_trans: np.ndarray, target_k: int) -> int:
-        # choose the finest level where the base cell at y holds at least ~target_k models
-        # fall back to coarser if empty; if all empty, return 0
         for lev in reversed(range(self.levels)):
             edges = self._edges[lev]
             cell = self._digitize_nd(y_trans[None, :], edges)[0]
@@ -279,7 +276,6 @@ class RectBinner(BaseBinner):
             n_here = len(layer.get(tuple(cell), ()))
             if n_here >= max(1, target_k):
                 return lev
-        # else prefer the level with max local occupancy
         best_lev, best_n = 0, -1
         for lev in range(self.levels):
             edges = self._edges[lev]
@@ -327,20 +323,16 @@ class RectBinner(BaseBinner):
         idx : ndarray of int
         aux : int (the level used)
         """
-        # transform query and sigmas
         Xq = np.asarray(y_native[self.dims], float)
         y_trans = _apply_transform(Xq[None, :], self._T)[0]
         if sigmas_native is not None:
             s_native = np.asarray(sigmas_native[self.dims], float)
-            # map sigmas into transformed space
             mode = self._T["mode"]
             if mode == "none":
                 sig_trans = s_native
             elif mode == "standardize":
                 sig_trans = s_native / self._T["sd"]
             elif mode == "pca_whiten":
-                # approximate sigma transform: propagate through linear W
-                # cov_y ~ W Cov_x W^T with diag Cov_x; use diag only
                 W = self._T["W"]  # r x D
                 sig_trans = np.sqrt(np.clip((W**2 @ (s_native**2)), 1e-12, np.inf))
             else:
@@ -348,10 +340,8 @@ class RectBinner(BaseBinner):
         else:
             sig_trans = None
 
-        # choose level
         if target_k is not None and target_k > 0:
             lev = self._choose_level_by_targetK(y_trans, target_k=target_k)
-            # expand by growing a cube in key space until enough models
             layer = self._layers[lev]
             keys = [tuple(self._digitize_nd(y_trans[None, :], self._edges[lev])[0])]
             idxs = [layer[k] for k in keys if k in layer]
@@ -367,7 +357,6 @@ class RectBinner(BaseBinner):
                 return np.array([], dtype=np.int64), lev
             return np.unique(np.concatenate(idxs)), lev
         else:
-            # sigma based
             if sig_trans is None:
                 raise ValueError("sigmas_native must be provided for sigma-based selection")
             lev = self._choose_level_by_sigma(sig_trans, target_factor=target_factor)
@@ -377,10 +366,6 @@ class RectBinner(BaseBinner):
             if not idxs:
                 return np.array([], dtype=np.int64), lev
             return np.unique(np.concatenate(idxs)), lev
-
-    @property
-    def dims(self) -> List[int]:
-        return list(self.__dict__['dims'])
 
     def info(self) -> Dict[str, Any]:
         return {
@@ -432,8 +417,13 @@ class RectBinner(BaseBinner):
         layers = []
         for li in range(len(obj._edges)):
             layer_d = d["_layers"][str(li)]
-            layer = {tuple(map(int, k.strip("()").split(","))) if k.startswith("(") else tuple(map(int, k.split(","))): np.asarray(v, dtype=np.int64)
-                     for k, v in layer_d.items()}
+            layer: Dict[Tuple[int, ...], np.ndarray] = {}
+            for k_str, v in layer_d.items():
+                # Robust tuple parsing from the str(key) form
+                k_clean = k_str.strip().strip("()")
+                parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
+                key = tuple(int(p) for p in parts)
+                layer[key] = np.asarray(v, dtype=np.int64)
             layers.append(layer)
         obj._layers = layers
         obj._grid_n = int(d["_grid_n"])
@@ -469,6 +459,17 @@ class KDTreeBinner(BaseBinner):
     _T: Dict[str, Any] = field(default_factory=dict)
     _tree: Optional[cKDTree] = field(default=None)
     _Xz: Optional[np.ndarray] = field(default=None)
+
+    def __post_init__(self):
+        self.dims = list(self.dims)
+
+    @property
+    def dims(self) -> List[int]:
+        return self._dims
+
+    @dims.setter
+    def dims(self, value: Sequence[int]) -> None:
+        self._dims = list(value)
 
     def fit(self, grid: ModelGrid) -> "KDTreeBinner":
         X = np.asarray(grid.observables[:, self.dims], float)
@@ -526,10 +527,6 @@ class KDTreeBinner(BaseBinner):
             _, ind2 = self._tree.query(xz, k=1)
             return np.asarray([int(ind2)], dtype=np.int64), None
         return np.unique(np.asarray(ind, dtype=np.int64)), None
-
-    @property
-    def dims(self) -> List[int]:
-        return list(self.__dict__['dims'])
 
     def info(self) -> Dict[str, Any]:
         n = 0 if self._Xz is None else self._Xz.shape[0]
