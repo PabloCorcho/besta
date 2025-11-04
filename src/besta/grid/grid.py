@@ -33,6 +33,8 @@ from besta.postprocess import (
     compute_fraction_from_map, pit_from_discrete_posterior,
     hist_stats, photoz_metrics, weighted_quantiles)
 
+from besta.io import available_memory_bytes
+
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -424,8 +426,6 @@ class ModelGrid:
             from astropy.table import Table
         except Exception as e:
             raise ImportError("astropy is required for from_fits_table") from e
-        import json
-        import numpy as np
     
         t = Table.read(path, hdu=table_hdu, memmap=memmap)
     
@@ -1137,7 +1137,10 @@ class GridFitter:
                 find_multimodal: bool = False,
                 return_posts_for_stats: bool = False,
                 batch_size: Optional[int] = None,
-                verbose: bool = True) -> dict:
+                verbose: bool = True,
+                max_memory_gb: Optional[float] = 16.0,
+                memcheck_sample: int = 256,
+                safety_margin: float = 1.2) -> dict:
         """
         Evaluate model posteriors for multiple queries with parallel steps 1, 2, 3,
         supporting chunked execution and progress prints.
@@ -1184,13 +1187,32 @@ class GridFitter:
             `fit_batch` to avoid degenerate bandwidths.
         """
         M, P = X_native.shape
+
+        try:
+            self.check_fit_batch_memory(
+                M,
+                X_native=X_native,
+                SIG_native=SIG_native,
+                binner=binner,
+                target_factor=target_factor,
+                expand_factor=expand_factor,
+                memcheck_sample=memcheck_sample,
+                stats_for=stats_for,
+                stats_bins=stats_bins,
+                return_posts_for_stats=return_posts_for_stats,
+                max_memory_gb=max_memory_gb,
+                safety_margin=safety_margin,
+            )
+        except MemoryError as e:
+            # Re-raise with context if desired
+            raise
         posts, cands, levels = [None] * M, [None] * M, [None] * M
 
         M, P = X_native.shape
         posts: List[np.ndarray] = [None] * M
         cands: List[np.ndarray] = [None] * M
         levels: List[Optional[int]] = [None] * M
-
+        print("Starting batch fit...")
         # ---------------- Step 1: candidates (threaded, chunked) ----------------
         if verbose:
             print(f"[Step 1/3] Selecting candidates for {M} queries "
@@ -1462,10 +1484,13 @@ class GridFitter:
                     Y[:, j], Y[:, i], bins=[xedges, yedges], weights=w)
                 xb = (xedges[:-1] + xedges[1:]) / 2
                 yb = (yedges[:-1] + yedges[1:]) / 2
-                ax.pcolormesh(xe, ye, H.T, shading="auto", alpha=alpha_mesh,
-                              norm=LogNorm())
+                max_val = np.nanmax(H)
+                # ax.pcolormesh(xe, ye, H.T, shading="auto", alpha=alpha_mesh,
+                #               norm=LogNorm(vmin=max_val / 1e5, vmax=max_val),
+                #               cmap="hot_r")
                 frac = compute_fraction_from_map(H, xedges=xedges, yedges=yedges)
-                ax.contour(xb, yb, frac.T, colors=["b", "r"], levels=[0.05, 0.32])
+                ax.contourf(xb, yb, frac.T, cmap="Spectral",
+                           levels=[0.01, 0.05, 0.32, 0.5, 1])
 
                 if i == D - 1:
                     ax.set_xlabel(names[j])
@@ -1520,3 +1545,228 @@ class GridFitter:
         Standard photo-z metrics on z_true vs point estimates.
         """
         return photoz_metrics(z_true, z_est)
+
+    @staticmethod
+    def _human_bytes(nbytes: int) -> str:
+        """Return a human-friendly string for a byte count."""
+        units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        x = float(nbytes)
+        i = 0
+        while x >= 1024.0 and i < len(units) - 1:
+            x /= 1024.0
+            i += 1
+        return f"{x:.2f} {units[i]}"
+
+    def estimate_fit_batch_memory(
+        self,
+        M: int,
+        *,
+        # Optional pilot sampling to estimate candidate set sizes
+        X_native: Optional[np.ndarray] = None,
+        SIG_native: Optional[np.ndarray] = None,
+        binner: Optional[Any] = None,
+        target_factor: float = 2.0,
+        expand_factor: float = 2.0,
+        memcheck_sample: int = 256,
+        rng: Optional[np.random.Generator] = None,
+        # Stats footprint
+        stats_for: Optional[Sequence[int | str]] = None,
+        stats_bins: Optional[Sequence[np.ndarray]] = None,
+        return_posts_for_stats: bool = False,
+        # Dtype sizes
+        float_bytes: int = np.dtype(np.float64).itemsize,
+        int_bytes: int = np.dtype(np.int64).itemsize,
+    ) -> Dict[str, int]:
+        """
+        Estimate peak additional RAM needed by `fit_batch` data structures.
+
+        The estimate includes:
+          - candidates per query (int arrays)
+          - posterior weights per query (float arrays)
+          - per-target statistics arrays (mean, std, map, lo68, hi68, q16, q50, q84, nmodes)
+          - optional posts_target (M x K) per requested target
+
+        It does NOT include the already-loaded ModelGrid arrays themselves,
+        Python interpreter overhead, BLAS scratch memory, or OS allocator
+        fragmentation. A 10-20% headroom is recommended.
+
+        Parameters
+        ----------
+        M : int
+            Number of queries to evaluate.
+        X_native, SIG_native : ndarray, optional
+            If provided with a `binner`, a pilot sample is used to estimate the
+            average number of candidate models per query.
+        binner : object, optional
+            Must expose `dims` and a `candidates(y_native, sigmas_native, target_factor, expand_factor)`
+            method. If omitted or pilot cannot run, falls back to worst-case (all models).
+        target_factor, expand_factor : float, optional
+            Passed to the `binner.candidates` call in the pilot.
+        memcheck_sample : int, optional
+            Max number of queries to sample for candidate-size estimation.
+        rng : numpy.random.Generator, optional
+            RNG for sampling. Default uses np.random.default_rng().
+        stats_for, stats_bins : sequence, optional
+            As in `fit_batch`. If provided, stats arrays are counted. If
+            `return_posts_for_stats` is True, M x K floats per target are counted.
+        return_posts_for_stats : bool, optional
+            Whether to include storage for full posterior-over-bins per target.
+        float_bytes, int_bytes : int, optional
+            Byte size of float and int elements (default float64/int64).
+
+        Returns
+        -------
+        breakdown : dict
+            Keys: 'candidates_bytes', 'post_models_bytes', 'levels_bytes',
+                  'stats_bytes', 'posts_target_bytes', 'total_bytes'.
+        """
+        N = self.grid.n_models
+
+        # --- pilot estimate of candidate sizes per query ---
+        cand_mean = None
+        if (binner is not None) and (X_native is not None) and (SIG_native is not None):
+            m = min(M, len(X_native))
+            ns = min(memcheck_sample, m)
+            if ns > 0:
+                rng = rng or np.random.default_rng()
+                sample_idx = rng.choice(m, size=ns, replace=False)
+                sizes = []
+                for i in sample_idx:
+                    y_sub = X_native[i, binner.dims]
+                    s_sub = SIG_native[i, binner.dims]
+                    try:
+                        idx, _lev = binner.candidates(
+                            y_native=y_sub,
+                            sigmas_native=s_sub,
+                            target_factor=target_factor,
+                            expand_factor=expand_factor,
+                        )
+                        nci = int(np.asarray(idx).size)
+                        sizes.append(nci if nci > 0 else N)  # fall back to full grid if empty
+                    except Exception:
+                        sizes = []
+                        break
+                if sizes:
+                    cand_mean = float(np.mean(sizes))
+
+        # Worst case if no pilot or pilot failed
+        if cand_mean is None or not np.isfinite(cand_mean) or cand_mean <= 0:
+            cand_mean = float(N)
+
+        # --- memory for candidates, posts, and levels ---
+        # For each query we store one int array 'cands[m]' and one float array 'posts[m]'
+        candidates_bytes = int(M * cand_mean * int_bytes)
+        post_models_bytes = int(M * cand_mean * float_bytes)
+        # Optional levels (one int or None per query); store as int64 estimate
+        levels_bytes = int(M * int_bytes)
+
+        # --- stats memory footprint ---
+        stats_bytes = 0
+        posts_target_bytes = 0
+        if stats_for is not None:
+            T = len(stats_for)
+            # Per target we keep 8 float arrays of length M (mean,std,map,lo68,hi68,q16,q50,q84)
+            # and 1 int array of length M (nmodes).
+            per_target_stats = (8 * M * float_bytes) + (M * int_bytes)
+            stats_bytes += T * per_target_stats
+
+            if return_posts_for_stats:
+                if stats_bins is None or len(stats_bins) != T:
+                    # be conservative: assume K=64 per target
+                    Ks = [64] * T
+                else:
+                    Ks = [max(0, (np.asarray(b).size - 1)) for b in stats_bins]
+                posts_target_bytes = int(sum(M * K * float_bytes for K in Ks))
+
+        total_bytes = candidates_bytes + post_models_bytes + levels_bytes + stats_bytes + posts_target_bytes
+
+        return {
+            "candidates_bytes": candidates_bytes,
+            "post_models_bytes": post_models_bytes,
+            "levels_bytes": levels_bytes,
+            "stats_bytes": stats_bytes,
+            "posts_target_bytes": posts_target_bytes,
+            "total_bytes": total_bytes,
+        }
+    
+    def check_fit_batch_memory(
+        self,
+        M: int,
+        *,
+        X_native: Optional[np.ndarray] = None,
+        SIG_native: Optional[np.ndarray] = None,
+        binner: Optional[Any] = None,
+        target_factor: float = 2.0,
+        expand_factor: float = 2.0,
+        memcheck_sample: int = 256,
+        stats_for: Optional[Sequence[int | str]] = None,
+        stats_bins: Optional[Sequence[np.ndarray]] = None,
+        return_posts_for_stats: bool = False,
+        max_memory_gb: float = 16.0,
+        safety_margin: float = 1.2,
+    ) -> Dict[str, int]:
+        """
+        Estimate and validate memory needs for `fit_batch`.
+
+        Raises a MemoryError if the estimated total exceeds `max_memory_gb`
+        after applying a safety margin.
+
+        Returns the same breakdown as `estimate_fit_batch_memory` on success.
+
+        Parameters
+        ----------
+        M : int
+            Number of queries to evaluate.
+        X_native, SIG_native, binner, target_factor, expand_factor, memcheck_sample
+            Passed to `estimate_fit_batch_memory` to refine candidate sizes.
+        stats_for, stats_bins, return_posts_for_stats
+            Passed through to count stats arrays and optional posts_target storage.
+        max_memory_gb : float, optional
+            Limit in GB. Use None to disable checking.
+        safety_margin : float, optional
+            Multiplier applied to the estimate to account for allocator/BLAS/OS overhead.
+        """
+        if max_memory_gb is None:
+            # Checking disabled
+            return {
+                "candidates_bytes": 0, "post_models_bytes": 0, "levels_bytes": 0,
+                "stats_bytes": 0, "posts_target_bytes": 0, "total_bytes": 0,
+            }
+
+        breakdown = self.estimate_fit_batch_memory(
+            M,
+            X_native=X_native,
+            SIG_native=SIG_native,
+            binner=binner,
+            target_factor=target_factor,
+            expand_factor=expand_factor,
+            memcheck_sample=memcheck_sample,
+            stats_for=stats_for,
+            stats_bins=stats_bins,
+            return_posts_for_stats=return_posts_for_stats,
+        )
+
+        est = int(breakdown["total_bytes"] * float(safety_margin))
+        avail_ram = available_memory_bytes()
+        limit = min(avail_ram, int(max_memory_gb * (1024 ** 3)))
+
+        if est > limit:
+            hb_est = self._human_bytes(est)
+            hb_lim = self._human_bytes(limit)
+            hb_c = self._human_bytes(breakdown["candidates_bytes"])
+            hb_p = self._human_bytes(breakdown["post_models_bytes"])
+            hb_s = self._human_bytes(breakdown["stats_bytes"])
+            hb_pt = self._human_bytes(breakdown["posts_target_bytes"])
+            raise MemoryError(
+                "fit_batch memory pre-check failed: "
+                f"estimated peak (with safety margin) {hb_est} exceeds limit {hb_lim}.\n"
+                f"Breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
+                f"stats={hb_s}, posts_target={hb_pt}.\n"
+                "Suggestions:\n"
+                "  • Use a tighter binner or reduce target/expand factors to shrink candidate sets.\n"
+                "  • Disable `return_posts_for_stats` or reduce the number of bins per target.\n"
+                "  • Compute fewer targets in `stats_for`, or run in smaller M with external batching.\n"
+                "  • Persist or stream results instead of keeping all per-query posteriors in memory."
+            )
+
+        return breakdown
