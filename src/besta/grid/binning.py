@@ -2,11 +2,12 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, List, Tuple, Optional, Dict, Sequence, Any
+from itertools import product
 import json
 import os
 
 import numpy as np
-from itertools import product
+import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 
 from besta.grid.grid import ModelGrid
@@ -84,7 +85,20 @@ def _chunk_ranges(n: int, batch_size: Optional[int]):
         yield s, e
         s = e
 
-
+def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
+    """Map 1-sigma vector from native into the transform space described by T."""
+    mode = (T.get("mode") or "none").lower()
+    if mode == "none" or T.get("sd") is None and T.get("W") is None:
+        return sig_native
+    if mode == "standardize":
+        sd = T["sd"]
+        return sig_native / sd
+    if mode == "pca_whiten":
+        # approximate diag propagation through linear map
+        W = T["W"]  # shape r x D
+        return np.sqrt(np.clip((W**2) @ (sig_native**2), 1e-12, np.inf))
+    # Fallback
+    return sig_native
 # ----------------------------
 # Base interface
 # ----------------------------
@@ -137,7 +151,169 @@ class BaseBinner:
                 out_aux[m] = aux
         return out_idx, out_aux
 
+    def plot_candidates(self,
+                        grid: ModelGrid,
+                        y_native: np.ndarray,
+                        sigmas_native: Optional[np.ndarray] = None,
+                        *,
+                        dims_plot: Optional[Sequence[int]] = None,
+                        # candidate selection kwargs
+                        candidate_kwargs: Optional[dict] = None,
+                        # plotting controls
+                        plot_space: str = "native",   # "native" | "transformed" | "both"
+                        max_background: int = 50_000,
+                        background_alpha: float = 0.15,
+                        background_ms: float = 1.0,
+                        cand_alpha: float = 0.9,
+                        cand_ms: float = 4.0,
+                        query_ms: float = 10.0,
+                        show_sigma_boxes: bool = True,
+                        sigma_scale: float = 1.0,
+                        figsize: Optional[Tuple[float, float]] = None,
+                        suptitle: Optional[str] = None,
+                        random_state: Optional[int] = 42
+                        ):
+        """
+        Pairwise visualisation of binner candidates versus the model grid.
 
+        New
+        ---
+        plot_space: choose "native", "transformed", or "both". Transformed space
+        uses the binner's learned transform (if any): standardize or pca_whiten.
+        When "both" is selected, returns a dict with keys "native" and "transformed",
+        each mapping to (fig, axes). Candidate indices and aux are returned separately.
+        """
+        # Resolve dims to plot
+        P = grid.n_observables
+        if dims_plot is None:
+            dims_plot = getattr(self, "dims", list(range(P)))
+        dims_plot = list(dims_plot)
+        D = len(dims_plot)
+
+        # Get candidates (always in native space)
+        if candidate_kwargs is None:
+            candidate_kwargs = dict()
+        cand_idx, aux = self.candidates(
+                y_native=y_native,
+                sigmas_native=sigmas_native,
+                **candidate_kwargs)
+
+        # Common data
+        X = grid.observables
+        names = grid.observable_names
+        rng = np.random.default_rng(random_state)
+        N = X.shape[0]
+        bg_idx = rng.choice(N, size=min(N, max_background), replace=False)
+        xq_nat = y_native[dims_plot]
+        sq_nat = None if sigmas_native is None else sigmas_native[dims_plot]
+
+        # Try to retrieve transform (RectBinner / KDTreeBinner expose _T)
+        T = getattr(self, "_T", {"mode": "none"})
+        has_transform = isinstance(T, dict) and (T.get("mode") or "none").lower() != "none"
+
+        def _make_pairplot(X_bg, X_c, xq, sq, axis_labels, title_suffix):
+            if figsize is None:
+                fsz = (2.2 * D, 2.2 * D)
+            else:
+                fsz = figsize
+            fig, axes = plt.subplots(D, D, figsize=fsz,
+                                     squeeze=False, sharex="col")
+
+            # Diagonals
+            for i in range(D):
+                ax = axes[i, i]
+                ax.hist(X_bg[:, i], bins=40, density=True, alpha=0.25, lw=0, label="grid")
+                if X_c.size:
+                    ax.hist(X_c[:, i], bins=40, density=True, alpha=0.5, lw=0, label="candidates")
+                ax.axvline(xq[i], color="k", lw=1.2)
+                ax.set_ylabel("density")
+                ax.set_xlabel(axis_labels[i])
+                if i == 0:
+                    ax.legend(frameon=False, fontsize="small")
+
+            # Off-diagonals
+            for i in range(D):
+                for j in range(i + 1, D):
+                    ax = axes[j, i]  # lower triangle
+                    ax.plot(X_bg[:, i], X_bg[:, j], ",", alpha=background_alpha, ms=background_ms, color="0.5")
+                    if X_c.size:
+                        ax.plot(X_c[:, i], X_c[:, j], ",", alpha=cand_alpha, ms=cand_ms, color="C0")
+                    ax.plot(xq[i], xq[j], marker="+", ms=query_ms, color="fuchsia")
+                    if show_sigma_boxes and (sq is not None):
+                        wi = sigma_scale * float(sq[i])
+                        wj = sigma_scale * float(sq[j])
+                        if np.isfinite(wi) and np.isfinite(wj) and wi > 0 and wj > 0:
+                            ax.add_patch(plt.Rectangle((xq[i] - wi, xq[j] - wj),
+                                                       2 * wi, 2 * wj,
+                                                       fill=False, ec="k", lw=0.8, alpha=0.9))
+                    if j == D - 1:
+                        ax.set_xlabel(axis_labels[i])
+                    if i == 0:
+                        ax.set_ylabel(axis_labels[j])
+                    # hide upper triangle
+                    axes[i, j].axis("off")
+
+            title = "Candidates vs grid" + (f" [{title_suffix}]" if title_suffix else "")
+            if suptitle:
+                title = f"{title} – {suptitle}"
+            fig.suptitle(title)
+            fig.tight_layout()
+            return fig, axes
+
+            # end _make_pairplot
+
+        # Build native-space plot
+        out = {}
+        make_native = plot_space in ("native", "both")
+        make_trans = plot_space in ("transformed", "both") and has_transform
+
+        if make_native:
+            X_bg_nat = X[bg_idx][:, dims_plot]
+            X_c_nat = X[cand_idx][:, dims_plot] if cand_idx.size else np.empty((0, D))
+            figN, axN = _make_pairplot(
+                X_bg_nat, X_c_nat, xq_nat, sq_nat,
+                [names[d] for d in dims_plot],
+                "native"
+            )
+            if plot_space == "native":
+                return figN, axN, cand_idx, aux
+            out["native"] = (figN, axN)
+
+        # Transformed-space plot (if available)
+        if make_trans:
+            # transform background and candidates using the same transform the binner fitted
+            X_dims = X[:, dims_plot]
+            X_bg = X_dims[bg_idx]
+            X_c = X_dims[cand_idx] if cand_idx.size else np.empty((0, D))
+            X_bg_z = _apply_transform(X_bg, T)
+            X_c_z = _apply_transform(X_c, T) if X_c.size else X_c
+            xq_z = _apply_transform(xq_nat[None, :], T)[0]
+            sq_z = None if sq_nat is None else _sigma_to_space(sq_nat, T)
+            # label axes according to transform used
+            mode = (T.get("mode") or "none").lower()
+            if mode == "standardize":
+                labels = [f"z({names[d]})" for d in dims_plot]
+            elif mode == "pca_whiten":
+                labels = [f"PC{i+1}" for i in range(X_bg_z.shape[1])]
+            else:
+                labels = [names[d] for d in dims_plot]
+            figZ, axZ = _make_pairplot(
+                X_bg_z, X_c_z, xq_z, sq_z,
+                labels,
+                f"transformed: {mode}"
+            )
+            if plot_space == "transformed":
+                return figZ, axZ, cand_idx, aux
+            out["transformed"] = (figZ, axZ)
+
+        # If "both" requested but no transform available, we only had native
+        if plot_space == "both" and "transformed" not in out:
+            # gentle hint in the title that no transform was available
+            fig, axes = out["native"]
+            fig.suptitle(fig._suptitle.get_text() + " – no transform available")
+            return out, cand_idx, aux
+
+        return out, cand_idx, aux
 # ----------------------------
 # Rectangular multi-resolution binner
 # ----------------------------
@@ -454,7 +630,7 @@ class KDTreeBinner(BaseBinner):
     dims: List[int]
     transform: str = "standardize"
     pca_variance: float = 1.0
-    leafsize: int = 40
+    leafsize: int = 100
 
     _T: Dict[str, Any] = field(default_factory=dict)
     _tree: Optional[cKDTree] = field(default=None)
@@ -520,8 +696,8 @@ class KDTreeBinner(BaseBinner):
         else:
             s_z = s
         r = radius_factor * np.linalg.norm(s_z)
-        ind = self._tree.query_ball_point(xz, r=r)
-        ind = np.asarray(ind, dtype=object)[0]
+        ind = self._tree.query_ball_point(xz, r=r)        
+        ind = np.asarray(ind, dtype=object)
         if len(ind) == 0:
             # fallback to 1-NN
             _, ind2 = self._tree.query(xz, k=1)
