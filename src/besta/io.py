@@ -90,6 +90,9 @@ def _ini_string_to_dict(text):
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
 
+def available_memory_bytes() -> int:
+    return int(psutil.virtual_memory().available)
+
 def convert_bytes(size_bytes, to_unit):
     to_unit = to_unit.upper()
     if to_unit == 'B':
@@ -185,7 +188,7 @@ def check_array_memory(array_shape, dtype=np.float64, unit='MB', safety_margin=0
         raise ValueError(f"Invalid input parameters: {str(e)}")
     
     # Get available memory
-    available_mem = psutil.virtual_memory().available
+    available_mem = available_memory_bytes()
 
     # Add safety margin
     total_needed = required_mem * (1 + safety_margin)
