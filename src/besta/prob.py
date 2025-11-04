@@ -12,7 +12,12 @@ from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, List
 
 import numpy as np
-
+try:
+    from numba import njit, prange
+    NUMBA_OK = True
+except Exception:
+    NUMBA_OK = False
+    print("numba could not be imported")
 
 # ------------------------------- utilities -------------------------------
 
@@ -482,3 +487,66 @@ def posterior_over_models(x_native: np.ndarray,
     logZ = _logsumexp(logw)
     w = np.exp(logw - logZ)
     return w
+
+# Numba-dedicated likelihood
+
+@njit(parallel=True, fastmath=True, cache=True)
+def _quadform_diag_parallel(X, x, h):
+    N, P = X.shape
+    out = np.empty(N, dtype=np.float64)
+    invh = 1.0 / h
+    for i in prange(N):
+        s = 0.0
+        Xi = X[i]
+        # unrolled-style simple loop lets numba vectorise well
+        for j in range(P):
+            d = (Xi[j] - x[j]) * invh[j]
+            s += d * d
+        out[i] = s
+    return out  # squared Mahalanobis with diagonal covariance
+
+@njit(parallel=True, fastmath=True, cache=True)
+def _loglike_gaussprod_diag(X, x, h):
+    # log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2   (constants drop)
+    q = _quadform_diag_parallel(X, x, h)
+    return -0.5 * q
+
+class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
+    """
+    Diagonal Gaussian product likelihood accelerated with Numba.
+
+    log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2
+    """
+
+    def __init__(self, prefer_batch: bool = False):
+        self.prefer_batch = prefer_batch
+        if not NUMBA_OK:
+            print("[Numba] not available; falling back to base class")
+
+    def log_likelihood(self, x_native, sigma_native, X_models):
+        if not NUMBA_OK:
+            return super().log_likelihood(x_native, sigma_native, X_models)
+
+        # Expect C-contiguous float64 for best performance
+        x = np.ascontiguousarray(x_native, dtype=np.float64)
+        X = np.ascontiguousarray(X_models, dtype=np.float64)
+        h = np.ascontiguousarray(sigma_native, dtype=np.float64)
+
+        return _loglike_gaussprod_diag(X, x, h)
+
+    def log_likelihood_batched(self, Xq_native, Hq_native, X_models):
+        """
+        Optional batched path used by your fit_batch if you choose to add it.
+        Xq_native: (M,P) queries; Hq_native: (M,P) bandwidths; X_models: (N,P)
+        """
+        if not NUMBA_OK:
+            # fallback: loop queries with base class
+            out = np.empty((Xq_native.shape[0], X_models.shape[0]), dtype=float)
+            for m in range(Xq_native.shape[0]):
+                out[m] = super().log_likelihood(Xq_native[m], Hq_native[m], X_models)
+            return out
+
+        Xq = np.ascontiguousarray(Xq_native, dtype=np.float64)
+        Hq = np.ascontiguousarray(Hq_native, dtype=np.float64)
+        X  = np.ascontiguousarray(X_models, dtype=np.float64)
+        return _loglike_gaussprod_diag_batched(X, Xq, Hq)
