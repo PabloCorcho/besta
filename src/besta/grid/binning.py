@@ -9,12 +9,7 @@ import numpy as np
 from itertools import product
 from scipy.spatial import cKDTree
 
-# Optional: BESTA imports are only for typing hints and transforms
-try:
-    from besta.grid.core import ModelGrid
-except Exception:
-    ModelGrid = Any  # fallback to avoid circular import during tooling
-
+from besta.grid.grid import ModelGrid
 
 # ----------------------------
 # Utility transforms

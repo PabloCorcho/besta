@@ -24,7 +24,7 @@ from astropy.table import Table, Column
 from astropy.io import fits
 import h5py
 
-from besta.prob import (
+from besta.grid.prob import (
     Prior, FlatPrior, ObservableDependentPrior,
     Likelihood, GaussianProductLikelihood,
     posterior_over_models as posterior_over_models_fn,
