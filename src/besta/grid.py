@@ -6,17 +6,17 @@ Created on Mon Nov  3 16:16:53 2025
 @author: pcorchoc
 """
 
-# besta/grid/core.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Iterable, Mapping, Any
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 from abc import ABC, abstractmethod
 from itertools import product
 
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
@@ -24,24 +24,182 @@ from astropy.table import Table, Column
 from astropy.io import fits
 import h5py
 
-from prob import (
+from besta.prob import (
     Prior, FlatPrior, ObservableDependentPrior,
     Likelihood, GaussianProductLikelihood,
     posterior_over_models as posterior_over_models_fn,
 )
+from besta.postprocess import (
+    compute_fraction_from_map, pit_from_discrete_posterior,
+    hist_stats, photoz_metrics, weighted_quantiles)
 
-def _weighted_quantiles(x: np.ndarray, w: np.ndarray,
-                        qs: Sequence[float]) -> np.ndarray:
-    x = np.asarray(x); w = np.asarray(w)
-    m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
-    if not m.any():
-        return np.array([np.nan] * len(qs))
-    x = x[m]; w = w[m]
-    order = np.argsort(x)
-    x = x[order]; w = w[order]
-    cdf = np.cumsum(w); cdf = cdf / cdf[-1]
-    return np.interp(qs, cdf, x)
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
+def _chunk_ranges(n: int, batch_size: int):
+    """
+    Yield contiguous half-open index ranges covering [0, n).
+
+    Parameters
+    ----------
+    n : int
+        Total number of items.
+    batch_size : int
+        Maximum number of items per chunk. If None or invalid
+        (<= 0 or >= n), a single chunk (0, n) is yielded.
+
+    Yields
+    ------
+    start, stop : tuple of int
+        Half-open slice indices for the current chunk.
+    """
+    if batch_size is None or batch_size <= 0 or batch_size >= n:
+        yield 0, n
+        return
+    start = 0
+    while start < n:
+        stop = min(n, start + batch_size)
+        yield start, stop
+        start = stop
+
+def _fit_batch_cands_worker(args):
+    """
+    Worker for batch fit step 1: select candidate models for one query.
+
+    Parameters
+    ----------
+    args : tuple
+        (m, X_native, SIG_native, binner, target_factor, expand_factor, grid_n)
+
+    Returns
+    -------
+    m : int
+        Query index.
+    idx : ndarray of int
+        Candidate indices (unique, sorted).
+    lev : int or None
+        Level used by the binner, or None if no binner.
+    """
+    (m, X_native, SIG_native, binner, target_factor, expand_factor, grid_n) = args
+    if binner is None:
+        idx = np.arange(grid_n)
+        lev = None
+    else:
+        y_sub = X_native[binner.dims]
+        s_sub = SIG_native[binner.dims]
+        idx, lev = binner.candidates(
+            y_native=y_sub,
+            sigmas_native=s_sub,
+            target_factor=target_factor,
+            expand_factor=expand_factor,
+        )
+        if idx.size == 0:
+            idx = np.arange(grid_n)
+    return m, idx, lev
+
+def _fit_batch_post_worker(args):
+    """
+    Worker for batch fit step 2: compute posterior weights for one query.
+
+    Parameters
+    ----------
+    args : tuple
+        (m, X_m, SIG_m, idx, grid_dict, use_std, likelihood, prior, is_obs_dep_prior)
+        where:
+          m : int
+              Query index (for ordering results).
+          X_m : ndarray, shape (P,)
+              Query observables in native units.
+          SIG_m : ndarray, shape (P,)
+              Per-dimension uncertainties in native units.
+          idx : ndarray of int
+              Candidate model indices.
+          grid_dict : dict
+              Serializable dictionary with keys:
+              "observables", "targets", "weights", "_obs_mu", "_obs_sd".
+          use_std : bool
+              If True, evaluate in standardised space.
+          likelihood : Likelihood
+              Likelihood instance (must be picklable for process backend).
+          prior : Prior
+              Prior instance (must be picklable for process backend).
+          is_obs_dep_prior : bool
+              Whether the prior depends on observables.
+
+    Returns
+    -------
+    m : int
+        The input query index.
+    w : ndarray, shape (Nc,)
+        Normalised posterior weights over candidate models.
+    """
+    (m, X_m, SIG_m, idx, grid_dict,
+     use_std, likelihood, prior, is_obs_dep_prior) = args
+
+    Xc_native = grid_dict["observables"][idx]
+    Tc = grid_dict["targets"][idx]
+    wc = grid_dict["weights"][idx] if grid_dict["weights"] is not None else None
+
+    obs_mu = grid_dict.get("_obs_mu", None)
+    obs_sd = grid_dict.get("_obs_sd", None)
+
+    if use_std and (obs_mu is not None) and (obs_sd is not None):
+        x_eval = (X_m - obs_mu) / obs_sd
+        X_eval = (Xc_native - obs_mu) / obs_sd
+        sigma_eval = SIG_m / obs_sd
+        prior_obs = Xc_native  # native for priors depending on observables
+    else:
+        x_eval = X_m
+        X_eval = Xc_native
+        sigma_eval = SIG_m
+        prior_obs = Xc_native
+
+    # Prior
+    if is_obs_dep_prior:
+        logP = prior.log_prob_for_models(Tc, observables=prior_obs)
+    else:
+        logP = prior.log_prob_for_models(Tc)
+
+    # Likelihood
+    logL = likelihood.log_likelihood(x_eval, sigma_eval, X_eval)
+
+    logw = logL + logP
+    if wc is not None:
+        with np.errstate(divide="ignore"):
+            logw = logw + np.log(np.clip(wc, 1e-300, np.inf))
+    a = np.max(logw)
+    w = np.exp(logw - a)
+    s = w.sum()
+    w = w / s if s > 0 and np.isfinite(s) else np.full_like(w, 1.0 / w.size)
+    return m, w
+
+def _fit_batch_stats_worker(args):
+    """
+    Worker for batch fit step 3: compute one target's histogram and stats for one query.
+
+    Parameters
+    ----------
+    args : tuple
+        (m, j, bins, centers, candidates_m, posts_m, targets)
+        where j is the target column index.
+
+    Returns
+    -------
+    m : int
+        Query index.
+    post : ndarray, shape (K,)
+        Normalised posterior over target bins.
+    st : dict
+        Summary dictionary from `hist_stats(centers, post, ...)`.
+    """
+    (m, j, bins, centers, candidates_m, posts_m, targets) = args
+    y = targets[candidates_m, j]
+    hist, _ = np.histogram(y, bins=bins, weights=posts_m, density=False)
+    s = hist.sum()
+    post = hist / s if s > 0 else np.full_like(hist, 1.0 / hist.size)
+    st = hist_stats(centers, post, find_multimodal=False)
+    return m, post, st
 
 
 class ModelGridGenerator(ABC):
@@ -208,7 +366,7 @@ class ModelGrid:
             raise RuntimeError("fit_standardiser must be called before transform_observables")
         return (X - self._obs_mu) / self._obs_sd
 
-    # ------------ export helpers ------------
+    # ------------ I/O ------------
     def to_dict(self) -> Dict[str, Any]:
         """
         Serialise grid to a simple dictionary.
@@ -1038,59 +1196,98 @@ class GridFitter:
         if self.use_standardised and hasattr(self.grid, "fit_standardiser"):
             self.grid.fit_standardiser()
 
-    def _to_eval_space(self,
-                       x_native: np.ndarray,
-                       X_native: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def posterior_over_models(self,
+                              x_native: np.ndarray,
+                              sigma_native: np.ndarray,
+                              candidate_idx: Optional[np.ndarray] = None) -> np.ndarray:
         """
-        Map to evaluation space if standardisation is enabled.
+        Compute posterior weights over candidate models for one query.
+
+        This method evaluates log p(x | model) + log p(model) for a set of
+        candidate models and returns the normalised weights. If
+        use_standardised is True, observables are transformed to the
+        grid's standardised space for likelihood evaluation and the input
+        uncertainties are mapped to that same space. Priors that depend on
+        observables always receive native (non-standardised) observables.
+
+        Parameters
+        ----------
+        x_native : ndarray, shape (P,)
+            Query observables in native units and ordering matching
+            grid.observable_names.
+        sigma_native : ndarray, shape (P,)
+            Per-dimension measurement uncertainties for the query in native
+            units. If use_standardised is True, these are internally divided
+            by the grid standard deviations so they live in the same space as
+            the standardised observables.
+        candidate_idx : ndarray of int, optional
+            Indices of candidate models to consider. If None, all models in
+            the grid are used.
 
         Returns
         -------
-        x_eval : ndarray, shape (P,)
-        X_eval : ndarray, shape (Nc, P)
-        """
-        if self.use_standardised and hasattr(self.grid, "transform_observables"):
-            return (self.grid.transform_observables(x_native),
-                    self.grid.transform_observables(X_native))
-        return x_native, X_native
+        w : ndarray, shape (Nc,)
+            Posterior weights over the candidate set, normalised to sum to 1.
 
-    def posterior_over_models(self,
-                          x_native: np.ndarray,
-                          sigma_native: np.ndarray,
-                          candidate_idx: Optional[np.ndarray] = None) -> np.ndarray:
+        Raises
+        ------
+        RuntimeError
+            If use_standardised is True and the grid standardiser has not been
+            fitted (fit_standardiser must be called before).
+        ValueError
+            If any derived bandwidth (from sigma) is non positive or not finite,
+            depending on the Likelihood implementation.
+
+        Notes
+        -----
+        1. Consistent spaces: when use_standardised is True, the likelihood is
+        evaluated with standardised observables and uncertainties
+        (x_eval, X_eval, sigma_eval). When False, evaluation is done in
+        native space.
+        2. Observable dependent priors: priors that require observables are
+        passed native observables to avoid feeding z-scored magnitudes or
+        colours into priors defined in native units (for example p(z | VIS)).
+        3. Model weights: if the grid has per-model sampling weights, they are
+        multiplied into the posterior before normalisation.
+
+        See Also
+        --------
+        posterior_over_models_fn : Backend routine that combines likelihood and prior.
+        """
+        # Select model candidates
         idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
-        Xc_native = self.grid.observables[idx]
+        x_models_native = self.grid.observables[idx]
         Tc = self.grid.targets[idx]
         wc = self.grid.weights[idx] if getattr(self.grid, "weights", None) is not None else None
-    
+
         # Map to evaluation space if requested
         if self.use_standardised and hasattr(self.grid, "transform_observables"):
             x_eval = self.grid.transform_observables(x_native)
-            X_eval = self.grid.transform_observables(Xc_native)
+            x_models_eval = self.grid.transform_observables(x_models_native)
             if self.grid._obs_sd is None:
                 raise RuntimeError("standardiser is not fitted")
             sigma_eval = sigma_native / self.grid._obs_sd
-            # Priors that depend on observables must see NATIVE observables
-            prior_obs = Xc_native
+            # Priors that depend on observables must see native observables
+            prior_obs = x_models_native
         else:
             x_eval = x_native
-            X_eval = Xc_native
+            x_models_eval = x_models_native
             sigma_eval = sigma_native
-            prior_obs = Xc_native
-    
+            prior_obs = x_models_native
+
         # Detect priors that need observables
         prior_needs_obs = isinstance(self.prior, ObservableDependentPrior)
-    
+
         w = posterior_over_models_fn(
             x_native=x_eval,
-            sigma_native=sigma_eval,          # now in the SAME space as x_eval/X_eval
-            X_models=X_eval,
+            sigma_native=sigma_eval,
+            X_models=x_models_eval,
             targets_models=Tc,
             likelihood=self.likelihood,
             prior=self.prior,
             model_weights=wc,
             prior_needs_observables=prior_needs_obs,
-            observables_models=prior_obs,     # NATIVE for priors like p(z|m)
+            observables_models=prior_obs,
         )
         return w
 
@@ -1125,7 +1322,9 @@ class GridFitter:
             Bin centers.
         """
         idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
-        w = self.posterior_over_models(x_native=x_native, sigma_native=sigma_native, candidate_idx=idx)
+        w = self.posterior_over_models(x_native=x_native,
+                                       sigma_native=sigma_native,
+                                       candidate_idx=idx)
 
         if isinstance(target_col, str):
             try:
@@ -1143,65 +1342,228 @@ class GridFitter:
         return post, centers
 
     def fit_batch(self,
-                  X_native: np.ndarray,
-                  SIG_native: np.ndarray,
-                  binner: Any | None = None,
-                  target_factor: float = 2.0,
-                  expand_factor: float = 2.0) -> Dict[str, Any]:
+                X_native: np.ndarray,
+                SIG_native: np.ndarray,
+                binner: Any | None = None,
+                target_factor: float = 2.0,
+                expand_factor: float = 2.0,
+                n_jobs: int = 1,
+                backend: str = "thread",
+                stats_for: Optional[Sequence[int | str]] = None,
+                stats_bins: Optional[Sequence[np.ndarray]] = None,
+                find_multimodal: bool = False,
+                return_posts_for_stats: bool = False,
+                batch_size: Optional[int] = None,
+                verbose: bool = True) -> dict:
         """
-        Evaluate model posteriors for multiple queries.
+        Evaluate model posteriors for multiple queries with parallel steps 1, 2, 3,
+        supporting chunked execution and progress prints.
 
         Parameters
         ----------
         X_native : ndarray, shape (M, P)
-            Query observables in native units.
         SIG_native : ndarray, shape (M, P)
-            Per-object uncertainties in native units.
         binner : object, optional
-            Candidate selector with method:
-              candidates(y_native, sigmas_native, target_factor, expand_factor)
-            returning (indices, level_used).
         target_factor : float, optional
-            Passed to binner for level choice.
         expand_factor : float, optional
-            Passed to binner for neighbourhood expansion.
+        n_jobs : int, optional
+            Number of workers. Default 1.
+        backend : {"thread","process"}, optional
+            Backend for Step 2 (posteriors). Steps 1 and 3 use threads.
+        stats_for : sequence of str or int, optional
+            Targets to summarise.
+        stats_bins : sequence of ndarray, optional
+            Bin edges per target.
+        find_multimodal : bool, optional
+        return_posts_for_stats : bool, optional
+        batch_size : int or None, optional
+            Number of queries per chunk. Default None uses a single chunk.
+        verbose : bool, optional
+            Print progress information.
 
         Returns
         -------
         out : dict
-            Keys:
-              post_models : list of arrays, posterior weights per query
-              candidates  : list of index arrays per query
-              levels      : list of ints or None
+            post_models, candidates, levels, and optionally stats, posts_target.
+        
+        Notes
+        -----
+        Parallel backends
+            Step 1 (candidate selection) and Step 3 (target stats) use a thread pool.
+            Step 2 (posterior evaluation) can use threads or processes via `backend`.
+            Many `Likelihood` or `Prior` implementations are not picklable, so
+            `backend="process"` may raise pickling errors. In that case, use
+            `backend="thread"` or provide picklable implementations.
+
+        Numeric stability
+            If `SIG_native` contains zero or extremely small values, consider passing
+            a positive floor to your Likelihood or pre-clipping sigmas before calling
+            `fit_batch` to avoid degenerate bandwidths.
         """
         M, P = X_native.shape
-        posts, cands, levels = [], [], []
+        posts, cands, levels = [None] * M, [None] * M, [None] * M
 
-        for m in range(M):
-            idx = None
-            lev = None
-            if binner is not None:
-                y_sub = X_native[m, binner.dims]
-                s_sub = SIG_native[m, binner.dims]
-                idx, lev = binner.candidates(
-                    y_native=y_sub,
-                    sigmas_native=s_sub,
-                    target_factor=target_factor,
-                    expand_factor=expand_factor,
+        M, P = X_native.shape
+        posts: List[np.ndarray] = [None] * M
+        cands: List[np.ndarray] = [None] * M
+        levels: List[Optional[int]] = [None] * M
+
+        # ---------------- Step 1: candidates (threaded, chunked) ----------------
+        if verbose:
+            print(f"[Step 1/3] Selecting candidates for {M} queries "
+                f"(n_jobs={n_jobs}, chunk_size={batch_size})")
+
+        for s, e in _chunk_ranges(M, batch_size):
+            if verbose:
+                print(f"  - candidates chunk {s}:{e}")
+            if n_jobs == 1 or binner is None:
+                for m in range(s, e):
+                    _, idx, lev = _fit_batch_cands_worker(
+                        (m, X_native[m], SIG_native[m], binner,
+                        target_factor, expand_factor, self.grid.n_models)
+                    )
+                    cands[m] = idx; levels[m] = lev
+            else:
+                with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
+                    futs = {
+                        ex.submit(_fit_batch_cands_worker,
+                                (m, X_native[m], SIG_native[m], binner,
+                                target_factor, expand_factor, self.grid.n_models)): m
+                        for m in range(s, e)
+                    }
+                    for fut in as_completed(futs):
+                        m, idx, lev = fut.result()
+                        cands[m] = idx; levels[m] = lev
+
+        # ---------------- Step 2: posteriors (thread or process, chunked) -------
+        if verbose:
+            print(f"[Step 2/3] Evaluating posteriors "
+                f"(backend={backend}, n_jobs={n_jobs}, chunk_size={batch_size})")
+
+        if backend == "process":
+            # Check if objects can be pickled
+            try:
+                import pickle
+                pickle.dumps((self.likelihood, self.prior))
+            except Exception as e:
+                if verbose:
+                    print("[fit_batch] prior/likelihood are not picklable; "
+                        "falling back to thread backend. Reason:", repr(e))
+                backend = "thread"
+            
+        if n_jobs == 1:
+            for s, e in _chunk_ranges(M, batch_size):
+                if verbose:
+                    print(f"  - posteriors chunk {s}:{e}")
+                for m in range(s, e):
+                    posts[m] = self.posterior_over_models(
+                        x_native=X_native[m],
+                        sigma_native=SIG_native[m],
+                        candidate_idx=cands[m],
+                    )
+        else:
+            grid_dict = {
+                "observables": self.grid.observables,
+                "targets": self.grid.targets,
+                "weights": self.grid.weights,
+                "_obs_mu": getattr(self.grid, "_obs_mu", None),
+                "_obs_sd": getattr(self.grid, "_obs_sd", None),
+            }
+            is_obs_dep_prior = isinstance(self.prior, ObservableDependentPrior)
+            Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+
+            for s, e in _chunk_ranges(M, batch_size):
+                if verbose:
+                    print(f"  - posteriors chunk {s}:{e}")
+                args_iter = (
+                    (m, X_native[m], SIG_native[m], cands[m], grid_dict,
+                    self.use_standardised, self.likelihood, self.prior, is_obs_dep_prior)
+                    for m in range(s, e)
                 )
-                if idx.size == 0:
-                    idx = np.arange(self.grid.n_models)
+                with Executor(max_workers=max(1, int(n_jobs))) as ex:
+                    futs = {ex.submit(_fit_batch_post_worker, a): a[0] for a in args_iter}
+                    for fut in as_completed(futs):
+                        m, w = fut.result()
+                        posts[m] = w
 
-            w = self.posterior_over_models(
-                x_native=X_native[m],
-                sigma_native=SIG_native[m],
-                candidate_idx=idx,
-            )
-            posts.append(w)
-            cands.append(idx if idx is not None else np.arange(self.grid.n_models))
-            levels.append(lev)
+        # ---------------- Step 3: multi-target stats (threaded, chunked) --------
+        stats = {}
+        posts_target = {}
 
-        return {"post_models": posts, "candidates": cands, "levels": levels}
+        if stats_for is not None:
+            if stats_bins is None or len(stats_for) != len(stats_bins):
+                raise ValueError("stats_bins must be provided and match stats_for length")
+
+            if verbose:
+                tnames = [t if isinstance(t, str) else self.grid.target_names[int(t)]
+                        for t in stats_for]
+                print(f"[Step 3/3] Computing stats for targets: {tnames} "
+                    f"(n_jobs={n_jobs}, chunk_size={batch_size})")
+
+            for tname, bins in zip(stats_for, stats_bins):
+                if isinstance(tname, str):
+                    j = self.grid.target_names.index(tname)
+                    key = tname
+                else:
+                    j = int(tname)
+                    key = self.grid.target_names[j]
+
+                K = len(bins) - 1
+                centers = 0.5 * (bins[:-1] + bins[1:])
+                mean = np.empty(M); std = np.empty(M); vmap = np.empty(M)
+                lo68 = np.empty(M); hi68 = np.empty(M)
+                q16 = np.empty(M); q50 = np.empty(M); q84 = np.empty(M)
+                nmodes = np.empty(M, int)
+                posts_k = np.zeros((M, K), dtype=float)
+
+                for s, e in _chunk_ranges(M, batch_size):
+                    if verbose:
+                        print(f"  - stats[{key}] chunk {s}:{e}")
+                    if n_jobs == 1:
+                        for m in range(s, e):
+                            y = self.grid.targets[cands[m], j]
+                            hist, _ = np.histogram(y, bins=bins, weights=posts[m], density=False)
+                            post = hist / hist.sum() if hist.sum() > 0 else np.full_like(hist, 1.0 / hist.size)
+                            posts_k[m] = post
+                            st = hist_stats(centers, post, find_multimodal=find_multimodal)
+                            mean[m], std[m], vmap[m] = st["mean"], st["std"], st["map"]
+                            lo68[m], hi68[m] = st["lo68"], st["hi68"]
+                            q16[m], q50[m], q84[m] = st["q"]
+                            nmodes[m] = len(st.get("modes", [st["map"]])) if find_multimodal else 1
+                    else:
+                        with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
+                            futs = {
+                                ex.submit(_fit_batch_stats_worker,
+                                        (m, j, bins, centers, cands[m], posts[m], self.grid.targets)): m
+                                for m in range(s, e)
+                            }
+                            for fut in as_completed(futs):
+                                m, post, st = fut.result()
+                                posts_k[m] = post
+                                mean[m], std[m], vmap[m] = st["mean"], st["std"], st["map"]
+                                lo68[m], hi68[m] = st["lo68"], st["hi68"]
+                                q16[m], q50[m], q84[m] = st["q"]
+                                nmodes[m] = len(st.get("modes", [st["map"]])) if find_multimodal else 1
+
+                stats[key] = {
+                    "centers": centers,
+                    "mean": mean, "std": std, "map": vmap,
+                    "q16": q16, "q50": q50, "q84": q84,
+                    "lo68": lo68, "hi68": hi68,
+                    "nmodes": nmodes,
+                }
+                if return_posts_for_stats:
+                    posts_target[key] = posts_k
+
+        out = {"post_models": posts, "candidates": cands, "levels": levels}
+        if stats:
+            out["stats"] = stats
+        if return_posts_for_stats and posts_target:
+            out["posts_target"] = posts_target
+        if verbose:
+            print("fit_batch complete.")
+        return out
+
 
     def corner_for_targets(self,
                            x_native: np.ndarray,
@@ -1213,6 +1575,7 @@ class GridFitter:
                            figsize: Optional[Tuple[float, float]] = None,
                            suptitle: Optional[str] = None,
                            color: Optional[str] = None,
+                           kappa_sigma_edges: float = 5.0,
                            alpha_hist: float = 0.6,
                            alpha_mesh: float = 1.0,
                            quantiles: Tuple[float, float, float] = (0.16, 0.5, 0.84),
@@ -1271,26 +1634,30 @@ class GridFitter:
 
         if figsize is None:
             figsize = (2.2 * D, 2.2 * D)
-        fig, axes = plt.subplots(D, D, figsize=figsize, squeeze=False)
+        fig, axes = plt.subplots(D, D, figsize=figsize, squeeze=False,
+                                 sharex="col")
 
         # Weighted summaries
         q = np.zeros((D, 3))
         mu = np.zeros(D)
         for d in range(D):
-            q[d] = _weighted_quantiles(Y[:, d], w, quantiles)
+            q[d] = weighted_quantiles(Y[:, d], w, quantiles)
             mu[d] = np.sum(w * Y[:, d])
 
         # Diagonals
+        all_edges = []
         for i in range(D):
             ax = axes[i, i]
             bi = bins_list[i]
             if isinstance(bi, int):
-                lo, hi = _weighted_quantiles(Y[:, i], w, (0.01, 0.99))
+                lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
-                edges = np.linspace(lo, hi, bi + 1)
+                edges = np.linspace(mid - kappa_sigma_edges * (mid - lo),
+                                    mid + kappa_sigma_edges * (hi - mid), bi + 1)
             else:
                 edges = np.asarray(bi)
+            all_edges.append(edges)
             hist, _ = np.histogram(Y[:, i], bins=edges, weights=w)
             width = np.diff(edges)
             dens = hist / (np.sum(hist) * width if np.sum(hist) > 0 else width)
@@ -1301,32 +1668,24 @@ class GridFitter:
                 ax.axvline(true_target_vals[i], color="r")
             for qv in q[i]:
                 ax.axvline(qv, ls="--", lw=1.0, color=color)
-            ax.set_yticks([])
-            ax.set_xlabel(names[i])
 
         # Lower triangle
         for i in range(1, D):
             for j in range(i):
                 ax = axes[i, j]
-                bi = bins_list[j]; bj = bins_list[i]
-                if isinstance(bi, int):
-                    lo, hi = _weighted_quantiles(Y[:, j], w, (0.01, 0.99))
-                    xedges = np.linspace(lo, hi, bi + 1)
-                else:
-                    xedges = np.asarray(bi)
-                if isinstance(bj, int):
-                    lo, hi = _weighted_quantiles(Y[:, i], w, (0.01, 0.99))
-                    yedges = np.linspace(lo, hi, bj + 1)
-                else:
-                    yedges = np.asarray(bj)
+                xedges = all_edges[j]
+                yedges = all_edges[i]
                 H, xe, ye = np.histogram2d(
                     Y[:, j], Y[:, i], bins=[xedges, yedges], weights=w)
+                xb = (xedges[:-1] + xedges[1:]) / 2
+                yb = (yedges[:-1] + yedges[1:]) / 2
                 ax.pcolormesh(xe, ye, H.T, shading="auto", alpha=alpha_mesh,
                               norm=LogNorm())
+                frac = compute_fraction_from_map(H, xedges=xedges, yedges=yedges)
+                ax.contour(xb, yb, frac.T, colors=["b", "r"], levels=[0.05, 0.32])
+
                 if i == D - 1:
                     ax.set_xlabel(names[j])
-                else:
-                    ax.set_xticklabels([])
                 if j == 0:
                     ax.set_ylabel(names[i])
                 else:
@@ -1336,7 +1695,8 @@ class GridFitter:
         for i in range(D):
             for j in range(i + 1, D):
                 axes[i, j].axis("off")
-        axes[0, 0].set_title(f"No. of candidate models: {w.size}")
+        axes[0, 0].set_title(f"No. of\ncandidate models: {w.size}",
+                             fontsize="small")
         if suptitle:
             fig.suptitle(suptitle)
         fig.tight_layout()
@@ -1351,3 +1711,29 @@ class GridFitter:
 
         summary = {"names": names, "q": q, "mean": mu, "cov": cov, "corr": corr}
         return fig, axes, summary
+
+    @staticmethod
+    def compute_pit(z_true: np.ndarray,
+                    posts: np.ndarray,
+                    edges: np.ndarray) -> np.ndarray:
+        """
+        PIT values from discrete posteriors.
+
+        Parameters
+        ----------
+        z_true : ndarray, shape (N,)
+        posts : ndarray, shape (N, K)
+        edges : ndarray, shape (K+1,)
+
+        Returns
+        -------
+        pit : ndarray, shape (N,)
+        """
+        return pit_from_discrete_posterior(z_true, posts, edges)
+    
+    @staticmethod
+    def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
+        """
+        Standard photo-z metrics on z_true vs point estimates.
+        """
+        return photoz_metrics(z_true, z_est)
