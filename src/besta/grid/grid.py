@@ -326,7 +326,7 @@ class ModelGrid:
         return self.targets.shape[1]
 
     # ------------ views and subsets ------------
-    def select(self, idx: np.ndarray) -> "ModelGrid":
+    def select(self, idx: np.ndarray, observables=None, targets=None) -> "ModelGrid":
         """
         Return a new ModelGrid containing a subset of models.
 
@@ -341,11 +341,20 @@ class ModelGrid:
             Subset grid view (copies arrays).
         """
         w = None if self.weights is None else self.weights[idx].copy()
+        if observables is None or len(observables) == 0:
+            observables = self.observable_names
+        if isinstance(observables[0], str):
+            observables = [self.observable_names.index(n) for n in observables]
+        if targets is None or len(targets) == 0:
+            targets = self.target_names
+        if isinstance(targets[0], str):
+            targets = [self.target_names.index(n) for n in targets]
+
         return ModelGrid(
-            observables=self.observables[idx].copy(),
-            targets=self.targets[idx].copy(),
-            observable_names=list(self.observable_names),
-            target_names=list(self.target_names),
+            observables=self.observables[idx][:, observables].copy(),
+            targets=self.targets[idx][:, targets].copy(),
+            observable_names=[self.observable_names[o] for o in observables],
+            target_names=[self.target_names[t] for t in targets],
             weights=w,
             meta=dict(self.meta),
         )
