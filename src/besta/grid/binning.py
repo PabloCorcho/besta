@@ -778,9 +778,8 @@ class KDTreeBinner(BaseBinner):
         else:
             s_z = s
         r = float(radius_factor) * float(np.linalg.norm(s_z))
-        idx_list = self._tree.query_ball_point(xz, r=r)
-        # cKDTree returns a list (one per query); we have one query
-        inds = np.asarray(idx_list[0] if isinstance(idx_list, list) else idx_list, dtype=np.int64)
+        inds = self._tree.query_ball_point(xz, r=r)
+        inds = np.asarray(inds, dtype=np.int64)
         if inds.size == 0:
             # fallback to 1-NN
             _, ind2 = self._tree.query(xz, k=1)
