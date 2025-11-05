@@ -31,12 +31,14 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
     Returns
     -------
     t : dict
-        Contains keys: mode, mu, sd, W, b, kept_dims.
+        Transformation. Contains keys: mode, mu, sd, W, b, kept_dims.
     """
     mode = (mode or "standardize").lower()
     if mode == "none":
-        return {"mode": "none", "mu": None, "sd": None, "W": None, "b": None, "kept_dims": slice(None)}
+        return {"mode": "none", "mu": None, "sd": None, "W": None,
+                "b": None, "kept_dims": slice(None)}
 
+    # Training dataset
     X = np.asarray(dims_array, float)
     mu = np.nanmean(X, axis=0)
     Xc = X - mu
@@ -45,11 +47,13 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
         sd = np.nanstd(Xc, axis=0, ddof=0)
         sd = np.where(sd == 0.0, 1.0, sd)
         # y = (x - mu) / sd
-        return {"mode": "standardize", "mu": mu, "sd": sd, "W": None, "b": None, "kept_dims": slice(None)}
+        return {"mode": "standardize", "mu": mu, "sd": sd, "W": None, "b": None,
+                "kept_dims": slice(None)}
 
     if mode == "pca_whiten":
-        # PCA on covariance of centered data (stable via SVD)
-        U, S, Vt = np.linalg.svd(Xc / np.sqrt(max(1, Xc.shape[0] - 1)), full_matrices=False)
+        # PCA on covariance of centered data
+        U, S, Vt = np.linalg.svd(Xc / np.sqrt(max(1, Xc.shape[0] - 1)),
+                                 full_matrices=False)
         eigvals = S**2
         cum = np.cumsum(eigvals) / np.sum(eigvals) if np.sum(eigvals) > 0 else np.ones_like(eigvals)
         r = int(np.searchsorted(cum, float(pca_variance)) + 1)
@@ -58,12 +62,14 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
         lambdar = eigvals[:r]            # r
         inv_sqrt = 1.0 / np.sqrt(np.where(lambdar > 0, lambdar, 1.0))
         W = (Vr * inv_sqrt[:, None])     # r x D
-        return {"mode": "pca_whiten", "mu": mu, "sd": None, "W": W, "b": None, "kept_dims": np.arange(r)}
+        return {"mode": "pca_whiten", "mu": mu, "sd": None, "W": W, "b": None,
+                "kept_dims": np.arange(r)}
 
     raise ValueError(f"Unknown transform mode: {mode}")
 
 
 def _apply_transform(X: np.ndarray, T: Dict[str, Any]) -> np.ndarray:
+    """Apply a transformation to a set in native space."""
     m = T["mode"]
     if m == "none":
         return X
@@ -75,6 +81,7 @@ def _apply_transform(X: np.ndarray, T: Dict[str, Any]) -> np.ndarray:
 
 
 def _chunk_ranges(n: int, batch_size: Optional[int]):
+    """Provide the starting and end indices of a batch."""
     if batch_size is None or batch_size <= 0 or batch_size >= n:
         yield 0, n
         return
@@ -98,6 +105,7 @@ def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
         return np.sqrt(np.clip((W**2) @ (sig_native**2), 1e-12, np.inf))
     # Fallback
     return sig_native
+
 # ----------------------------
 # Base interface
 # ----------------------------
@@ -133,19 +141,36 @@ class BaseBinner:
     def load(cls, path: str) -> "BaseBinner":
         raise NotImplementedError
 
-    # convenience
+    @staticmethod
+    def _norm_candidate_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        # Fill reasonable defaults and ignore unknowns gracefully
+        out = {
+            "select_by": kwargs.get("select_by", "sigma"),
+            "target_factor": float(kwargs.get("target_factor", 2.0)),
+            "expand_factor": float(kwargs.get("expand_factor", 2.0)),
+            "target_k": kwargs.get("target_k", None),
+            "k": kwargs.get("k", None),
+            "radius_factor": float(kwargs.get("radius_factor", 2.0)),
+            "max_expand_steps": int(kwargs.get("max_expand_steps", 4)),
+        }
+        return out
+
     def batch_candidates(self,
                          Y_native: np.ndarray,
                          SIG_native: Optional[np.ndarray] = None,
                          batch_size: Optional[int] = None,
                          **kwargs) -> Tuple[List[np.ndarray], List[Optional[int]]]:
+        """Select candidates in batch."""
         M = Y_native.shape[0]
-        out_idx: List[np.ndarray] = [None] * M  # type: ignore
+        out_idx: List[np.ndarray] = [None] * M
         out_aux: List[Optional[int]] = [None] * M
+        # Loop over all elements
         for s, e in _chunk_ranges(M, batch_size):
             for m in range(s, e):
                 sig = None if SIG_native is None else SIG_native[m]
-                idx, aux = self.candidates(Y_native[m], sig, **kwargs)
+                # normalize once here so subclasses can assume the unified keys
+                norm_kwargs = self._norm_candidate_kwargs(kwargs)
+                idx, aux = self.candidates(Y_native[m], sig, **norm_kwargs)
                 out_idx[m] = idx
                 out_aux[m] = aux
         return out_idx, out_aux
@@ -175,12 +200,14 @@ class BaseBinner:
         """
         Pairwise visualisation of binner candidates versus the model grid.
 
-        New
-        ---
-        plot_space: choose "native", "transformed", or "both". Transformed space
-        uses the binner's learned transform (if any): standardize or pca_whiten.
-        When "both" is selected, returns a dict with keys "native" and "transformed",
-        each mapping to (fig, axes). Candidate indices and aux are returned separately.
+        Parameters
+        ----------
+        grid : ModelGrid
+        y_native : np.ndarray
+        sigmas_native : np.ndarray
+        dims_plot : list of int, optional
+        candidate_kwargs : dict, optional
+        TODO
         """
         # Resolve dims to plot
         P = grid.n_observables
@@ -313,6 +340,7 @@ class BaseBinner:
             return out, cand_idx, aux
 
         return out, cand_idx, aux
+
 # ----------------------------
 # Rectangular multi-resolution binner
 # ----------------------------
@@ -371,6 +399,8 @@ class RectBinner(BaseBinner):
         self._dims = list(value)
 
     def fit(self, grid: ModelGrid) -> "RectBinner":
+        """Fit the binner"""
+        # Select a subset of the grid dimensions
         X = np.asarray(grid.observables[:, self.dims], float)
         self._grid_n = X.shape[0]
         # fit transform
@@ -378,44 +408,48 @@ class RectBinner(BaseBinner):
         Xz = _apply_transform(X, self._T)
         self._D_eff = Xz.shape[1]
 
+        self._edges = []
+        self._layers = []
+        # Store the characteristic bin size per level and dimension
+        self._level_bin_size = np.full((self.levels, self._D_eff),
+                                       fill_value=np.nan)
         # bounds per dim to build edges
         if self.edges_mode == "quantile":
-            self._edges = []
-            self._layers = []
             for lev in range(self.levels):
+                # Number of bins at this level
                 n_bins = self.base_bins * (2 ** lev)
                 q = np.linspace(0.0, 1.0, n_bins + 1)
-                edges = []
-                for d in range(self._D_eff):
-                    xd = Xz[:, d]
-                    ed = np.quantile(xd, q, method="linear")
-                    span = ed[-1] - ed[0]
-                    pad = 1e-6 * (span if span > 0 else 1.0)
-                    ed[0] -= pad; ed[-1] += pad
-                    edges.append(ed.astype(float))
+                edges = np.quantile(Xz, q, axis=0, method="linear").T
+                span = edges[:, -1] - edges[:, 0]
+                pad = np.where(span > 0, 1e-6 * span, 1.0)
+                edges[:, 0] -= pad
+                edges[:, -1] += pad                 
+                self._level_bin_size[lev] = np.diff(edges, axis=1).mean(axis=1)
                 self._edges.append(edges)
 
                 # assign cells
                 cell_idx = self._digitize_nd(Xz, edges)  # (N, D_eff)
                 keys = [tuple(cell_idx[i]) for i in range(Xz.shape[0])]
-                layer: Dict[Tuple[int, ...], List[int]] = {}
+                layer = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
                 self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
+
         elif self.edges_mode == "linear":
-            self._edges = []
-            self._layers = []
             lo = np.nanmin(Xz, axis=0)
             hi = np.nanmax(Xz, axis=0)
             pad = 0.01 * (hi - lo + 1e-6)
-            lo -= pad; hi += pad
+            lo -= pad
+            hi += pad
             for lev in range(self.levels):
                 n_bins = self.base_bins * (2 ** lev)
-                edges = [np.linspace(lo[d], hi[d], n_bins + 1) for d in range(self._D_eff)]
+                edges = np.array(
+                    [np.linspace(lo[d], hi[d], n_bins + 1) for d in range(self._D_eff)])
+                self._level_bin_size[lev] = np.diff(edges, axis=1).mean(axis=1)
                 self._edges.append(edges)
                 cell_idx = self._digitize_nd(Xz, edges)
                 keys = [tuple(cell_idx[i]) for i in range(Xz.shape[0])]
-                layer: Dict[Tuple[int, ...], List[int]] = {}
+                layer = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
                 self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
@@ -425,22 +459,17 @@ class RectBinner(BaseBinner):
 
     @staticmethod
     def _digitize_nd(X: np.ndarray, edges_per_dim: List[np.ndarray]) -> np.ndarray:
-        idxs = []
-        for d, ed in enumerate(edges_per_dim):
-            j = np.digitize(X[:, d], ed) - 1
-            j = np.clip(j, 0, len(ed) - 2)
-            idxs.append(j)
-        return np.stack(idxs, axis=1)
+        return np.stack(
+            [np.clip(np.digitize(X[:, d], ed) - 1, 0, len(ed) - 2) for d, ed in enumerate(edges_per_dim)],
+            axis=1)
 
-    def _choose_level_by_sigma(self, sig_trans: np.ndarray, target_factor: float = 2.0) -> int:
-        best_lev, best_score = 0, np.inf
-        for lev in range(self.levels):
-            widths = np.array([np.diff(e).mean() for e in self._edges[lev]])
-            target = target_factor * sig_trans
-            score = np.mean(np.abs(np.log((widths + 1e-12) / (target + 1e-12))))
-            if score < best_score:
-                best_score = score
-                best_lev = lev
+    def _choose_level_by_sigma(self, sig_trans: np.ndarray,
+                               target_factor: float = 2.0) -> int:
+        """Choose the binning level given an vector of uncertainties."""
+        target = target_factor * sig_trans
+        score = np.sum(
+            np.log((self._level_bin_size + 1e-12) / (target + 1e-12)), axis=1)
+        best_lev = np.argmin(score)
         return best_lev
 
     def _choose_level_by_targetK(self, y_trans: np.ndarray, target_k: int) -> int:
@@ -449,16 +478,10 @@ class RectBinner(BaseBinner):
             cell = self._digitize_nd(y_trans[None, :], edges)[0]
             layer = self._layers[lev]
             n_here = len(layer.get(tuple(cell), ()))
-            if n_here >= max(1, target_k):
+            if n_here >= target_k:
                 return lev
-        best_lev, best_n = 0, -1
-        for lev in range(self.levels):
-            edges = self._edges[lev]
-            cell = self._digitize_nd(y_trans[None, :], edges)[0]
-            n_here = len(self._layers[lev].get(tuple(cell), ()))
-            if n_here > best_n:
-                best_n, best_lev = n_here, lev
-        return best_lev
+        # Otherwise return the lowest level
+        return lev
 
     def _expand_neighbour_keys(self,
                                y_trans: np.ndarray,
@@ -468,7 +491,7 @@ class RectBinner(BaseBinner):
                                min_keys_radius: int = 0) -> List[Tuple[int, ...]]:
         edges = self._edges[lev]
         cell = self._digitize_nd(y_trans[None, :], edges)[0]
-        widths = np.array([np.diff(e).mean() for e in edges])
+        widths = self._level_bin_size[lev]
         if sig_trans is not None:
             half_span = np.ceil((expand_factor * sig_trans) / widths).astype(int)
         else:
@@ -481,48 +504,68 @@ class RectBinner(BaseBinner):
     def candidates(self,
                    y_native: np.ndarray,
                    sigmas_native: Optional[np.ndarray] = None,
+                   *,
+                   select_by: str = "sigma",
                    target_factor: float = 2.0,
                    expand_factor: float = 2.0,
                    target_k: Optional[int] = None,
+                   k: Optional[int] = None,
+                   radius_factor: float = 2.0,
                    max_expand_steps: int = 4) -> Tuple[np.ndarray, int]:
         """
-        Retrieve candidate model indices around y_native.
+        Unified candidate selector (RectBinner).
 
-        Two modes:
-        - If target_k is None: choose level by sigma and expand by expand_factor * sigma.
-        - If target_k is not None: choose level to match target_k in the base cell and
-          expand isotropically in key space until reaching target_k.
-
-        Returns
-        -------
-        idx : ndarray of int
-        aux : int (the level used)
+        Modes
+        -----
+        select_by = "sigma":
+            Use sigmas in transformed space, choose level by `target_factor`,
+            expand by `expand_factor * sigma`.
+        select_by = "target_k":
+            Choose level that yields >= target_k in the base cell and expand
+            isotropically (by cell radius) up to `max_expand_steps` if needed.
+        select_by = "knn":
+            Approximated via "target_k" with target_k = k (no geometric kNN here).
+        select_by = "radius":
+            Equivalent to "sigma" using `expand_factor = radius_factor`.
         """
-        Xq = np.asarray(y_native[self.dims], float)
+        # Normalize/bridge modes to RectBinner's native behaviours
+        mode = (select_by or "sigma").lower()
+        if mode == "knn":
+            # Best RectBinner equivalent is "target_k"
+            if k is None or int(k) <= 0:
+                k = 1
+            target_k = int(k)
+            mode = "target_k"
+        elif mode == "radius":
+            # Map radius-based request onto sigma expansion
+            expand_factor = float(radius_factor)
+            mode = "sigma"
+
+        # Build transformed query and sigma
+        Xq = y_native[self.dims]
         y_trans = _apply_transform(Xq[None, :], self._T)[0]
+        sig_trans = None
         if sigmas_native is not None:
-            s_native = np.asarray(sigmas_native[self.dims], float)
-            mode = self._T["mode"]
-            if mode == "none":
-                sig_trans = s_native
-            elif mode == "standardize":
+            s_native = sigmas_native[self.dims]
+            tmode = self._T.get("mode", "none")
+            if tmode == "standardize":
                 sig_trans = s_native / self._T["sd"]
-            elif mode == "pca_whiten":
-                W = self._T["W"]  # r x D
+            elif tmode == "pca_whiten":
+                W = self._T["W"]
                 sig_trans = np.sqrt(np.clip((W**2 @ (s_native**2)), 1e-12, np.inf))
             else:
                 sig_trans = s_native
-        else:
-            sig_trans = None
 
-        if target_k is not None and target_k > 0:
-            lev = self._choose_level_by_targetK(y_trans, target_k=target_k)
+        if mode == "target_k":
+            if target_k is None or int(target_k) <= 0:
+                target_k = 1
+            lev = self._choose_level_by_targetK(y_trans, target_k=int(target_k))
             layer = self._layers[lev]
-            keys = [tuple(self._digitize_nd(y_trans[None, :], self._edges[lev])[0])]
-            idxs = [layer[k] for k in keys if k in layer]
+            base_key = tuple(self._digitize_nd(y_trans[None, :], self._edges[lev])[0])
+            idxs = [layer[k] for k in (base_key,) if k in layer]
             total = sum(len(a) for a in idxs)
             step = 1
-            while total < target_k and step <= max_expand_steps:
+            while total < target_k and step <= int(max_expand_steps):
                 keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=None,
                                                    expand_factor=1.0, min_keys_radius=step)
                 idxs = [layer[k] for k in keys if k in layer]
@@ -531,16 +574,17 @@ class RectBinner(BaseBinner):
             if not idxs:
                 return np.array([], dtype=np.int64), lev
             return np.unique(np.concatenate(idxs)), lev
-        else:
-            if sig_trans is None:
-                raise ValueError("sigmas_native must be provided for sigma-based selection")
-            lev = self._choose_level_by_sigma(sig_trans, target_factor=target_factor)
-            keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=sig_trans, expand_factor=expand_factor)
-            layer = self._layers[lev]
-            idxs = [layer[k] for k in keys if k in layer]
-            if not idxs:
-                return np.array([], dtype=np.int64), lev
-            return np.unique(np.concatenate(idxs)), lev
+
+        if sig_trans is None:
+            raise ValueError("sigmas_native must be provided for select_by='sigma'/'radius'")
+        lev = self._choose_level_by_sigma(sig_trans, target_factor=float(target_factor))
+        keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=sig_trans,
+                                           expand_factor=float(expand_factor))
+        layer = self._layers[lev]
+        idxs = [layer[k] for k in keys if k in layer]
+        if not idxs:
+            return np.array([], dtype=np.int64), lev
+        return np.unique(np.concatenate(idxs)), lev
 
     def info(self) -> Dict[str, Any]:
         return {
@@ -605,6 +649,26 @@ class RectBinner(BaseBinner):
         obj._D_eff = int(d["_D_eff"])
         return obj
 
+    def plot_bins(self, grid):
+        X = np.asarray(grid.observables[:, self.dims], float)
+        Xz = _apply_transform(X, self._T)
+        dim = Xz.shape[1]
+
+        fig, axs = plt.subplots(nrows=self.levels, ncols=dim, sharex="col",
+                                sharey=True, constrained_layout=True)
+        for lev in range(self.levels):
+            for d in range(dim):
+                ax = axs[lev, d]
+                ax.hist(Xz[:, d], bins="auto", color="k", alpha=0.7, log=True)
+                for e in self._edges[lev][d]:
+                    ax.axvline(e, color="r", ls="-", lw=0.8)
+        
+        for ith, s in enumerate(self.dims):
+            ax = axs[-1, ith]
+            ax.set_xlabel(f"z({grid.observable_names[s]})")
+
+        return fig, axs
+
 
 # ----------------------------
 # KDTree binner
@@ -657,51 +721,71 @@ class KDTreeBinner(BaseBinner):
     def candidates(self,
                    y_native: np.ndarray,
                    sigmas_native: Optional[np.ndarray] = None,
+                   *,
+                   select_by: str = "sigma",
+                   target_factor: float = 2.0,   # unused; accepted for API parity
+                   expand_factor: float = 2.0,   # unused; accepted for API parity
+                   target_k: Optional[int] = None,
                    k: Optional[int] = None,
-                   radius_factor: float = 2.0) -> Tuple[np.ndarray, Optional[int]]:
+                   radius_factor: float = 2.0,
+                   max_expand_steps: int = 4     # unused; accepted for API parity
+                   ) -> Tuple[np.ndarray, Optional[int]]:
         """
-        Retrieve indices by either kNN or radius search.
+        Unified candidate selector (KDTreeBinner).
 
-        If k is provided, returns k nearest neighbours.
-        Else uses a radius derived from sigmas in transformed space as:
-            r = radius_factor * ||diag(sigmas_trans)||_2
-
-        Returns
-        -------
-        idx : ndarray of int
-        aux : int or None
-            If kNN, aux is k; else None.
+        Modes
+        -----
+        select_by = "knn":
+            exact kNN with k (or target_k).
+        select_by = "radius":
+            ball query with radius = radius_factor * ||sigma_trans||_2.
+        select_by = "sigma":
+            alias of "radius" (needs sigmas_native).
+        select_by = "target_k":
+            mapped to kNN with k = target_k.
         """
         if self._tree is None or self._Xz is None:
             raise RuntimeError("fit must be called before candidates")
+
+        mode = (select_by or "sigma").lower()
         x = np.asarray(y_native[self.dims], float)[None, :]
         xz = _apply_transform(x, self._T)[0]
-        if k is not None and k > 0:
-            d, ind = self._tree.query(xz, k=min(k, self._Xz.shape[0]))
-            ind = np.atleast_1d(ind)
-            return np.unique(ind.astype(np.int64)), k
+
+        # Map modes
+        if mode == "target_k":
+            k = target_k if (target_k is not None) else k
+            mode = "knn"
+        if mode == "sigma":
+            mode = "radius"
+
+        if mode == "knn":
+            kk = int(k) if k is not None else 1
+            kk = max(1, min(kk, self._Xz.shape[0]))
+            d, ind = self._tree.query(xz, k=kk)
+            ind = np.atleast_1d(ind).astype(np.int64)
+            return np.unique(ind), kk
+
         # radius mode
         if sigmas_native is None:
-            raise ValueError("sigmas_native required when k is None")
+            raise ValueError("sigmas_native required for select_by='radius'/'sigma'")
         s = np.asarray(sigmas_native[self.dims], float)
-        mode = self._T["mode"]
-        if mode == "none":
-            s_z = s
-        elif mode == "standardize":
+        tmode = self._T.get("mode", "none")
+        if tmode == "standardize":
             s_z = s / self._T["sd"]
-        elif mode == "pca_whiten":
+        elif tmode == "pca_whiten":
             W = self._T["W"]
             s_z = np.sqrt(np.clip((W**2 @ (s**2)), 1e-12, np.inf))
         else:
             s_z = s
-        r = radius_factor * np.linalg.norm(s_z)
-        ind = self._tree.query_ball_point(xz, r=r)        
-        ind = np.asarray(ind, dtype=object)
-        if len(ind) == 0:
+        r = float(radius_factor) * float(np.linalg.norm(s_z))
+        idx_list = self._tree.query_ball_point(xz, r=r)
+        # cKDTree returns a list (one per query); we have one query
+        inds = np.asarray(idx_list[0] if isinstance(idx_list, list) else idx_list, dtype=np.int64)
+        if inds.size == 0:
             # fallback to 1-NN
             _, ind2 = self._tree.query(xz, k=1)
             return np.asarray([int(ind2)], dtype=np.int64), None
-        return np.unique(np.asarray(ind, dtype=np.int64)), None
+        return np.unique(inds), None
 
     def info(self) -> Dict[str, Any]:
         n = 0 if self._Xz is None else self._Xz.shape[0]
