@@ -25,19 +25,27 @@ from astropy.io import fits
 import h5py
 
 from besta.grid.prob import (
-    Prior, FlatPrior, ObservableDependentPrior,
-    Likelihood, GaussianProductLikelihood,
+    Prior,
+    FlatPrior,
+    ObservableDependentPrior,
+    Likelihood,
+    GaussianProductLikelihood,
     posterior_over_models as posterior_over_models_fn,
 )
 from besta.postprocess import (
-    compute_fraction_from_map, pit_from_discrete_posterior,
-    hist_stats, photoz_metrics, weighted_quantiles)
+    compute_fraction_from_map,
+    pit_from_discrete_posterior,
+    hist_stats,
+    photoz_metrics,
+    weighted_quantiles,
+)
 
 from besta.io import available_memory_bytes
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 
 def _chunk_ranges(n: int, batch_size: int):
     """
@@ -64,6 +72,7 @@ def _chunk_ranges(n: int, batch_size: int):
         stop = min(n, start + batch_size)
         yield start, stop
         start = stop
+
 
 def _fit_batch_cands_worker(args):
     """
@@ -99,6 +108,7 @@ def _fit_batch_cands_worker(args):
         if idx.size == 0:
             idx = np.arange(grid_n)
     return m, idx, lev
+
 
 def _fit_batch_post_worker(args):
     """
@@ -136,8 +146,7 @@ def _fit_batch_post_worker(args):
     w : ndarray, shape (Nc,)
         Normalised posterior weights over candidate models.
     """
-    (m, X_m, SIG_m, idx, grid_dict,
-     use_std, likelihood, prior, is_obs_dep_prior) = args
+    (m, X_m, SIG_m, idx, grid_dict, use_std, likelihood, prior, is_obs_dep_prior) = args
 
     Xc_native = grid_dict["observables"][idx]
     Tc = grid_dict["targets"][idx]
@@ -176,6 +185,7 @@ def _fit_batch_post_worker(args):
     w = w / s if s > 0 and np.isfinite(s) else np.full_like(w, 1.0 / w.size)
     return m, w
 
+
 def _fit_batch_stats_worker(args):
     """
     Worker for batch fit step 3: compute one target's histogram and stats for one query.
@@ -202,6 +212,48 @@ def _fit_batch_stats_worker(args):
     post = hist / s if s > 0 else np.full_like(hist, 1.0 / hist.size)
     st = hist_stats(centers, post, find_multimodal=False)
     return m, post, st
+
+
+def _guess_slices_step_1(n_objects, n_observables, n_jobs, tasks_per_worker=6):
+    # fewer, larger slices when P is large
+    base_tasks = n_jobs * tasks_per_worker
+    scale = max(1, n_observables // 8)
+    T = max(1, base_tasks // scale)
+    # turn T into contiguous slices
+    q, r = divmod(n_objects, T)
+    s = 0
+    out = []
+    for i in range(T):
+        size = q + (1 if i < r else 0)
+        out.append((s, s + size))
+        s += size
+    return out
+
+
+def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
+    """
+    Partition queries into ~n_jobs*tasks_per_worker slices with roughly equal total cost.
+    costs: 1D array-like of cost per query (e.g., len(cands[m]) * P)
+    """
+    M = len(costs)
+    T = max(1, n_jobs * tasks_per_worker)
+    total = float(np.sum(costs)) if M else 0.0
+    target = total / T if T > 0 else total
+
+    slices = []
+    s = 0
+    acc = 0.0
+    for m in range(M):
+        acc += float(costs[m])
+        # cut when we exceed ~target (but ensure at least one element)
+        if acc >= target and m + 1 - s > 0:
+            slices.append((s, m + 1))
+            s = m + 1
+            acc = 0.0
+    if s < M:
+        slices.append((s, M))
+    # If we ended up with fewer than T slices, that’s fine. Executor will still load balance.
+    return slices
 
 
 @dataclass
@@ -335,7 +387,9 @@ class ModelGrid:
             If fit_standardiser has not been called.
         """
         if self._obs_mu is None or self._obs_sd is None:
-            raise RuntimeError("fit_standardiser must be called before transform_observables")
+            raise RuntimeError(
+                "fit_standardiser must be called before transform_observables"
+            )
         return (X - self._obs_mu) / self._obs_sd
 
     # ------------ I/O ------------
@@ -377,28 +431,32 @@ class ModelGrid:
             targets=np.asarray(d["targets"]),
             observable_names=list(d["observable_names"]),
             target_names=list(d["target_names"]),
-            weights=None if d.get("weights", None) is None else np.asarray(d["weights"]),
+            weights=None
+            if d.get("weights", None) is None
+            else np.asarray(d["weights"]),
             meta=dict(d.get("meta", {})),
         )
 
     @classmethod
-    def from_fits_table(cls,
-                        path,
-                        observable_cols=None,
-                        target_cols=None,
-                        weight_col=None,
-                        row_mask=None,
-                        table_hdu=1,
-                        memmap=False,
-                        meta_key="MODELGRID_META"):
+    def from_fits_table(
+        cls,
+        path,
+        observable_cols=None,
+        target_cols=None,
+        weight_col=None,
+        row_mask=None,
+        table_hdu=1,
+        memmap=False,
+        meta_key="MODELGRID_META",
+    ):
         """
         Build a ModelGrid from a FITS table, with automatic discovery.
-    
+
         Priority order:
           1) Auto-load if table.meta contains OBSNAME and TGTNAME written by to_fits_table.
           2) If explicit mappings (observable_cols / target_cols) are provided, use them.
           3) Fallback: load all numeric 1-D columns as observables; no targets.
-    
+
         Parameters
         ----------
         path : str
@@ -417,7 +475,7 @@ class ModelGrid:
             astropy Table read memmap. Default False.
         meta_key : str, optional
             Table.meta key with JSON meta blob written by to_fits_table. Default "MODELGRID_META".
-    
+
         Returns
         -------
         grid : ModelGrid
@@ -426,9 +484,9 @@ class ModelGrid:
             from astropy.table import Table
         except Exception as e:
             raise ImportError("astropy is required for from_fits_table") from e
-    
+
         t = Table.read(path, hdu=table_hdu, memmap=memmap)
-    
+
         def _stack_named(names):
             arrs = []
             for n in names:
@@ -439,10 +497,12 @@ class ModelGrid:
                     # allow masked scalars, but require 1-D per column
                     a = np.squeeze(a)
                 if a.ndim != 1:
-                    raise ValueError(f"FITS column '{n}' must be 1-D; got shape {a.shape}")
+                    raise ValueError(
+                        f"FITS column '{n}' must be 1-D; got shape {a.shape}"
+                    )
                 arrs.append(a)
             return np.vstack(arrs).T  # (N, P)
-    
+
         def _resolve_mapping(cols):
             if cols is None:
                 return None, None
@@ -454,14 +514,19 @@ class ModelGrid:
                 names_src = list(cols)
             X = _stack_named(names_src)
             return X, names_dst
-    
+
         # --- 1) Auto-discovery from metadata written by to_fits_table ---
         obs_names_meta = t.meta.get("OBSNAME")
         tgt_names_meta = t.meta.get("TGTNAME")
         meta_blob_raw = t.meta.get(meta_key)
         auto_loaded = False
-    
-        if obs_names_meta is not None and tgt_names_meta is not None and observable_cols is None and target_cols is None:
+
+        if (
+            obs_names_meta is not None
+            and tgt_names_meta is not None
+            and observable_cols is None
+            and target_cols is None
+        ):
             obs_names = [s for s in str(obs_names_meta).split(",") if s]
             tgt_names = [s for s in str(tgt_names_meta).split(",") if s]
             X = _stack_named(obs_names) if obs_names else np.empty((len(t), 0))
@@ -478,12 +543,12 @@ class ModelGrid:
                 except Exception:
                     meta = {}
             auto_loaded = True
-    
+
         # --- 2) Explicit mappings (if provided) ---
         if not auto_loaded:
             X, obs_names = _resolve_mapping(observable_cols)
             Y, tgt_names = _resolve_mapping(target_cols)
-    
+
             # Fallback if still None: load all numeric 1-D columns as observables
             if X is None and Y is None:
                 num_cols = []
@@ -500,12 +565,14 @@ class ModelGrid:
                 tgt_names = []
                 Y = np.empty((X.shape[0], 0))
             elif X is None or obs_names is None:
-                raise ValueError("observable_cols must be provided if auto-discovery is not available")
+                raise ValueError(
+                    "observable_cols must be provided if auto-discovery is not available"
+                )
             elif Y is None or tgt_names is None:
                 # allow targets empty
                 tgt_names = []
                 Y = np.empty((X.shape[0], 0))
-    
+
             # weights
             w = None
             if weight_col is not None:
@@ -514,16 +581,17 @@ class ModelGrid:
                 w = np.asarray(t[weight_col])
             elif "weight" in t.colnames:
                 w = np.asarray(t["weight"])
-    
+
             # meta
             import json
+
             meta = {}
             if meta_blob_raw is not None:
                 try:
                     meta = json.loads(meta_blob_raw)
                 except Exception:
                     meta = {}
-    
+
         # optional row selection
         if row_mask is not None:
             m = np.asarray(row_mask, dtype=bool)
@@ -533,7 +601,7 @@ class ModelGrid:
             Y = Y[m]
             if w is not None:
                 w = w[m]
-    
+
         return cls(
             observables=X,
             targets=Y,
@@ -544,23 +612,25 @@ class ModelGrid:
         )
 
     @classmethod
-    def from_hdf5(cls,
-                  path,
-                  group="/modelgrid",
-                  observable_dsets=None,
-                  target_dsets=None,
-                  weight_dset=None,
-                  row_slice=None):
+    def from_hdf5(
+        cls,
+        path,
+        group="/modelgrid",
+        observable_dsets=None,
+        target_dsets=None,
+        weight_dset=None,
+        row_slice=None,
+    ):
         """
         Build a ModelGrid from an HDF5 file, with automatic discovery.
-    
+
         Priority order:
           1) Auto-load if the group contains subgroups 'observables' and 'targets'
              as written by to_hdf5 (reads names and meta from attributes).
           2) If explicit mappings (observable_dsets / target_dsets) are provided, use them.
           3) Fallback: load all 1-D numeric datasets directly under the group as
              observables; no targets.
-    
+
         Parameters
         ----------
         path : str
@@ -576,7 +646,7 @@ class ModelGrid:
             "weights" if present in group.
         row_slice : slice or array_like of int or bool, optional
             Optional selection of rows after reading.
-    
+
         Returns
         -------
         grid : ModelGrid
@@ -584,25 +654,33 @@ class ModelGrid:
 
         if not os.path.exists(path):
             raise FileNotFoundError(path)
-    
+
         def _ensure_1d(d, key):
             a = np.asarray(d)
             if a.ndim > 1:
                 a = np.squeeze(a)
             if a.ndim != 1:
-                raise ValueError(f"HDF5 dataset '{key}' must be 1-D; got shape {a.shape}")
+                raise ValueError(
+                    f"HDF5 dataset '{key}' must be 1-D; got shape {a.shape}"
+                )
             return a
-    
+
         with h5py.File(path, "r") as f:
             if group not in f:
                 raise KeyError(f"group '{group}' not found in file")
             g = f[group]
-    
+
             # --- 1) Auto-discovery (preferred layout written by to_hdf5) ---
             auto_loaded = False
-            if "observables" in g and "targets" in g and observable_dsets is None and target_dsets is None:
-                gob = g["observables"]; tgt = g["targets"]
-    
+            if (
+                "observables" in g
+                and "targets" in g
+                and observable_dsets is None
+                and target_dsets is None
+            ):
+                gob = g["observables"]
+                tgt = g["targets"]
+
                 # names from attributes if present, else dataset keys order
                 try:
                     obs_names = json.loads(g.attrs.get("observable_names", "[]"))
@@ -610,48 +688,59 @@ class ModelGrid:
                 except Exception:
                     obs_names = []
                     tgt_names = []
-    
+
                 if not obs_names:
                     obs_names = list(gob.keys())
                 if not tgt_names:
                     tgt_names = list(tgt.keys())
-    
+
                 # read columns
-                cols = [_ensure_1d(gob[name][...], f"{group}/observables/{name}") for name in obs_names]
-                X = np.vstack(cols).T if cols else np.empty((g.attrs.get("n_models", 0), 0))
-    
-                tcols = [_ensure_1d(tgt[name][...], f"{group}/targets/{name}") for name in tgt_names]
+                cols = [
+                    _ensure_1d(gob[name][...], f"{group}/observables/{name}")
+                    for name in obs_names
+                ]
+                X = (
+                    np.vstack(cols).T
+                    if cols
+                    else np.empty((g.attrs.get("n_models", 0), 0))
+                )
+
+                tcols = [
+                    _ensure_1d(tgt[name][...], f"{group}/targets/{name}")
+                    for name in tgt_names
+                ]
                 Y = np.vstack(tcols).T if tcols else np.empty((X.shape[0], 0))
-    
+
                 # weights
                 w = None
                 if weight_dset is not None and weight_dset in g:
                     w = _ensure_1d(g[weight_dset][...], f"{group}/{weight_dset}")
                 elif "weights" in g:
                     w = _ensure_1d(g["weights"][...], f"{group}/weights")
-    
+
                 # meta
                 try:
                     meta = json.loads(g.attrs.get("meta", "{}"))
                 except Exception:
                     meta = {}
-    
+
                 auto_loaded = True
-    
+
             # --- 2) Explicit mappings ---
             if not auto_loaded:
+
                 def _full(k):  # relative to group
                     return f"{group.rstrip('/')}/{k.lstrip('/')}"
-    
+
                 def _load_map(dsets):
                     if dsets is None:
                         return None, None
                     if isinstance(dsets, dict):
                         dst = list(dsets.keys())
-                        src = [ _full(v) for v in dsets.values() ]
+                        src = [_full(v) for v in dsets.values()]
                     else:
                         dst = list(dsets)
-                        src = [ _full(v) for v in dsets ]
+                        src = [_full(v) for v in dsets]
                     cols = []
                     for key, src_key in zip(dst, src):
                         if src_key not in f:
@@ -659,10 +748,10 @@ class ModelGrid:
                         cols.append(_ensure_1d(f[src_key][...], src_key))
                     X = np.vstack(cols).T
                     return X, dst
-    
+
                 X, obs_names = _load_map(observable_dsets)
                 Y, tgt_names = _load_map(target_dsets)
-    
+
                 # Fallback: all 1-D numeric datasets directly under group as observables
                 if X is None and Y is None:
                     names = []
@@ -670,21 +759,29 @@ class ModelGrid:
                     for k, d in g.items():
                         if isinstance(d, h5py.Dataset):
                             a = np.asarray(d[...])
-                            if a.ndim == 1 and np.issubdtype(a.dtype, np.number) and k != "weights":
+                            if (
+                                a.ndim == 1
+                                and np.issubdtype(a.dtype, np.number)
+                                and k != "weights"
+                            ):
                                 names.append(k)
                                 cols.append(a)
                     if not cols:
-                        raise ValueError("No 1-D numeric datasets found to load under the group")
+                        raise ValueError(
+                            "No 1-D numeric datasets found to load under the group"
+                        )
                     X = np.vstack(cols).T
                     obs_names = names
                     Y = np.empty((X.shape[0], 0))
                     tgt_names = []
                 elif X is None or obs_names is None:
-                    raise ValueError("observable_dsets must be provided if auto-discovery is not available")
+                    raise ValueError(
+                        "observable_dsets must be provided if auto-discovery is not available"
+                    )
                 elif Y is None or tgt_names is None:
                     Y = np.empty((X.shape[0], 0))
                     tgt_names = []
-    
+
                 # weights
                 w = None
                 if weight_dset is not None:
@@ -694,20 +791,20 @@ class ModelGrid:
                     w = _ensure_1d(f[key][...], key)
                 elif "weights" in g:
                     w = _ensure_1d(g["weights"][...], f"{group}/weights")
-    
+
                 # meta from attribute if present
                 try:
                     meta = json.loads(g.attrs.get("meta", "{}"))
                 except Exception:
                     meta = {}
-    
+
         # Optional row selection
         if row_slice is not None:
             X = X[row_slice]
             Y = Y[row_slice]
             if w is not None:
                 w = w[row_slice]
-    
+
         return cls(
             observables=X,
             targets=Y,
@@ -717,23 +814,24 @@ class ModelGrid:
             meta=dict(meta or {}),
         )
 
-
-    def to_fits_table(self,
-                      path,
-                      table_hdu=1,
-                      overwrite=False,
-                      include_meta=True,
-                      meta_key="MODELGRID_META",
-                      fill_value=np.nan):
+    def to_fits_table(
+        self,
+        path,
+        table_hdu=1,
+        overwrite=False,
+        include_meta=True,
+        meta_key="MODELGRID_META",
+        fill_value=np.nan,
+    ):
         """
         Save the grid as a FITS table.
-    
+
         Observables and targets are written as scalar columns. Column names
         are taken from observable_names and target_names. If weights are
         present they are written as a column named "weight". The table
         metadata will include a JSON blob with grid metadata if include_meta
         is True.
-    
+
         Parameters
         ----------
         path : str
@@ -751,7 +849,7 @@ class ModelGrid:
             Header key for the JSON metadata. Default "MODELGRID_META".
         fill_value : float, optional
             Value used to fill masked values if present. Default NaN.
-    
+
         Raises
         ------
         ImportError
@@ -762,9 +860,8 @@ class ModelGrid:
         N, P = self.observables.shape
         Nt, Q = self.targets.shape
         if N != Nt:
-            raise ValueError(
-                "observables and targets must have same number of rows")
-    
+            raise ValueError("observables and targets must have same number of rows")
+
         # Build table
         tab = Table()
         # Observables
@@ -773,14 +870,14 @@ class ModelGrid:
             if hasattr(col, "mask"):
                 col = np.ma.filled(col, fill_value)
             tab.add_column(Column(col, name=name))
-    
+
         # Targets
         for j, name in enumerate(self.target_names):
             col = np.asarray(self.targets[:, j])
             if hasattr(col, "mask"):
                 col = np.ma.filled(col, fill_value)
             tab.add_column(Column(col, name=name))
-    
+
         # Weights
         if self.weights is not None:
             w = np.asarray(self.weights)
@@ -795,12 +892,11 @@ class ModelGrid:
         tab.meta["TGTNAME"] = ",".join(self.target_names)
         if include_meta:
             try:
-                tab.meta[meta_key] = json.dumps(self.meta or {},
-                                                ensure_ascii=True)
+                tab.meta[meta_key] = json.dumps(self.meta or {}, ensure_ascii=True)
             except Exception:
                 # Fallback to empty meta if not serialisable
                 tab.meta[meta_key] = json.dumps({}, ensure_ascii=True)
-    
+
         # Write
         # If writing to a fresh file or overwrite, astropy can write directly.
         # If writing to a specific HDU index in an existing file, rebuild HDUList.
@@ -814,7 +910,7 @@ class ModelGrid:
                         # For simplicity keep table at HDU 1; users can change later if needed
                         pass
             return
-    
+
         # File exists and overwrite=False -> append or replace table HDU
         with fits.open(path, mode="append") as hdul:
             # Append new table HDU
@@ -823,17 +919,19 @@ class ModelGrid:
             hdul.append(hdu)
             hdul.flush()
 
-    def to_hdf5(self,
-                path,
-                group="/modelgrid",
-                overwrite=False,
-                compression="gzip",
-                compression_opts=4,
-                chunks=True,
-                include_meta=True):
+    def to_hdf5(
+        self,
+        path,
+        group="/modelgrid",
+        overwrite=False,
+        compression="gzip",
+        compression_opts=4,
+        chunks=True,
+        include_meta=True,
+    ):
         """
         Save the grid as an HDF5 group with per-column datasets.
-    
+
         Layout:
           {group}/observables/<name>    1-D dataset per observable
           {group}/targets/<name>        1-D dataset per target
@@ -841,7 +939,7 @@ class ModelGrid:
           Attributes on {group}:
             observable_names, target_names, n_models, n_observables,
             n_targets, meta (JSON if include_meta)
-    
+
         Parameters
         ----------
         path : str
@@ -859,7 +957,7 @@ class ModelGrid:
             Enable chunking (True) or provide explicit chunk shape. Default True.
         include_meta : bool, optional
             If True, write JSON-encoded meta as a group attribute. Default True.
-    
+
         Raises
         ------
         ImportError
@@ -871,12 +969,12 @@ class ModelGrid:
             import h5py
         except Exception as e:
             raise ImportError("h5py is required for to_hdf5") from e
-    
+
         N, P = self.observables.shape
         Nt, Q = self.targets.shape
         if N != Nt:
             raise ValueError("observables and targets must have same number of rows")
-    
+
         # Ensure file exists
         mode = "a" if os.path.exists(path) else "w"
         with h5py.File(path, mode) as f:
@@ -885,11 +983,13 @@ class ModelGrid:
                 if overwrite:
                     del f[group]
                 else:
-                    raise ValueError(f"group '{group}' already exists; use overwrite=True")
+                    raise ValueError(
+                        f"group '{group}' already exists; use overwrite=True"
+                    )
             g = f.create_group(group)
             gob = g.create_group("observables")
             tgt = g.create_group("targets")
-    
+
             # Observables datasets
             for j, name in enumerate(self.observable_names):
                 d = np.asarray(self.observables[:, j])
@@ -900,7 +1000,7 @@ class ModelGrid:
                     compression_opts=compression_opts,
                     chunks=chunks,
                 )
-    
+
             # Targets datasets
             for j, name in enumerate(self.target_names):
                 d = np.asarray(self.targets[:, j])
@@ -911,7 +1011,7 @@ class ModelGrid:
                     compression_opts=compression_opts,
                     chunks=chunks,
                 )
-    
+
             # Weights
             if self.weights is not None:
                 g.create_dataset(
@@ -921,14 +1021,18 @@ class ModelGrid:
                     compression_opts=compression_opts,
                     chunks=chunks,
                 )
-    
+
             # Attributes
             g.attrs["n_models"] = int(N)
             g.attrs["n_observables"] = int(P)
             g.attrs["n_targets"] = int(Q)
             # Store names as JSON to avoid fixed-length string issues
-            g.attrs["observable_names"] = json.dumps(list(self.observable_names), ensure_ascii=True)
-            g.attrs["target_names"] = json.dumps(list(self.target_names), ensure_ascii=True)
+            g.attrs["observable_names"] = json.dumps(
+                list(self.observable_names), ensure_ascii=True
+            )
+            g.attrs["target_names"] = json.dumps(
+                list(self.target_names), ensure_ascii=True
+            )
             if include_meta:
                 try:
                     g.attrs["meta"] = json.dumps(self.meta or {}, ensure_ascii=True)
@@ -967,22 +1071,28 @@ class GridFitter:
     and normalised to sum to one over the candidate set.
     """
 
-    def __init__(self,
-                 grid,
-                 likelihood: Optional[Likelihood] = None,
-                 prior: Optional[Prior] = None,
-                 use_standardised: bool = True) -> None:
+    def __init__(
+        self,
+        grid,
+        likelihood: Optional[Likelihood] = None,
+        prior: Optional[Prior] = None,
+        use_standardised: bool = True,
+    ) -> None:
         self.grid = grid
-        self.likelihood = likelihood if likelihood is not None else GaussianProductLikelihood()
+        self.likelihood = (
+            likelihood if likelihood is not None else GaussianProductLikelihood()
+        )
         self.prior = prior if prior is not None else FlatPrior()
         self.use_standardised = use_standardised
         if self.use_standardised and hasattr(self.grid, "fit_standardiser"):
             self.grid.fit_standardiser()
 
-    def posterior_over_models(self,
-                              x_native: np.ndarray,
-                              sigma_native: np.ndarray,
-                              candidate_idx: Optional[np.ndarray] = None) -> np.ndarray:
+    def posterior_over_models(
+        self,
+        x_native: np.ndarray,
+        sigma_native: np.ndarray,
+        candidate_idx: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
         """
         Compute posterior weights over candidate models for one query.
 
@@ -1041,7 +1151,11 @@ class GridFitter:
         idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
         x_models_native = self.grid.observables[idx]
         Tc = self.grid.targets[idx]
-        wc = self.grid.weights[idx] if getattr(self.grid, "weights", None) is not None else None
+        wc = (
+            self.grid.weights[idx]
+            if getattr(self.grid, "weights", None) is not None
+            else None
+        )
 
         # Map to evaluation space if requested
         if self.use_standardised and hasattr(self.grid, "transform_observables"):
@@ -1074,13 +1188,14 @@ class GridFitter:
         )
         return w
 
-
-    def posterior_over_target(self,
-                              x_native: np.ndarray,
-                              sigma_native: np.ndarray,
-                              target_col: int | str,
-                              bins: np.ndarray,
-                              candidate_idx: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
+    def posterior_over_target(
+        self,
+        x_native: np.ndarray,
+        sigma_native: np.ndarray,
+        target_col: int | str,
+        bins: np.ndarray,
+        candidate_idx: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute a histogrammed posterior over one target.
 
@@ -1105,9 +1220,9 @@ class GridFitter:
             Bin centers.
         """
         idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
-        w = self.posterior_over_models(x_native=x_native,
-                                       sigma_native=sigma_native,
-                                       candidate_idx=idx)
+        w = self.posterior_over_models(
+            x_native=x_native, sigma_native=sigma_native, candidate_idx=idx
+        )
 
         if isinstance(target_col, str):
             try:
@@ -1120,190 +1235,344 @@ class GridFitter:
         y = self.grid.targets[idx, j]
         hist, _ = np.histogram(y, bins=bins, weights=w, density=False)
         s = hist.sum()
-        post = hist / s if s > 0 and np.isfinite(s) else np.full_like(hist, 1.0 / hist.size)
+        post = (
+            hist / s
+            if s > 0 and np.isfinite(s)
+            else np.full_like(hist, 1.0 / hist.size)
+        )
         centers = 0.5 * (bins[:-1] + bins[1:])
         return post, centers
 
-    def fit_batch(self,
-                X_native: np.ndarray,
-                SIG_native: np.ndarray,
-                binner: Any | None = None,
-                target_factor: float = 2.0,
-                expand_factor: float = 2.0,
-                n_jobs: int = 1,
-                backend: str = "thread",
-                stats_for: Optional[Sequence[int | str]] = None,
-                stats_bins: Optional[Sequence[np.ndarray]] = None,
-                find_multimodal: bool = False,
-                return_posts_for_stats: bool = False,
-                batch_size: Optional[int] = None,
-                verbose: bool = True,
-                max_memory_gb: Optional[float] = 16.0,
-                memcheck_sample: int = 256,
-                safety_margin: float = 1.2) -> dict:
+    def fit_batch(
+        self,
+        X_native: np.ndarray,
+        SIG_native: np.ndarray,
+        binner: Any | None = None,
+        target_factor: float = 2.0,
+        expand_factor: float = 2.0,
+        n_jobs: int = 1,
+        backend: str = "thread",
+        stats_for: Optional[Sequence[int | str]] = None,
+        stats_bins: Optional[Sequence[np.ndarray]] = None,
+        find_multimodal: bool = False,
+        return_posts_for_stats: bool = False,
+        batch_size: Optional[int] = None,
+        verbose: bool = True,
+        max_memory_gb: Optional[float] = 16.0,
+        memcheck_sample: int = 256,
+        safety_margin: float = 1.2,
+        tasks_per_worker: Optional[int] = None,
+        dry_run: bool = False,
+    ) -> dict:
         """
-        Evaluate model posteriors for multiple queries with parallel steps 1, 2, 3,
-        supporting chunked execution and progress prints.
+        Evaluate model posteriors for multiple queries.
+
+        Workflow
+        --------
+        The computation is split into three stages:
+
+        Step 1 — Candidate selection
+            For each query ``m``, find a set of candidate model indices ``cands[m]``
+            using the optional ``binner``. If ``binner`` is None or returns an
+            empty set, fall back to the full grid. Work is submitted as slices of
+            contiguous queries to a thread pool. Slice sizing is heuristic:
+            it scales inversely with the observable dimension P so that each
+            task has a reasonable amount of work without overscheduling.
+
+        Step 2 — Posterior over models
+            For each query ``m``, compute posterior weights over ``cands[m]`` by combining
+            likelihood and prior (plus per-model weights). If ``backend="process"``,
+            a picklability check is performed and the code falls back to threads
+            when needed. Slices are *cost-balanced* using a cheap proxy
+            ``cost[m] ≃ len(cands[m]) * P`` so that each future does a similar amount
+            of numerical work.
+
+        Step 3 — Per-target statistics
+            Optionally, for each requested target, histogram the posterior and
+            compute summary stats (mean, std, map, central intervals, quantiles,
+            modal count). This stage is NumPy-bound and relatively light, so it
+            always uses a thread pool and reuses Step-2 slices (or a similarly
+            sized partition).
+
+        Parallel task sizing
+        --------------------
+        The number of tasks submitted to the executor is controlled by
+        ``tasks_per_worker``. By default, it mirrors the current behaviour
+        (~ 5 tasks per worker). Larger values create **more, smaller tasks**
+        (better load-balancing, higher scheduler overhead). Smaller values create
+        **fewer, larger tasks** (lower overhead, potentially less balanced).
+
+        Memory safety
+        -------------
+        A pre-flight memory check (``check_fit_batch_memory``) estimates the
+        additional RAM required by the data structures (candidates, posteriors,
+        and optional stats) and raises a ``MemoryError`` if the estimate (with
+        safety margin) exceeds the configured limit or the currently available
+        memory.
 
         Parameters
         ----------
         X_native : ndarray, shape (M, P)
+            Query observables in native units. Order must match the grid.
         SIG_native : ndarray, shape (M, P)
+            Per-dimension uncertainties in native units.
         binner : object, optional
+            Must expose `.dims` and `.candidates(y_native, sigmas_native, ...)`.
+            If None, all models are considered as candidates for every query.
         target_factor : float, optional
+            For sigma-based rectangular binners, factor to match bin widths.
         expand_factor : float, optional
+            For sigma-based rectangular binners, neighbourhood expansion factor.
         n_jobs : int, optional
-            Number of workers. Default 1.
+            Maximum concurrency (threads or processes, per backend).
         backend : {"thread","process"}, optional
-            Backend for Step 2 (posteriors). Steps 1 and 3 use threads.
-        stats_for : sequence of str or int, optional
-            Targets to summarise.
+            Execution backend for Step 2 (posterior evaluation). Steps 1 and 3
+            always use threads. If objects are not picklable with "process",
+            we fall back to "thread".
+        stats_for : sequence of {int,str}, optional
+            Target columns (indices or names) to summarise. If None, Step 3 is
+            skipped.
         stats_bins : sequence of ndarray, optional
-            Bin edges per target.
+            Per-target bin edges. Must have same length as `stats_for` if provided.
         find_multimodal : bool, optional
+            If True, attempt to count posterior modes in each 1D histogram.
         return_posts_for_stats : bool, optional
-        batch_size : int or None, optional
-            Number of queries per chunk. Default None uses a single chunk.
+            If True, return the full (M, K) discrete posterior for each requested
+            target (increases memory).
+        batch_size : int or None, deprecated
+            Kept for compatibility; ignored by the adaptive slicers.
         verbose : bool, optional
-            Print progress information.
+            Print progress messages.
+        max_memory_gb : float or None, optional
+            Maximum allowed additional memory. None disables the check.
+        memcheck_sample : int, optional
+            Number of pilot queries for candidate-size estimation in the memory
+            check (upper bound).
+        safety_margin : float, optional
+            Multiplier applied to the memory estimate before comparing to the
+            allowed/available memory.
+        tasks_per_worker : int or None, optional
+            Controls how many tasks (slices) are queued per worker for each stage.
+            Default None behaves like the previous version (~5). Increase to
+            improve load balancing for heterogeneous costs; decrease to reduce
+            scheduling overhead.
+        dry_run : bool, optional
+            If True, perform only the memory check and return an empty dict.
 
         Returns
         -------
         out : dict
-            post_models, candidates, levels, and optionally stats, posts_target.
-        
+            {
+            "post_models": List[np.ndarray],  # per-query posterior weights
+            "candidates":  List[np.ndarray],  # per-query candidate indices
+            "levels":      List[Optional[int]],  # binner level per query (if any)
+            # optionally:
+            "stats": {target_name: {...}},   # per-target summaries
+            "posts_target": {target_name: (M, K) arrays}  # if requested
+            }
+
         Notes
         -----
-        Parallel backends
-            Step 1 (candidate selection) and Step 3 (target stats) use a thread pool.
-            Step 2 (posterior evaluation) can use threads or processes via `backend`.
-            Many `Likelihood` or `Prior` implementations are not picklable, so
-            `backend="process"` may raise pickling errors. In that case, use
-            `backend="thread"` or provide picklable implementations.
-
-        Numeric stability
-            If `SIG_native` contains zero or extremely small values, consider passing
-            a positive floor to your Likelihood or pre-clipping sigmas before calling
-            `fit_batch` to avoid degenerate bandwidths.
+        When ``use_standardised=True``, likelihoods are evaluated in the grid's
+        standardised space, but observable-dependent priors receive *native*
+        observables.
+        If ``SIG_native`` contains zeros/near-zeros, pre-clip or configure a
+        positive floor in your Likelihood to avoid degenerate bandwidths.
         """
         M, P = X_native.shape
+        if verbose:
+            print("Starting batch fit...")
 
-        try:
-            self.check_fit_batch_memory(
-                M,
-                X_native=X_native,
-                SIG_native=SIG_native,
-                binner=binner,
-                target_factor=target_factor,
-                expand_factor=expand_factor,
-                memcheck_sample=memcheck_sample,
-                stats_for=stats_for,
-                stats_bins=stats_bins,
-                return_posts_for_stats=return_posts_for_stats,
-                max_memory_gb=max_memory_gb,
-                safety_margin=safety_margin,
-            )
-        except MemoryError as e:
-            # Re-raise with context if desired
-            raise
-        posts, cands, levels = [None] * M, [None] * M, [None] * M
+        # Default behaviour: ~5 tasks per worker, matching prior implementation.
+        tpw = 5 if (tasks_per_worker is None) else max(1, int(tasks_per_worker))
 
-        M, P = X_native.shape
+        # -------- Memory pre-flight --------
+        breakdown = self.check_fit_batch_memory(
+            M,
+            X_native=X_native,
+            SIG_native=SIG_native,
+            binner=binner,
+            target_factor=target_factor,
+            expand_factor=expand_factor,
+            memcheck_sample=memcheck_sample,
+            stats_for=stats_for,
+            stats_bins=stats_bins,
+            return_posts_for_stats=return_posts_for_stats,
+            max_memory_gb=max_memory_gb,
+            safety_margin=safety_margin,
+        )
+        if dry_run:
+            if verbose:
+                print("Dry-run mode")
+                print(breakdown.get("message", ""))
+            return {}
+
+        # -------- Outputs --------
         posts: List[np.ndarray] = [None] * M
         cands: List[np.ndarray] = [None] * M
         levels: List[Optional[int]] = [None] * M
-        print("Starting batch fit...")
-        # ---------------- Step 1: candidates (threaded, chunked) ----------------
-        if verbose:
-            print(f"[Step 1/3] Selecting candidates for {M} queries "
-                f"(n_jobs={n_jobs}, chunk_size={batch_size})")
 
-        for s, e in _chunk_ranges(M, batch_size):
-            if verbose:
-                print(f"  - candidates chunk {s}:{e}")
-            if n_jobs == 1 or binner is None:
+        # =========================
+        # Step 1: candidates (threads)
+        # =========================
+        step1_slices = _guess_slices_step_1(M, P, n_jobs, tasks_per_worker=tpw)
+        if verbose:
+            print(
+                f"[Step 1/3] Selecting candidates for {M} queries "
+                f"(n_jobs={n_jobs}, tasks={len(step1_slices)})"
+            )
+
+        def _cands_chunk(s: int, e: int):
+            out = []
+            if binner is None:
+                idx_full = np.arange(self.grid.n_models, dtype=np.int64)
                 for m in range(s, e):
-                    _, idx, lev = _fit_batch_cands_worker(
-                        (m, X_native[m], SIG_native[m], binner,
-                        target_factor, expand_factor, self.grid.n_models)
+                    out.append((m, idx_full, None))
+                return out
+            for m in range(s, e):
+                _, idx, lev = _fit_batch_cands_worker(
+                    (
+                        m,
+                        X_native[m],
+                        SIG_native[m],
+                        binner,
+                        target_factor,
+                        expand_factor,
+                        self.grid.n_models,
                     )
-                    cands[m] = idx; levels[m] = lev
-            else:
-                with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
-                    futs = {
-                        ex.submit(_fit_batch_cands_worker,
-                                (m, X_native[m], SIG_native[m], binner,
-                                target_factor, expand_factor, self.grid.n_models)): m
-                        for m in range(s, e)
-                    }
-                    for fut in as_completed(futs):
-                        m, idx, lev = fut.result()
-                        cands[m] = idx; levels[m] = lev
+                )
+                out.append((m, idx, lev))
+            return out
 
-        # ---------------- Step 2: posteriors (thread or process, chunked) -------
+        if n_jobs == 1:
+            for s, e in step1_slices:
+                if verbose:
+                    print(f"  - candidates slice {s}:{e}")
+                for m, idx, lev in _cands_chunk(s, e):
+                    cands[m] = idx
+                    levels[m] = lev
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
+                futs = [ex.submit(_cands_chunk, s, e) for (s, e) in step1_slices]
+                for fut in as_completed(futs):
+                    for m, idx, lev in fut.result():
+                        cands[m] = idx
+                        levels[m] = lev
+
+        # =========================
+        # Step 2: posterior over models (threads or processes)
+        # =========================
+        costs = np.array(
+            [(0 if cands[m] is None else max(1, len(cands[m]))) * P for m in range(M)]
+        )
+        slices_step2 = _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=tpw)
         if verbose:
-            print(f"[Step 2/3] Evaluating posteriors "
-                f"(backend={backend}, n_jobs={n_jobs}, chunk_size={batch_size})")
+            print(
+                f"[Step 2/3] Evaluating posteriors "
+                f"(backend={backend}, n_jobs={n_jobs}, tasks={len(slices_step2)})"
+            )
 
+        # If processes requested, ensure picklable prior/likelihood
         if backend == "process":
-            # Check if objects can be pickled
             try:
                 import pickle
+
                 pickle.dumps((self.likelihood, self.prior))
             except Exception as e:
                 if verbose:
-                    print("[fit_batch] prior/likelihood are not picklable; "
-                        "falling back to thread backend. Reason:", repr(e))
-                backend = "thread"
-            
-        if n_jobs == 1:
-            for s, e in _chunk_ranges(M, batch_size):
-                if verbose:
-                    print(f"  - posteriors chunk {s}:{e}")
-                for m in range(s, e):
-                    posts[m] = self.posterior_over_models(
-                        x_native=X_native[m],
-                        sigma_native=SIG_native[m],
-                        candidate_idx=cands[m],
+                    print(
+                        "[fit_batch] prior/likelihood are not picklable; "
+                        "falling back to thread backend. Reason:",
+                        repr(e),
                     )
-        else:
-            grid_dict = {
-                "observables": self.grid.observables,
-                "targets": self.grid.targets,
-                "weights": self.grid.weights,
-                "_obs_mu": getattr(self.grid, "_obs_mu", None),
-                "_obs_sd": getattr(self.grid, "_obs_sd", None),
-            }
-            is_obs_dep_prior = isinstance(self.prior, ObservableDependentPrior)
-            Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+                backend = "thread"
 
-            for s, e in _chunk_ranges(M, batch_size):
-                if verbose:
-                    print(f"  - posteriors chunk {s}:{e}")
-                args_iter = (
-                    (m, X_native[m], SIG_native[m], cands[m], grid_dict,
-                    self.use_standardised, self.likelihood, self.prior, is_obs_dep_prior)
-                    for m in range(s, e)
+        grid_dict = {
+            "observables": self.grid.observables,
+            "targets": self.grid.targets,
+            "weights": self.grid.weights,
+            "_obs_mu": getattr(self.grid, "_obs_mu", None),
+            "_obs_sd": getattr(self.grid, "_obs_sd", None),
+        }
+        is_obs_dep_prior = isinstance(self.prior, ObservableDependentPrior)
+
+        def _post_chunk_thread(s: int, e: int):
+            out = []
+            for m in range(s, e):
+                w = self.posterior_over_models(
+                    x_native=X_native[m],
+                    sigma_native=SIG_native[m],
+                    candidate_idx=cands[m],
                 )
-                with Executor(max_workers=max(1, int(n_jobs))) as ex:
-                    futs = {ex.submit(_fit_batch_post_worker, a): a[0] for a in args_iter}
-                    for fut in as_completed(futs):
-                        m, w = fut.result()
+                out.append((m, w))
+            return out
+
+        def _post_chunk_proc(s: int, e: int):
+            out = []
+            for m in range(s, e):
+                _, w = _fit_batch_post_worker(
+                    (
+                        m,
+                        X_native[m],
+                        SIG_native[m],
+                        cands[m],
+                        grid_dict,
+                        self.use_standardised,
+                        self.likelihood,
+                        self.prior,
+                        is_obs_dep_prior,
+                    )
+                )
+                out.append((m, w))
+            return out
+
+        if n_jobs == 1:
+            for s, e in slices_step2:
+                if verbose:
+                    print(f"  - posteriors slice {s}:{e}")
+                for m, w in _post_chunk_thread(s, e):
+                    posts[m] = w
+        else:
+            Executor = (
+                ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+            )
+            with Executor(max_workers=max(1, int(n_jobs))) as ex:
+                if backend == "thread":
+                    futs = [
+                        ex.submit(_post_chunk_thread, s, e) for (s, e) in slices_step2
+                    ]
+                else:
+                    futs = [
+                        ex.submit(_post_chunk_proc, s, e) for (s, e) in slices_step2
+                    ]
+                for fut in as_completed(futs):
+                    for m, w in fut.result():
                         posts[m] = w
 
-        # ---------------- Step 3: multi-target stats (threaded, chunked) --------
+        # =========================
+        # Step 3: per-target stats (threads)
+        # =========================
+        slices = slices_step2  # reuse balanced slices
         stats = {}
         posts_target = {}
 
         if stats_for is not None:
             if stats_bins is None or len(stats_for) != len(stats_bins):
-                raise ValueError("stats_bins must be provided and match stats_for length")
+                raise ValueError(
+                    "stats_bins must be provided and match stats_for length"
+                )
 
             if verbose:
-                tnames = [t if isinstance(t, str) else self.grid.target_names[int(t)]
-                        for t in stats_for]
-                print(f"[Step 3/3] Computing stats for targets: {tnames} "
-                    f"(n_jobs={n_jobs}, chunk_size={batch_size})")
+                tnames = [
+                    t if isinstance(t, str) else self.grid.target_names[int(t)]
+                    for t in stats_for
+                ]
+                print(
+                    f"[Step 3/3] Computing stats for targets: {tnames} "
+                    f"(n_jobs={n_jobs}, tasks={len(slices)})"
+                )
 
             for tname, bins in zip(stats_for, stats_bins):
                 if isinstance(tname, str):
@@ -1315,46 +1584,78 @@ class GridFitter:
 
                 K = len(bins) - 1
                 centers = 0.5 * (bins[:-1] + bins[1:])
-                mean = np.empty(M); std = np.empty(M); vmap = np.empty(M)
-                lo68 = np.empty(M); hi68 = np.empty(M)
-                q16 = np.empty(M); q50 = np.empty(M); q84 = np.empty(M)
+                mean = np.empty(M)
+                std = np.empty(M)
+                vmap = np.empty(M)
+                lo68 = np.empty(M)
+                hi68 = np.empty(M)
+                q16 = np.empty(M)
+                q50 = np.empty(M)
+                q84 = np.empty(M)
                 nmodes = np.empty(M, int)
                 posts_k = np.zeros((M, K), dtype=float)
 
-                for s, e in _chunk_ranges(M, batch_size):
-                    if verbose:
-                        print(f"  - stats[{key}] chunk {s}:{e}")
-                    if n_jobs == 1:
-                        for m in range(s, e):
-                            y = self.grid.targets[cands[m], j]
-                            hist, _ = np.histogram(y, bins=bins, weights=posts[m], density=False)
-                            post = hist / hist.sum() if hist.sum() > 0 else np.full_like(hist, 1.0 / hist.size)
+                def _stats_chunk_thread(s: int, e: int):
+                    out = []
+                    for m in range(s, e):
+                        y = self.grid.targets[cands[m], j]
+                        hist, _ = np.histogram(
+                            y, bins=bins, weights=posts[m], density=False
+                        )
+                        post = (
+                            hist / hist.sum()
+                            if hist.sum() > 0
+                            else np.full_like(hist, 1.0 / hist.size)
+                        )
+                        st = hist_stats(centers, post, find_multimodal=find_multimodal)
+                        out.append((m, post, st))
+                    return out
+
+                if n_jobs == 1:
+                    for s, e in slices:
+                        if verbose:
+                            print(f"  - stats[{key}] slice {s}:{e}")
+                        for m, post, st in _stats_chunk_thread(s, e):
                             posts_k[m] = post
-                            st = hist_stats(centers, post, find_multimodal=find_multimodal)
                             mean[m], std[m], vmap[m] = st["mean"], st["std"], st["map"]
                             lo68[m], hi68[m] = st["lo68"], st["hi68"]
                             q16[m], q50[m], q84[m] = st["q"]
-                            nmodes[m] = len(st.get("modes", [st["map"]])) if find_multimodal else 1
-                    else:
-                        with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
-                            futs = {
-                                ex.submit(_fit_batch_stats_worker,
-                                        (m, j, bins, centers, cands[m], posts[m], self.grid.targets)): m
-                                for m in range(s, e)
-                            }
-                            for fut in as_completed(futs):
-                                m, post, st = fut.result()
+                            nmodes[m] = (
+                                len(st.get("modes", [st["map"]]))
+                                if find_multimodal
+                                else 1
+                            )
+                else:
+                    with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
+                        futs = [
+                            ex.submit(_stats_chunk_thread, s, e) for (s, e) in slices
+                        ]
+                        for fut in as_completed(futs):
+                            for m, post, st in fut.result():
                                 posts_k[m] = post
-                                mean[m], std[m], vmap[m] = st["mean"], st["std"], st["map"]
+                                mean[m], std[m], vmap[m] = (
+                                    st["mean"],
+                                    st["std"],
+                                    st["map"],
+                                )
                                 lo68[m], hi68[m] = st["lo68"], st["hi68"]
                                 q16[m], q50[m], q84[m] = st["q"]
-                                nmodes[m] = len(st.get("modes", [st["map"]])) if find_multimodal else 1
+                                nmodes[m] = (
+                                    len(st.get("modes", [st["map"]]))
+                                    if find_multimodal
+                                    else 1
+                                )
 
                 stats[key] = {
                     "centers": centers,
-                    "mean": mean, "std": std, "map": vmap,
-                    "q16": q16, "q50": q50, "q84": q84,
-                    "lo68": lo68, "hi68": hi68,
+                    "mean": mean,
+                    "std": std,
+                    "map": vmap,
+                    "q16": q16,
+                    "q50": q50,
+                    "q84": q84,
+                    "lo68": lo68,
+                    "hi68": hi68,
                     "nmodes": nmodes,
                 }
                 if return_posts_for_stats:
@@ -1369,22 +1670,22 @@ class GridFitter:
             print("fit_batch complete.")
         return out
 
-
-    def corner_for_targets(self,
-                           x_native: np.ndarray,
-                           sigma_native: np.ndarray,
-                           target_cols: Sequence[int | str],
-                           true_target_vals : Optional[np.ndarray] = None,
-                           candidate_idx: Optional[np.ndarray] = None,
-                           bins: int | Sequence[int | np.ndarray] = 50,
-                           figsize: Optional[Tuple[float, float]] = None,
-                           suptitle: Optional[str] = None,
-                           color: Optional[str] = None,
-                           kappa_sigma_edges: float = 5.0,
-                           alpha_hist: float = 0.6,
-                           alpha_mesh: float = 1.0,
-                           quantiles: Tuple[float, float, float] = (0.16, 0.5, 0.84),
-                           ) -> Tuple[plt.Figure, np.ndarray, Dict[str, Any]]:
+    def corner_for_targets(
+        self,
+        x_native: np.ndarray,
+        sigma_native: np.ndarray,
+        target_cols: Sequence[int | str],
+        true_target_vals: Optional[np.ndarray] = None,
+        candidate_idx: Optional[np.ndarray] = None,
+        bins: int | Sequence[int | np.ndarray] = 50,
+        figsize: Optional[Tuple[float, float]] = None,
+        suptitle: Optional[str] = None,
+        color: Optional[str] = None,
+        kappa_sigma_edges: float = 5.0,
+        alpha_hist: float = 0.6,
+        alpha_mesh: float = 1.0,
+        quantiles: Tuple[float, float, float] = (0.16, 0.5, 0.84),
+    ) -> Tuple[plt.Figure, np.ndarray, Dict[str, Any]]:
         """
         Corner plot for selected targets using model posterior weights.
 
@@ -1411,9 +1712,9 @@ class GridFitter:
         fig, axes, summary : Figure, Axes array, dict
         """
         idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
-        w = self.posterior_over_models(x_native=x_native,
-                                       sigma_native=sigma_native,
-                                       candidate_idx=idx)
+        w = self.posterior_over_models(
+            x_native=x_native, sigma_native=sigma_native, candidate_idx=idx
+        )
 
         # Resolve columns and names
         cols, names = [], []
@@ -1439,8 +1740,7 @@ class GridFitter:
 
         if figsize is None:
             figsize = (2.2 * D, 2.2 * D)
-        fig, axes = plt.subplots(D, D, figsize=figsize, squeeze=False,
-                                 sharex="col")
+        fig, axes = plt.subplots(D, D, figsize=figsize, squeeze=False, sharex="col")
 
         # Weighted summaries
         q = np.zeros((D, 3))
@@ -1458,8 +1758,11 @@ class GridFitter:
                 lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
-                edges = np.linspace(mid - kappa_sigma_edges * (mid - lo),
-                                    mid + kappa_sigma_edges * (hi - mid), bi + 1)
+                edges = np.linspace(
+                    mid - kappa_sigma_edges * (mid - lo),
+                    mid + kappa_sigma_edges * (hi - mid),
+                    bi + 1,
+                )
             else:
                 edges = np.asarray(bi)
             all_edges.append(edges)
@@ -1481,7 +1784,8 @@ class GridFitter:
                 xedges = all_edges[j]
                 yedges = all_edges[i]
                 H, xe, ye = np.histogram2d(
-                    Y[:, j], Y[:, i], bins=[xedges, yedges], weights=w)
+                    Y[:, j], Y[:, i], bins=[xedges, yedges], weights=w
+                )
                 xb = (xedges[:-1] + xedges[1:]) / 2
                 yb = (yedges[:-1] + yedges[1:]) / 2
                 max_val = np.nanmax(H)
@@ -1489,8 +1793,9 @@ class GridFitter:
                 #               norm=LogNorm(vmin=max_val / 1e5, vmax=max_val),
                 #               cmap="hot_r")
                 frac = compute_fraction_from_map(H, xedges=xedges, yedges=yedges)
-                ax.contourf(xb, yb, frac.T, cmap="Spectral",
-                           levels=[0.01, 0.05, 0.32, 0.5, 1])
+                ax.contourf(
+                    xb, yb, frac.T, cmap="Spectral", levels=[0.01, 0.05, 0.32, 0.5, 1]
+                )
 
                 if i == D - 1:
                     ax.set_xlabel(names[j])
@@ -1503,8 +1808,7 @@ class GridFitter:
         for i in range(D):
             for j in range(i + 1, D):
                 axes[i, j].axis("off")
-        axes[0, 0].set_title(f"No. of\ncandidate models: {w.size}",
-                             fontsize="small")
+        axes[0, 0].set_title(f"No. of\ncandidate models: {w.size}", fontsize="small")
         if suptitle:
             fig.suptitle(suptitle)
         fig.tight_layout()
@@ -1521,9 +1825,9 @@ class GridFitter:
         return fig, axes, summary
 
     @staticmethod
-    def compute_pit(z_true: np.ndarray,
-                    posts: np.ndarray,
-                    edges: np.ndarray) -> np.ndarray:
+    def compute_pit(
+        z_true: np.ndarray, posts: np.ndarray, edges: np.ndarray
+    ) -> np.ndarray:
         """
         PIT values from discrete posteriors.
 
@@ -1538,7 +1842,7 @@ class GridFitter:
         pit : ndarray, shape (N,)
         """
         return pit_from_discrete_posterior(z_true, posts, edges)
-    
+
     @staticmethod
     def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
         """
@@ -1642,7 +1946,9 @@ class GridFitter:
                             expand_factor=expand_factor,
                         )
                         nci = int(np.asarray(idx).size)
-                        sizes.append(nci if nci > 0 else N)  # fall back to full grid if empty
+                        sizes.append(
+                            nci if nci > 0 else N
+                        )  # fall back to full grid if empty
                     except Exception:
                         sizes = []
                         break
@@ -1678,7 +1984,13 @@ class GridFitter:
                     Ks = [max(0, (np.asarray(b).size - 1)) for b in stats_bins]
                 posts_target_bytes = int(sum(M * K * float_bytes for K in Ks))
 
-        total_bytes = candidates_bytes + post_models_bytes + levels_bytes + stats_bytes + posts_target_bytes
+        total_bytes = (
+            candidates_bytes
+            + post_models_bytes
+            + levels_bytes
+            + stats_bytes
+            + posts_target_bytes
+        )
 
         return {
             "candidates_bytes": candidates_bytes,
@@ -1688,7 +2000,7 @@ class GridFitter:
             "posts_target_bytes": posts_target_bytes,
             "total_bytes": total_bytes,
         }
-    
+
     def check_fit_batch_memory(
         self,
         M: int,
@@ -1729,8 +2041,12 @@ class GridFitter:
         if max_memory_gb is None:
             # Checking disabled
             return {
-                "candidates_bytes": 0, "post_models_bytes": 0, "levels_bytes": 0,
-                "stats_bytes": 0, "posts_target_bytes": 0, "total_bytes": 0,
+                "candidates_bytes": 0,
+                "post_models_bytes": 0,
+                "levels_bytes": 0,
+                "stats_bytes": 0,
+                "posts_target_bytes": 0,
+                "total_bytes": 0,
             }
 
         breakdown = self.estimate_fit_batch_memory(
@@ -1748,15 +2064,17 @@ class GridFitter:
 
         est = int(breakdown["total_bytes"] * float(safety_margin))
         avail_ram = available_memory_bytes()
-        limit = min(avail_ram, int(max_memory_gb * (1024 ** 3)))
+        limit = min(avail_ram, int(max_memory_gb * (1024**3)))
+
+        avail_ram = self._human_bytes(avail_ram)
+        hb_est = self._human_bytes(est)
+        hb_lim = self._human_bytes(limit)
+        hb_c = self._human_bytes(breakdown["candidates_bytes"])
+        hb_p = self._human_bytes(breakdown["post_models_bytes"])
+        hb_s = self._human_bytes(breakdown["stats_bytes"])
+        hb_pt = self._human_bytes(breakdown["posts_target_bytes"])
 
         if est > limit:
-            hb_est = self._human_bytes(est)
-            hb_lim = self._human_bytes(limit)
-            hb_c = self._human_bytes(breakdown["candidates_bytes"])
-            hb_p = self._human_bytes(breakdown["post_models_bytes"])
-            hb_s = self._human_bytes(breakdown["stats_bytes"])
-            hb_pt = self._human_bytes(breakdown["posts_target_bytes"])
             raise MemoryError(
                 "fit_batch memory pre-check failed: "
                 f"estimated peak (with safety margin) {hb_est} exceeds limit {hb_lim}.\n"
@@ -1768,5 +2086,11 @@ class GridFitter:
                 "  • Compute fewer targets in `stats_for`, or run in smaller M with external batching.\n"
                 "  • Persist or stream results instead of keeping all per-query posteriors in memory."
             )
-
+        else:
+            breakdown["message"] = (
+                "fit_batch memory check"
+                f"- estimated peak (with safety margin) {hb_est} (current limit {hb_lim}, avail RAM {avail_ram}).\n"
+                f"- breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
+                f"- stats={hb_s}, posts_target={hb_pt}.\n"
+            )
         return breakdown
