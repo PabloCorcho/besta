@@ -458,7 +458,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     def parse_datablock(self, datablock: DataBlock):
         times = self.get_sfh_parameters_array(datablock)
         delta_t = times[1:] - times[:-1]
-        if (delta_t < 0).any():
+        if (delta_t <= 0).any():
             return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
         times = np.insert(times, (0, times.size), (0, self.today.to_value("Gyr")))
         # Update the mass of the tabular model
