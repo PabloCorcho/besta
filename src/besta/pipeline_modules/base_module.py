@@ -346,19 +346,25 @@ class BaseModule(ClassModule):
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
             # Assume both LSF are Gaussian
-            effective_lsf_disp =inst_lsf**2 - ssp_lsf_fwhm**2
+            effective_lsf_disp = inst_lsf**2 - ssp_lsf_fwhm**2
+
             if (effective_lsf_disp < 0).any():
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)
-            lsf_sigma_pixels = effective_lsf / np.diff(10**lnlam_bin_edges) / 2.355
+            # Convert to pixels
+            lsf_sigma_pixels = effective_lsf / np.diff(
+                np.exp(lnlam_bin_edges)) / 2.355
+            print("Starting convolution of SSP models with wavelength-dependent",
+                  f"LSF [min sigma={lsf_sigma_pixels.min():.2},"
+                  f" max sigma={lsf_sigma_pixels.max():.2} pix]")
             try:
                 io.check_array_memory(
                 (ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
                  ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
                 dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
                 safety_margin=memory["ram_safety_margin"])
-
+                print("Convolving full SSP model at once")
                 ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda, lsf_sigma_pixels)
             except MemoryError:
