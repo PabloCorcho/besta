@@ -117,7 +117,7 @@ class BaseModule(ClassModule):
         else:
             instrumental_lsf = np.zeros_like(wavelength)
         # Apply redshift
-        print(f"Setting to restframe with respect to input redshift: {redshift}")
+        print(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
         print("Constraining fit to wavelength range: ", wl_range)
         good_idx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[
@@ -128,6 +128,10 @@ class BaseModule(ClassModule):
         cov = error[good_idx] ** 2
         weights = weights[good_idx]
         instrumental_lsf = instrumental_lsf[good_idx]
+        # Check error
+        if (cov <= 0).any():
+            raise ValueError("Input flux error contains negative or null values.")
+
         print("Number of selected pixels within wavelength range: ", good_idx.size)
         if options.has_value("velscale"):
             velscale = options["velscale"]
