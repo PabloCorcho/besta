@@ -3,6 +3,8 @@ import numpy as np
 import re
 from scipy.signal import fftconvolve
 from scipy.special import erf
+from scipy import sparse
+
 from astropy.modeling import Fittable1DModel
 from astropy.modeling.models import Gaussian1D, Hermite1D
 from astropy.convolution.kernels import Model1DKernel
@@ -238,35 +240,175 @@ def normal_cdf(x, mu=0.0, sigma=1.0):
     """Normal cumulative density function."""
     return (1.0 + erf((x - mu) / sigma / np.sqrt(2.0))) / 2.0
 
-def convolve_variable_gaussian_kernel(spectra, sigma_pixel):
-    """Convolve an input spectra with a Gaussian kernel of varying width.
+# def convolve_variable_gaussian_kernel(spectra, sigma_pixel,
+#                                       kappa_sigma_thresh=3.0):
+#     """Convolve an input spectra with a Gaussian kernel of varying width.
     
+#     Parameters
+#     ----------
+#     spectra : :class:`np.ndarray` or :class:`u.Quantity`
+#         N-dimensional spectra. The last dimension must correspond to the
+#         wavelength axis.
+#     sigma_pixel : :class:`np.ndarray`
+#         Value of the standard deviation of the Gaussian LSF for each spectral
+#         resolution element, expressed in pixel units.
+#     kappa_sigma_thresh : float, optional
+#         Threshold in units of the Gaussian sigma. If a **single pixel** contains
+#         at least ``kappa_sigma_thresh`` sigmas of the LSF, that pixel is left
+#         untouched (i.e. the convolution kernel is clamped to a delta function
+#         at that pixel). Default is ``3.0``.
+
+#     Returns
+#     -------
+#     convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`
+#         A convolved version of ``spectra``.
+#     """
+#     # Convert sigma_pixel to a plain ndarray (it may be a Quantity or list)
+#     sigma_pixel = np.asarray(sigma_pixel, dtype=float)
+#     n_pix = sigma_pixel.size
+
+#     # Identify pixels where the LSF is effectively contained within a single pixel:
+#     # 0.5 pixel half-width contains >= kappa_sigma_thresh sigmas.
+#     # 0.5 / sigma >= kappa  ->  sigma <= 0.5 / kappa
+#     small_lsf_mask = (0.5 / sigma_pixel) >= kappa_sigma_thresh
+#     # Guard against sigma == 0 as well (also treated as delta kernel)
+#     small_lsf_mask |= (sigma_pixel <= 0.0)
+
+#     # Use a "safe" sigma for computing the CDF to avoid division issues;
+#     # rows that will be clamped later can use any finite sigma.
+#     safe_sigma = sigma_pixel.copy()
+#     safe_sigma[small_lsf_mask] = 1.0
+
+#     # mean_pixel has shape (n_pix, n_pix + 1) and represents bin edges
+#     mean_pixel = (np.arange(-0.5, n_pix + 0.5, 1)[np.newaxis, :]
+#                   - np.arange(0, n_pix, 1)[:, np.newaxis])
+
+#     cmf = normal_cdf(mean_pixel / safe_sigma[:, np.newaxis])
+#     weights = cmf[:, 1:] - cmf[:, :-1]      # (n_pix, n_pix)
+
+#     # Normalise each row
+#     weights /= np.sum(weights, axis=1)[:, np.newaxis]
+
+#     # Clamp rows where the LSF is narrower than a pixel:
+#     # replace the whole row by a delta kernel.
+#     if np.any(small_lsf_mask):
+#         weights[small_lsf_mask, :] = 0.0
+#         idx = np.nonzero(small_lsf_mask)[0]
+#         # Put the delta on the diagonal: output[i] = input[i]
+#         weights[idx, idx] = 1.0
+
+#     # Broadcast to match the input spectra shape (last axis is spectral axis)
+#     extra_dim = spectra.ndim - 1
+#     if extra_dim > 0:
+#         axis = [dim for dim in np.arange(0, extra_dim, 1)]
+#         weights = np.expand_dims(weights, axis=axis)
+
+#     # Perform the (variable) convolution along the last axis
+#     return np.sum(np.expand_dims(spectra, axis=-1) * weights, axis=-1)
+
+def convolve_variable_gaussian_kernel(
+    spectra,
+    sigma_pixel,
+    kappa_sigma_thresh=3.0,
+    kappa_trunc=5.0,
+):
+    """
+    Convolve an input spectra with a Gaussian kernel of varying width,
+    using a sparse banded convolution matrix.
+
     Parameters
     ----------
-    spectra : :class:`np.ndarray` or :class:`u.Quantity`
-        N-dimensional spectra. The last dimension must correspond to the wavelength
-        axis.
-    sigma_pixel : :class:`np.ndarray`
-        Value of the standard deviation of the Gaussian LSF for each spectral
-        resolution element.
+    spectra : np.ndarray or astropy.units.Quantity
+        N-dimensional spectra. The last dimension must correspond to the
+        wavelength axis.
+    sigma_pixel : np.ndarray
+        Standard deviation of the Gaussian LSF for each spectral resolution
+        element, expressed in pixel units (length = n_pix).
+    kappa_sigma_thresh : float, optional
+        Threshold in units of the Gaussian sigma. If a single pixel contains
+        at least ``kappa_sigma_thresh`` sigmas of the LSF, that pixel is left
+        untouched (i.e. the convolution kernel is clamped to a delta function
+        at that pixel). Default is ``3.0``.
+    kappa_trunc : float, optional
+        Truncation radius of the Gaussian in units of sigma. Only pixels within
+        ``±kappa_trunc * sigma`` of the central pixel contribute to the kernel.
+        Default is ``5.0``.
 
     Returns
     -------
-    convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`
+    convolved_spectra : np.ndarray or astropy.units.Quantity
         A convolved version of ``spectra``.
     """
+    # Handle astropy units if present
+    has_unit = hasattr(spectra, "unit")
+    if has_unit:
+        unit = spectra.unit
+        spec_vals = np.asarray(spectra.value, dtype=float)
+    else:
+        unit = None
+        spec_vals = np.asarray(spectra, dtype=float)
 
-    mean_pixel = (np.arange(-0.5, sigma_pixel.size + 0.5, 1)[np.newaxis]
-                  - np.arange(0, sigma_pixel.size, 1)[:, np.newaxis])
-    cmf = normal_cdf(mean_pixel / sigma_pixel[:, np.newaxis])
-    weights = cmf[:, 1:] - cmf[:, :-1]
-    # Ensure that it is normalized
-    weights /= np.sum(weights, axis=1)[:, np.newaxis]
-    extra_dim = spectra.ndim - 1
-    if extra_dim > 0:
-        axis = [dim for dim in np.arange(0, extra_dim, 1)]
-        weights = np.expand_dims(weights, axis=axis)
-    return np.sum(np.expand_dims(spectra, axis=-1) * weights, axis=-1)
+    sigma_pixel = np.asarray(sigma_pixel, dtype=float)
+    n_pix = sigma_pixel.size
 
+    if spec_vals.shape[-1] != n_pix:
+        raise ValueError(
+            "Last axis of 'spectra' must have the same length as 'sigma_pixel'."
+        )
 
+    # Build sparse convolution matrix W of shape (n_pix, n_pix)
+    rows = []
+    cols = []
+    data = []
 
+    for i, sigma in enumerate(sigma_pixel):
+        # Clamp to delta kernel if LSF is effectively within one pixel
+        # 0.5 / sigma >= kappa  ->  sigma <= 0.5 / kappa
+        if sigma <= 0.0 or (0.5 / sigma) >= kappa_sigma_thresh:
+            rows.append(i)
+            cols.append(i)
+            data.append(1.0)
+            continue
+
+        # Local window around pixel i
+        half_width = int(np.ceil(kappa_trunc * sigma))
+        j_min = max(0, i - half_width)
+        j_max = min(n_pix - 1, i + half_width)
+
+        # Pixel indices contributing to output pixel i
+        j = np.arange(j_min, j_max + 1)
+
+        # Pixel edges in "pixel number" coordinates, relative to the LSF centre at i
+        # We define edges from (j_min - 0.5) to (j_max + 0.5), step 1
+        edges = np.arange(j_min, j_max + 2) - i - 0.5  # length len(j) + 1
+
+        # CDF at edges, sigma is already in pixel units
+        cmf = normal_cdf(edges / sigma)
+        w = cmf[1:] - cmf[:-1]  # length len(j)
+
+        # Normalise row
+        s = w.sum()
+        if s > 0:
+            w /= s
+        else:
+            # fallback: delta if something went very wrong numerically
+            j = np.array([i])
+            w = np.array([1.0])
+
+        rows.extend([i] * len(j))
+        cols.extend(j.tolist())
+        data.extend(w.tolist())
+
+    # Sparse matrix with non-zero entries only in the local Gaussian windows
+    W = sparse.csr_matrix((data, (rows, cols)), shape=(n_pix, n_pix))
+
+    # Flatten all non-spectral dimensions and apply the convolution
+    orig_shape = spec_vals.shape
+    spec_flat = spec_vals.reshape(-1, n_pix)           # (N_other, n_pix)
+    # out = spec_flat @ W.T  (since rows of W map input->output)
+    out_flat = spec_flat @ W.T
+    out = out_flat.reshape(orig_shape)
+
+    if has_unit:
+        return out * unit
+    return out
