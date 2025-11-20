@@ -727,7 +727,7 @@ class KDTreeBinner(BaseBinner):
                    expand_factor: float = 2.0,   # unused; accepted for API parity
                    target_k: Optional[int] = None,
                    k: Optional[int] = None,
-                   radius_factor: float = 2.0,
+                   radius_factor: float = 3.0,
                    max_expand_steps: int = 4     # unused; accepted for API parity
                    ) -> Tuple[np.ndarray, Optional[int]]:
         """
