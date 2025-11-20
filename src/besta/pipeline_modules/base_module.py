@@ -329,9 +329,10 @@ class BaseModule(ClassModule):
             ln_wl_edges[-1] + dlnlam * (1 + extra_offset_pixel),
             dlnlam,
         )
+        lnlam_bins = (lnlam_bin_edges[:-1] + lnlam_bin_edges[1:]) / 2
 
         # Resample the SED
-        ssp.interpolate_sed(np.exp(lnlam_bin_edges))
+        ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
         print("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
 
         # Convolve with instrumental LSF
