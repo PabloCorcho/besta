@@ -1367,18 +1367,18 @@ def hist_stats(centers: np.ndarray,
     w = np.asarray(post, float)
     w = w / np.sum(w) if np.sum(w) > 0 else np.ones_like(w) / w.size
     c = np.asarray(centers, float)
-    mean = float(np.sum(c * w))
-    var = float(np.sum(w * (c - mean) ** 2))
+    mean = np.sum(c * w)
+    var = np.sum(w * (c - mean) ** 2)
     std = var ** 0.5
-    k_map = int(np.argmax(w))
-    v_map = float(c[k_map])
+    k_map = np.argmax(w)
+    v_map = c[k_map]
 
     cdf = np.cumsum(w)
     qs = np.array(quantiles, float)
     qvals = np.interp(qs, cdf, c, left=c[0], right=c[-1])
 
-    lo68 = float(np.interp(0.16, cdf, c))
-    hi68 = float(np.interp(0.84, cdf, c))
+    lo68 = np.interp(0.16, cdf, c)
+    hi68 = np.interp(0.84, cdf, c)
 
     out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
            "lo68": lo68, "hi68": hi68}
