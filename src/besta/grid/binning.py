@@ -694,6 +694,10 @@ class KDTreeBinner(BaseBinner):
     transform: str = "standardize"
     pca_variance: float = 1.0
     leafsize: int = 100
+    select_mode: str = "radius"
+    target_k: int = None
+    k: int = None
+    radius_factor: float = 2.0
 
     _T: Dict[str, Any] = field(default_factory=dict)
     _tree: Optional[cKDTree] = field(default=None)
@@ -727,7 +731,7 @@ class KDTreeBinner(BaseBinner):
                    expand_factor: float = 2.0,   # unused; accepted for API parity
                    target_k: Optional[int] = None,
                    k: Optional[int] = None,
-                   radius_factor: float = 3.0,
+                   radius_factor: float = 2.0,
                    max_expand_steps: int = 4     # unused; accepted for API parity
                    ) -> Tuple[np.ndarray, Optional[int]]:
         """
@@ -739,26 +743,20 @@ class KDTreeBinner(BaseBinner):
             exact kNN with k (or target_k).
         select_by = "radius":
             ball query with radius = radius_factor * ||sigma_trans||_2.
-        select_by = "sigma":
-            alias of "radius" (needs sigmas_native).
         select_by = "target_k":
             mapped to kNN with k = target_k.
         """
         if self._tree is None or self._Xz is None:
             raise RuntimeError("fit must be called before candidates")
 
-        mode = (select_by or "sigma").lower()
         x = np.asarray(y_native[self.dims], float)[None, :]
         xz = _apply_transform(x, self._T)[0]
 
         # Map modes
-        if mode == "target_k":
+        if self.select_mode == "target_k":
             k = target_k if (target_k is not None) else k
-            mode = "knn"
-        if mode == "sigma":
-            mode = "radius"
 
-        if mode == "knn":
+        if self.select_mode == "knn":
             kk = int(k) if k is not None else 1
             kk = max(1, min(kk, self._Xz.shape[0]))
             d, ind = self._tree.query(xz, k=kk)
@@ -767,7 +765,7 @@ class KDTreeBinner(BaseBinner):
 
         # radius mode
         if sigmas_native is None:
-            raise ValueError("sigmas_native required for select_by='radius'/'sigma'")
+            raise ValueError("sigmas_native required for select_mode='radius'")
         s = np.asarray(sigmas_native[self.dims], float)
         tmode = self._T.get("mode", "none")
         if tmode == "standardize":
@@ -777,7 +775,7 @@ class KDTreeBinner(BaseBinner):
             s_z = np.sqrt(np.clip((W**2 @ (s**2)), 1e-12, np.inf))
         else:
             s_z = s
-        r = float(radius_factor) * float(np.linalg.norm(s_z))
+        r = self.radius_factor * np.linalg.norm(s_z)
         inds = self._tree.query_ball_point(xz, r=r)
         inds = np.asarray(inds, dtype=np.int64)
         if inds.size == 0:
@@ -789,7 +787,8 @@ class KDTreeBinner(BaseBinner):
     def info(self) -> Dict[str, Any]:
         n = 0 if self._Xz is None else self._Xz.shape[0]
         d = 0 if self._Xz is None else self._Xz.shape[1]
-        return {"name": "KDTreeBinner", "n": n, "d": d, "leafsize": self.leafsize, "transform": self.transform}
+        return {"name": "KDTreeBinner", "n": n, "d": d,
+                "leafsize": self.leafsize, "transform": self.transform}
 
     def save(self, path: str) -> None:
         if self._Xz is None:
