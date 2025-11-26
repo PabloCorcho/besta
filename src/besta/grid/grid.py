@@ -47,33 +47,6 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 
-def _chunk_ranges(n: int, batch_size: int):
-    """
-    Yield contiguous half-open index ranges covering [0, n).
-
-    Parameters
-    ----------
-    n : int
-        Total number of items.
-    batch_size : int
-        Maximum number of items per chunk. If None or invalid
-        (<= 0 or >= n), a single chunk (0, n) is yielded.
-
-    Yields
-    ------
-    start, stop : tuple of int
-        Half-open slice indices for the current chunk.
-    """
-    if batch_size is None or batch_size <= 0 or batch_size >= n:
-        yield 0, n
-        return
-    start = 0
-    while start < n:
-        stop = min(n, start + batch_size)
-        yield start, stop
-        start = stop
-
-
 def _fit_batch_cands_worker(args):
     """
     Worker for batch fit step 1: select candidate models for one query.
@@ -326,6 +299,11 @@ class ModelGrid:
         return self.targets.shape[1]
 
     # ------------ views and subsets ------------
+    def get_target(self, key):
+        """Return a target column given a key."""
+        col = self.target_names.index(key)
+        return self.targets[:, col]
+
     def select(self, idx: np.ndarray, observables=None, targets=None) -> "ModelGrid":
         """
         Return a new ModelGrid containing a subset of models.
@@ -1265,7 +1243,6 @@ class GridFitter:
         stats_bins: Optional[Sequence[np.ndarray]] = None,
         find_multimodal: bool = False,
         return_posts_for_stats: bool = False,
-        batch_size: Optional[int] = None,
         verbose: bool = True,
         max_memory_gb: Optional[float] = 16.0,
         memcheck_sample: int = 256,
@@ -1348,8 +1325,6 @@ class GridFitter:
         return_posts_for_stats : bool, optional
             If True, return the full (M, K) discrete posterior for each requested
             target (increases memory).
-        batch_size : int or None, deprecated
-            Kept for compatibility; ignored by the adaptive slicers.
         verbose : bool, optional
             Print progress messages.
         max_memory_gb : float or None, optional
@@ -1887,8 +1862,8 @@ class GridFitter:
         stats_bins: Optional[Sequence[np.ndarray]] = None,
         return_posts_for_stats: bool = False,
         # Dtype sizes
-        float_bytes: int = np.dtype(np.float64).itemsize,
-        int_bytes: int = np.dtype(np.int64).itemsize,
+        float_bytes: int = np.dtype(np.float32).itemsize,
+        int_bytes: int = np.dtype(np.int32).itemsize,
     ) -> Dict[str, int]:
         """
         Estimate peak additional RAM needed by `fit_batch` data structures.
