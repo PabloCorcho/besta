@@ -177,6 +177,193 @@ class EmpiricalHistogramPrior1D(Prior):
         return self._logp_per_bin[j]
 
 
+@dataclass
+class EmpiricalFlatteningPriorND(Prior):
+    """
+    Empirical flattening prior over several target columns.
+
+    This prior uses the model grid itself to estimate the (possibly
+    non-flat) distribution of a set of parameters and builds a prior
+    that counteracts those inhomogeneities.
+
+    Two modes are provided:
+
+    - 'factorised': build 1-D histograms for each column separately and
+      form a product prior over dimensions. This approximately flattens
+      the *marginal* distributions of those parameters.
+
+    - 'joint': build a joint N-D histogram over all selected columns and
+      assign prior mass proportional to 1 / N_k for each occupied
+      N-D bin. This flattens the distribution over the joint grid of
+      bins, but is more memory hungry and can be sparse.
+
+    Parameters
+    ----------
+    target_cols : sequence of int
+        Indices of the target columns to build the prior on.
+    edges_list : sequence of ndarray
+        List of bin edges for each column. Must have the same length as
+        `target_cols`. Each element is an array of shape (K_d + 1,)
+        defining the bin edges along dimension d.
+    mode : {'factorised', 'joint'}, optional
+        Flattening strategy (default 'factorised').
+    density_floor : float, optional
+        Minimum probability mass per bin (or joint cell) to avoid
+        -inf log-probabilities (default 1e-12). Only relevant for
+        'joint' mode.
+    count_floor : float, optional
+        Minimum effective count per bin to avoid infinite weights
+        (default 1e-3). Used to clip empty or nearly empty bins.
+
+    Notes
+    -----
+    The prior is defined *over models*, not over a continuous parameter
+    space. It is intended to compensate for non-uniform sampling of the
+    grid, so that the effective prior over the chosen parameters is
+    closer to flat.
+    """
+
+    target_cols: Sequence[int]
+    edges_list: Sequence[np.ndarray]
+    mode: str = "factorised"
+    density_floor: float = 1e-12
+    count_floor: float = 1e-3
+
+    def __post_init__(self):
+        if len(self.target_cols) != len(self.edges_list):
+            raise ValueError("target_cols and edges_list must have the same length.")
+        if self.mode not in ("factorised", "joint"):
+            raise ValueError("mode must be 'factorised' or 'joint'.")
+
+    def fit_from_targets(
+        self,
+        targets: np.ndarray,
+        weights: Optional[np.ndarray] = None,
+    ) -> "EmpiricalFlatteningPriorND":
+        """
+        Fit flattening prior from the model grid targets.
+
+        Parameters
+        ----------
+        targets : ndarray, shape (N, Q)
+            Model grid targets.
+        weights : ndarray, shape (N,), optional
+            Optional model weights (e.g. importance weights) used to
+            define the effective occupancy per bin.
+
+        Returns
+        -------
+        self : EmpiricalFlatteningPriorND
+        """
+        t = targets[:, self.target_cols]  # (N, D)
+        D = t.shape[1]
+
+        if weights is not None and weights.shape[0] != t.shape[0]:
+            raise ValueError("weights must have shape (N,) if provided.")
+
+        if self.mode == "factorised":
+            # One histogram per dimension, store log inverse-mass per bin
+            log_inv_mass_list = []
+            for d in range(D):
+                edges = self.edges_list[d]
+                td = t[:, d]
+
+                counts, _ = np.histogram(td, bins=edges, weights=weights, density=False)
+                counts = counts.astype(float)
+
+                total = np.sum(counts)
+                if total <= 0:
+                    raise RuntimeError(
+                        f"No models in any bin for dimension {d}; cannot fit prior."
+                    )
+
+                counts = np.clip(counts, self.count_floor, None)
+
+                # Define per-bin mass proportional to 1 / counts
+                inv_counts = 1.0 / counts
+                inv_counts /= np.sum(inv_counts)
+
+                # Store log(mass_d per bin) or directly log(1/count_d) up to a constant
+                # For our purpose, log prior for a model in bin j_d is sum_d log(inv_counts_d[j_d])
+                log_inv_mass_list.append(np.log(inv_counts))
+
+            self._log_inv_mass_list = log_inv_mass_list
+
+        else:  # mode == 'joint'
+            # Build joint N-D histogram
+            bin_indices = []
+            bin_sizes = []
+            for d in range(D):
+                edges = self.edges_list[d]
+                td = t[:, d]
+                j = np.digitize(td, edges) - 1
+                # Clip into valid range
+                j = np.clip(j, 0, edges.size - 2)
+                bin_indices.append(j)
+                bin_sizes.append(edges.size - 1)
+
+            bin_indices = np.stack(bin_indices, axis=0)  # (D, N)
+
+            # Flatten to 1-D indices for bincount
+            linear_indices = np.ravel_multi_index(
+                bin_indices, dims=tuple(bin_sizes)
+            )  # (N,)
+
+            counts_flat = np.bincount(
+                linear_indices,
+                weights=weights,
+                minlength=int(np.prod(bin_sizes)),
+            ).astype(float)
+
+            total = np.sum(counts_flat)
+            if total <= 0:
+                raise RuntimeError("No models in any joint bin; cannot fit prior.")
+
+            counts_flat = np.clip(counts_flat, self.count_floor, None)
+
+            # Per-cell prior mass proportional to 1 / counts
+            inv_counts_flat = 1.0 / counts_flat
+            inv_counts_flat /= np.sum(inv_counts_flat)
+
+            inv_counts_flat = np.clip(inv_counts_flat, self.density_floor, None)
+            self._log_mass_per_cell = np.log(inv_counts_flat)
+            self._bin_sizes = tuple(bin_sizes)
+
+        return self
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        """
+        Compute log prior for each model in the given targets array.
+
+        Parameters
+        ----------
+        targets : ndarray, shape (N, Q)
+            Model grid targets.
+
+        Returns
+        -------
+        logp : ndarray, shape (N,)
+            Log prior for each target row.
+        """
+        if not hasattr(self, "_log_inv_mass_list"):
+            raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
+
+        t = targets[:, self.target_cols]  # (N, D)
+        N, D = t.shape
+        logp = np.zeros(N, dtype=float)
+
+        for d in range(D):
+            edges = self.edges_list[d]
+            td = t[:, d]
+            j = np.digitize(td, edges) - 1
+            j = np.clip(j, 0, edges.size - 2)
+
+            log_inv_mass_d = self._log_inv_mass_list[d]
+            logp += log_inv_mass_d[j]
+
+        return logp
+
+
 class ObservableDependentPrior(Prior):
     """TODO"""
     def fit_from_grid(self):
@@ -442,7 +629,7 @@ def posterior_over_models(x_native: np.ndarray,
                           prior_needs_observables: bool = False,
                           observables_models: Optional[np.ndarray] = None) -> np.ndarray:
     """
-    Convenience function: compute normalised posterior weights over models.
+    Compute normalised posterior weights over models.
 
     Parameters
     ----------
