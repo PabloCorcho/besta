@@ -112,6 +112,8 @@ class BaseModule(ClassModule):
         ssp_name = options["SSPModel"]
         if options.has_value("SSPDir"):
             ssp_dir = options["SSPDir"]
+            if "none" in ssp_dir.lower():
+                ssp_dir = None
         else:
             ssp_dir = None
 
