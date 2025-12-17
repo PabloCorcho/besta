@@ -19,9 +19,7 @@ class KinDustModule(SpectraFitModule):
                 the sampler.
 
         """
-        options = self.parse_options(options)
-        # Pipeline values file
-        self.config = {}
+        super().__init__(options)
         if options.has_value("save_ssp"):
             self.solution = []
             self.ssp_output = options["save_ssp"]
@@ -75,7 +73,7 @@ class KinDustModule(SpectraFitModule):
                              flux_model[good_pixels], cov[good_pixels],
                              weights=weights[good_pixels])
         # Final posterior for sampling
-        block[section_names.likelihoods, "KinDust_like"] = like
+        block[section_names.likelihoods, self.like_name] = like
         return 0
 
     def cleanup(self):

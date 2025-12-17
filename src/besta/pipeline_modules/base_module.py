@@ -29,6 +29,20 @@ from besta.config import cosmology, memory
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
+    def __init__(self, options):
+        """Set-up the COSMOSIS sampler.
+        Args:
+            options: options from startup file (i.e. .ini file)
+        """
+        super().__init__(options)
+        options = self.parse_options(options)
+        self.config = {}
+        # Likelihood name
+        if options.has_value("like_name"):
+            self.like_name = options["like_name"]
+        else:
+            self.like_name = self.name + "_like"
+
     @abstractmethod
     def make_observable(self, *args, **kwargs):
         """Create an observable from an input set of model parameters."""

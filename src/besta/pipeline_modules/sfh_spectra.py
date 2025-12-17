@@ -18,9 +18,7 @@ class SFHSpectraModule(SpectraFitModule):
                 the sampler.
 
         """
-        options = self.parse_options(options)
-        # Pipeline values file
-        self.config = {}
+        super().__init__(options)
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)

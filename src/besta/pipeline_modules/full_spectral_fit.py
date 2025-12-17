@@ -18,9 +18,7 @@ class FullSpectralFitModule(SpectraFitModule):
                 the sampler.
 
         """
-        options = self.parse_options(options)
-        # Pipeline values file
-        self.config = {}
+        super().__init__(options)
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)
@@ -104,7 +102,7 @@ class FullSpectralFitModule(SpectraFitModule):
                              cov[good_pixels],
                              weights=weights[good_pixels])
         # Final posterior for sampling
-        block[section_names.likelihoods, f"{self.name}_like"] = like
+        block[section_names.likelihoods, self.like_name] = like
         return 0
 
     def cleanup(self):
