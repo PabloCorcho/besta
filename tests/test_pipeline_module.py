@@ -29,7 +29,7 @@ class TestPipelineModule(unittest.TestCase):
         sfh.parse_free_params(params)
         sed = sfh.model.compute_SED(ssp, t_obs=sfh.today)
 
-        np.savetxt("./test_spectra_exp_sfh.dat", np.array([ssp.wavelength,
+        np.savetxt("./test_spectra_exp_sfh.dat", np.array([ssp.wavelength.to_value("nm"),
                                                            sed, sed * 0.1]).T)
 
     @classmethod
@@ -48,6 +48,7 @@ class TestPipelineModule(unittest.TestCase):
                 "SSPModelArgs": "cha",
                 "SSPDir": "None",
                 "wlRange": [3700.0, 8000.0],
+                "wlUnits": "nm",
                 "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
             }
@@ -75,6 +76,7 @@ class TestPipelineModule(unittest.TestCase):
                 "SSPModelArgs": "cha",
                 "SSPDir": "None",
                 "wlRange": [3700.0, 6000.0],
+                "wlUnits": "nm",
                 "SFHModel": "ExponentialSFH",
                 "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
