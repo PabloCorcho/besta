@@ -5,11 +5,11 @@ from astropy import units as u
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 
-from besta.pipeline_modules.base_module import BaseModule
+from besta.pipeline_modules.base_module import PhotometryFitModule
 from besta import kinematics
 from besta.config import extinction as extinction_conf
 
-class SFHPhotometryModule(BaseModule):
+class SFHPhotometryModule(PhotometryFitModule):
     name = "SFHPhotometry"
 
     def __init__(self, options):

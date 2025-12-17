@@ -1,4 +1,4 @@
-from besta.pipeline_modules.base_module import BaseModule
+from besta.pipeline_modules.base_module import SpectraFitModule
 import numpy as np
 from scipy.optimize import nnls
 
@@ -7,7 +7,7 @@ from cosmosis.datablock import SectionOptions
 from besta import kinematics
 from besta import spectrum
 
-class KinDustModule(BaseModule):
+class KinDustModule(SpectraFitModule):
     name = "KinDust"
 
     def __init__(self, options):

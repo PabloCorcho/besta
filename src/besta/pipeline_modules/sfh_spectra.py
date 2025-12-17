@@ -1,4 +1,4 @@
-from besta.pipeline_modules.base_module import BaseModule
+from besta.pipeline_modules.base_module import SpectraFitModule
 import numpy as np
 
 from cosmosis.datablock import names as section_names
@@ -6,7 +6,7 @@ from cosmosis.datablock import SectionOptions
 from besta import kinematics
 from besta import spectrum
 
-class SFHSpectraModule(BaseModule):
+class SFHSpectraModule(SpectraFitModule):
     name = "SFHSpectra"
 
     def __init__(self, options):
