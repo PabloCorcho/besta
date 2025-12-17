@@ -110,9 +110,9 @@ class BaseModule(ClassModule):
             return
 
         ssp_name = options["SSPModel"]
-        ssp_dir = options["SSPDir"]
-
-        if "none" in ssp_dir.lower():
+        if options.has_value("SSPDir"):
+            ssp_dir = options["SSPDir"]
+        else:
             ssp_dir = None
 
         # Additional arguments to be passed to the SSP model
@@ -137,11 +137,6 @@ class BaseModule(ClassModule):
             n_nmf = options.get_int("SSP-NMF-N")
         else:
             n_nmf = None
-
-        if ssp_dir == "None":
-            ssp_dir = None
-        else:
-            print(f"Loading SSP model from input directory: {ssp_dir}")
 
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
@@ -187,15 +182,14 @@ class BaseModule(ClassModule):
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
             # Assume both LSF are Gaussian
-            effective_lsf_disp = inst_lsf**2 - ssp_lsf_fwhm**2
+            effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
 
-            if (effective_lsf_disp < 0).any():
+            if (effective_lsf_disp <= 0).any():
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)
             # Convert to pixels
-            lsf_sigma_pixels = effective_lsf / np.diff(
-                np.exp(lnlam_bin_edges)) / 2.355
+            lsf_sigma_pixels = effective_lsf / np.diff(np.exp(lnlam_bin_edges))
             print("Starting convolution of SSP models with wavelength-dependent",
                   f"LSF [min sigma={lsf_sigma_pixels.min():.2},"
                   f" max sigma={lsf_sigma_pixels.max():.2} pix]")
@@ -295,7 +289,6 @@ class BaseModule(ClassModule):
                 if "," in value:
                     value = np.array(value.split(","), dtype=float)
             sfh_args.append(value)
-            key = key.replace(key[-1], str(int(key[-1]) + 1))
         print("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **self.config)
