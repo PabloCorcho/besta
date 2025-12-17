@@ -245,7 +245,7 @@ def make_values_file(config, overwrite=True):
                     f.write(f"{name} = {lims}\n")
                 else:
                     f.write(f"{name} = {lims[0]} {(lims[0] + lims[1]) / 2} {lims[1]}\n")
-            f.write(f"; \(ﾟ▽ﾟ)/")
+            f.write(r"; \(ﾟ▽ﾟ)/")
 
 @expand_env_vars()
 def read_results_file(path):
