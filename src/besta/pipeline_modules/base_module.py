@@ -66,218 +66,6 @@ class BaseModule(ClassModule):
             options = SectionOptions(options)
         return options
 
-    def prepare_observed_spectra(
-        self, options: DataBlock, normalize=False, luminosity=False
-    ):
-        """Prepare the input spectra data.
-
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-        normalize : bool, optional
-            If ``True``, normalizes the spectra using the given wavelength range.
-        luminosity : bool, optional
-            If ``True``, converts the input flux to luminosities.
-        """
-        print("\n-> Configuring input observed spectra")
-        filename = os.path.expandvars(options["inputSpectrum"])
-        # Read wavelength and spectra
-        print("Loading observed spectra from input file: ", filename)
-        wavelength, flux, error = np.loadtxt(filename, unpack=True)
-        print("Wavelength coverage: ", wavelength[[0, -1]])
-        print("Size: ", wavelength.size)
-
-        # Convert units if needed
-        if options.has_value("wlUnits"):
-            print("Converting wavelength units to Angstrom")
-            wl_units = u.Unit(options["wlUnits"])
-            wavelength = (wavelength << wl_units).to("Angstrom").value
-        else:
-            print("Assuming input wavelength units are in Angstrom")
-            wl_units = u.angstrom
-
-        if options.has_value("fluxUnits"):
-            print("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
-            flux_units = u.Unit(options["fluxUnits"])
-            flux = (flux << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
-            error = (error << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
-        else:
-            print("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
-            flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
-
-        # Wavelength range to include in the fit
-        if options.has_value("wlRange"):
-            wl_range = (np.asarray(options["wlRange"]) << wl_units
-            ).to("Angstrom").value
-        else:
-            wl_range = wavelength[[0, -1]]
-        # Wavelength range to renormalize the spectra
-        if options.has_value("wlNormRange"):
-            wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
-            ).to("Angstrom").value
-        else:
-            wl_norm_range = wavelength[[0, -1]]
-        # Input redshift (initial guess)
-        if options.has_value("redshift"):
-            redshift = options["redshift"]
-        else:
-            print("No input redshift value provided (defaulting to 0)")
-            redshift = 0.0
-        # Load mask
-        if options.has_value("mask"):
-            weights = np.array(
-                np.loadtxt(os.path.expandvars(options["mask"])), dtype=float)
-        else:
-            weights = np.ones_like(flux)
-        
-        if weights.size != flux.size:
-            raise ValueError(
-                "Input mask size does not match the input spectrum size.")
-        # Load the instrumental LSF
-        if options.has_value("lsf"):
-            lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
-                                          unpack=True)
-            instrumental_lsf = np.array(np.interp(wavelength, lsf_wl, lsf_fwhm),
-                                        dtype=float)
-        else:
-            instrumental_lsf = np.zeros_like(wavelength)
-        # Apply redshift
-        print(f"Setting wavelength array to restframe (redshift: {redshift})")
-        wavelength /= 1.0 + redshift
-        print("Constraining fit to wavelength range: ", wl_range)
-        good_idx = np.where(
-            (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
-        if len(good_idx) == 0:
-            raise ValueError("No wavelength points found within the given"
-                             "wavelength range.")
-        wavelength = wavelength[good_idx]
-        flux = flux[good_idx]
-        cov = error[good_idx] ** 2
-        weights = weights[good_idx]
-        instrumental_lsf = instrumental_lsf[good_idx]
-        # Check error
-        if (cov <= 0).any():
-            raise ValueError("Input flux error contains negative or null values.")
-
-        print("Number of selected pixels within wavelength range: ", good_idx.size)
-        if options.has_value("velscale"):
-            velscale = options["velscale"]
-        else:
-            # Set velscale to None
-            velscale = None
-        print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
-        # Update the value of velscale
-        if velscale is not None:
-            dlnlam = velscale / spectrum.constants.c.to("km/s").value
-            ln_wave = np.arange(np.log(wl_range[0]), np.log(wl_range[1]) + dlnlam,
-                            dlnlam)
-
-            flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
-            cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
-            weights = np.interp(ln_wave, np.log(wavelength), weights)
-            instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
-    
-            new_wavelength = np.exp(ln_wave)
-            weights[(new_wavelength < wavelength[0]) | (new_wavelength > wavelength[-1])] = 0.0
-            wavelength = new_wavelength
-        else:
-            ln_wave = np.log(wavelength)
-
-        print("Number of pixels after interpolation: ", wavelength.size)
-        # Normalize spectra
-        if normalize:
-            print("Spectra normalized using wavelength range: ", wl_norm_range)
-            norm_idx = np.where(
-                (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1])
-            )[0]
-            norm_flux = np.nanmedian(flux[norm_idx])
-            flux /= norm_flux
-            cov /= norm_flux**2
-            flux_units = u.dimensionless_unscaled
-        else:
-            norm_flux = 1.0
-
-        if luminosity:
-            if redshift > 0:
-                print(f"Converting input flux to luminosity at redshift {redshift}")
-                dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
-                dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
-            else:
-                print("Converting input flux to luminosity at 10 pc")
-                dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
-            #  Input spectra is expected to be a specific flux density per
-            # wavelength unit.
-            flux *= dl_sq
-            cov *= dl_sq * dl_sq
-
-        self.config["flux"] = flux
-        self.config["cov"] = cov
-        self.config["redshift"] = redshift
-        self.config["wlUnits"] = wl_units
-        self.config["fluxUnits"] = flux_units
-        self.config["norm_flux"] = norm_flux
-        self.config["wavelength"] = wavelength << u.angstrom
-        self.config["ln_wave"] = ln_wave
-        self.config["weights"] = weights
-        if not (instrumental_lsf == 0).all():
-            self.config["lsf"] = instrumental_lsf
-
-        print("-> Configuration done.")
-
-    def prepare_observed_photometry(self, options):
-        """Prepare the Photometric Data.
-
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-        """
-        print("\n-> Configuring photometric data")
-        photometry_file = os.path.expandvars(options["inputPhotometry"])
-
-        # Read the data
-        filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
-        flux, flux_err = np.loadtxt(
-            photometry_file, usecols=(1, 2), unpack=True, dtype=float
-        )
-
-        nanomaggie = u.def_unit('nanomaggie', 3631e-9 * u.Jy)
-        if options.has_value("fluxUnits"):
-            print("Converting flux units to nanomaggies")
-            flux_units = u.Unit(options["fluxUnits"])
-            flux = (flux << flux_units).to(nanomaggie).value
-            error = (error << flux_units).to(nanomaggie).value
-        else:
-            print("Assuming input flux units are in nanomaggies")
-            flux_units = nanomaggie
-
-        self.config["photometry_flux"] = flux
-        self.config["photometry_flux_var"] = flux_err**2
-        self.config["photometry_flux_units"] = flux_units
-        # TODO: include redshift and flux conversion to luminosities
-        # Load the photometric filters
-        photometric_filters = []
-        for filter_name in filter_names:
-            print(f"Loading photometric filter: {filter_name}")
-            if os.path.exists(os.path.expandvars(filter_name)):
-                filt = Filter.from_text_file(os.path.expandvars(filter_name))
-            else:
-                filt = Filter.from_svo(filter_name)
-            photometric_filters.append(filt)
-        self.config["filters"] = photometric_filters
-
-        if options.has_value("flux_to_lum"):
-            if options["flux_to_lum"] == True:
-                print("Converting input fluxes to absolute flux at 10 pc using"
-                      f"input redshift {options['redshift']}")
-                distance = cosmology.luminosity_distance(
-                    options["redshift"]).to_value("10 pc")
-                self.config["photometry_flux"] *= distance**2
-                self.config["photometry_flux_var"] *= distance**4
-
-        print("-> Configuration done.")
-
     def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
         """Prepare the SSP data.
 
@@ -514,31 +302,6 @@ class BaseModule(ClassModule):
         self.config["sfh_model"] = sfh_model
         print("-> Configuration done")
 
-    def prepare_legendre_polynomials(self, options):
-        """Prepare the set of Legendre polynomials used during the fit.
-
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-            Input options to initialise the model.
-        """
-        print("\n-> Configuring multiplicative polynomial")
-        if options.has_value("legendre_deg"):
-            kwargs = {}
-            if options.has_value("legendre_bounds"):
-                kwargs["bounds"] = options["legendre_bounds"]
-            if options.has_value("legendre_scale"):
-                kwargs["scale"] = options["legendre_scale"]
-            if options.has_value("legendre_clip_first_zero"):
-                kwargs["clip_first_zero"] = options["legendre_clip_first_zero"]
-            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
-                  "\nAdditional arguments: ", kwargs)
-            self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
-                self.config["wavelength"], options["legendre_deg"], **kwargs)
-        else:
-            print(f"Not using multiplicative Legendre polynomials")
-        print("-> Configuration done")
-
     def log_like(self, data, model, cov, weights=None):
         """Compute the likelihood between an input data set and a model.
 
@@ -564,13 +327,251 @@ class BaseModule(ClassModule):
 
         return loglike
 
+
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
-    pass
+
+    def prepare_observed_spectra(
+        self, options: DataBlock, normalize=False, luminosity=False
+    ):
+        """Prepare the input spectra data.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+        normalize : bool, optional
+            If ``True``, normalizes the spectra using the given wavelength range.
+        luminosity : bool, optional
+            If ``True``, converts the input flux to luminosities.
+        """
+        print("\n-> Configuring input observed spectra")
+        filename = os.path.expandvars(options["inputSpectrum"])
+        # Read wavelength and spectra
+        print("Loading observed spectra from input file: ", filename)
+        wavelength, flux, error = np.loadtxt(filename, unpack=True)
+        print("Wavelength coverage: ", wavelength[[0, -1]])
+        print("Size: ", wavelength.size)
+
+        # Convert units if needed
+        if options.has_value("wlUnits"):
+            print("Converting wavelength units to Angstrom")
+            wl_units = u.Unit(options["wlUnits"])
+            wavelength = (wavelength << wl_units).to("Angstrom").value
+        else:
+            print("Assuming input wavelength units are in Angstrom")
+            wl_units = u.angstrom
+
+        if options.has_value("fluxUnits"):
+            print("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
+            flux_units = u.Unit(options["fluxUnits"])
+            flux = (flux << flux_units).to(
+                "1e-16 erg / (s cm2 Angstrom)").value
+            error = (error << flux_units).to(
+                "1e-16 erg / (s cm2 Angstrom)").value
+        else:
+            print("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
+            flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
+
+        # Wavelength range to include in the fit
+        if options.has_value("wlRange"):
+            wl_range = (np.asarray(options["wlRange"]) << wl_units
+            ).to("Angstrom").value
+        else:
+            wl_range = wavelength[[0, -1]]
+        # Wavelength range to renormalize the spectra
+        if options.has_value("wlNormRange"):
+            wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
+            ).to("Angstrom").value
+        else:
+            wl_norm_range = wavelength[[0, -1]]
+        # Input redshift (initial guess)
+        if options.has_value("redshift"):
+            redshift = options["redshift"]
+        else:
+            print("No input redshift value provided (defaulting to 0)")
+            redshift = 0.0
+        # Load mask
+        if options.has_value("mask"):
+            weights = np.array(
+                np.loadtxt(os.path.expandvars(options["mask"])), dtype=float)
+        else:
+            weights = np.ones_like(flux)
+        
+        if weights.size != flux.size:
+            raise ValueError(
+                "Input mask size does not match the input spectrum size.")
+        # Load the instrumental LSF
+        if options.has_value("lsf"):
+            lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
+                                          unpack=True)
+            instrumental_lsf = np.array(np.interp(wavelength, lsf_wl, lsf_fwhm),
+                                        dtype=float)
+        else:
+            instrumental_lsf = np.zeros_like(wavelength)
+        # Apply redshift
+        print(f"Setting wavelength array to restframe (redshift: {redshift})")
+        wavelength /= 1.0 + redshift
+        print("Constraining fit to wavelength range: ", wl_range)
+        good_idx = np.where(
+            (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
+        if len(good_idx) == 0:
+            raise ValueError("No wavelength points found within the given"
+                             "wavelength range.")
+        wavelength = wavelength[good_idx]
+        flux = flux[good_idx]
+        cov = error[good_idx] ** 2
+        weights = weights[good_idx]
+        instrumental_lsf = instrumental_lsf[good_idx]
+        # Check error
+        if (cov <= 0).any():
+            raise ValueError("Input flux error contains negative or null values.")
+
+        print("Number of selected pixels within wavelength range: ", good_idx.size)
+        if options.has_value("velscale"):
+            velscale = options["velscale"]
+        else:
+            # Set velscale to None
+            velscale = None
+        print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
+        # Update the value of velscale
+        if velscale is not None:
+            dlnlam = velscale / spectrum.constants.c.to("km/s").value
+            ln_wave = np.arange(np.log(wl_range[0]), np.log(wl_range[1]) + dlnlam,
+                            dlnlam)
+
+            flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
+            cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
+            weights = np.interp(ln_wave, np.log(wavelength), weights)
+            instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
+    
+            new_wavelength = np.exp(ln_wave)
+            weights[(new_wavelength < wavelength[0]) | (new_wavelength > wavelength[-1])] = 0.0
+            wavelength = new_wavelength
+        else:
+            ln_wave = np.log(wavelength)
+
+        print("Number of pixels after interpolation: ", wavelength.size)
+        # Normalize spectra
+        if normalize:
+            print("Spectra normalized using wavelength range: ", wl_norm_range)
+            norm_idx = np.where(
+                (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1])
+            )[0]
+            norm_flux = np.nanmedian(flux[norm_idx])
+            flux /= norm_flux
+            cov /= norm_flux**2
+            flux_units = u.dimensionless_unscaled
+        else:
+            norm_flux = 1.0
+
+        if luminosity:
+            if redshift > 0:
+                print(f"Converting input flux to luminosity at redshift {redshift}")
+                dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
+                dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
+            else:
+                print("Converting input flux to luminosity at 10 pc")
+                dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
+            #  Input spectra is expected to be a specific flux density per
+            # wavelength unit.
+            flux *= dl_sq
+            cov *= dl_sq * dl_sq
+
+        self.config["flux"] = flux
+        self.config["cov"] = cov
+        self.config["redshift"] = redshift
+        self.config["wlUnits"] = wl_units
+        self.config["fluxUnits"] = flux_units
+        self.config["norm_flux"] = norm_flux
+        self.config["wavelength"] = wavelength << u.angstrom
+        self.config["ln_wave"] = ln_wave
+        self.config["weights"] = weights
+        if not (instrumental_lsf == 0).all():
+            self.config["lsf"] = instrumental_lsf
+
+        print("-> Configuration done.")
+
+    def prepare_legendre_polynomials(self, options):
+        """Prepare the set of Legendre polynomials used during the fit.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        print("\n-> Configuring multiplicative polynomial")
+        if options.has_value("legendre_deg"):
+            kwargs = {}
+            if options.has_value("legendre_bounds"):
+                kwargs["bounds"] = options["legendre_bounds"]
+            if options.has_value("legendre_scale"):
+                kwargs["scale"] = options["legendre_scale"]
+            if options.has_value("legendre_clip_first_zero"):
+                kwargs["clip_first_zero"] = options["legendre_clip_first_zero"]
+            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
+                  "\nAdditional arguments: ", kwargs)
+            self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
+                self.config["wavelength"], options["legendre_deg"], **kwargs)
+        else:
+            print(f"Not using multiplicative Legendre polynomials")
+        print("-> Configuration done")
+
 
 class PhotometryFitModule(BaseModule):
     """Base class for photometry fitting modules in BESTA."""
-    pass
+    
+    def prepare_observed_photometry(self, options):
+        """Prepare the Photometric Data.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+        """
+        print("\n-> Configuring photometric data")
+        photometry_file = os.path.expandvars(options["inputPhotometry"])
+
+        # Read the data
+        filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
+        flux, flux_err = np.loadtxt(
+            photometry_file, usecols=(1, 2), unpack=True, dtype=float
+        )
+
+        nanomaggie = u.def_unit('nanomaggie', 3631e-9 * u.Jy)
+        if options.has_value("fluxUnits"):
+            print("Converting flux units to nanomaggies")
+            flux_units = u.Unit(options["fluxUnits"])
+            flux = (flux << flux_units).to(nanomaggie).value
+            error = (error << flux_units).to(nanomaggie).value
+        else:
+            print("Assuming input flux units are in nanomaggies")
+            flux_units = nanomaggie
+
+        self.config["photometry_flux"] = flux
+        self.config["photometry_flux_var"] = flux_err**2
+        self.config["photometry_flux_units"] = flux_units
+        # TODO: include redshift and flux conversion to luminosities
+        # Load the photometric filters
+        photometric_filters = []
+        for filter_name in filter_names:
+            print(f"Loading photometric filter: {filter_name}")
+            if os.path.exists(os.path.expandvars(filter_name)):
+                filt = Filter.from_text_file(os.path.expandvars(filter_name))
+            else:
+                filt = Filter.from_svo(filter_name)
+            photometric_filters.append(filt)
+        self.config["filters"] = photometric_filters
+
+        if options.has_value("flux_to_lum"):
+            if options["flux_to_lum"] == True:
+                print("Converting input fluxes to absolute flux at 10 pc using"
+                      f"input redshift {options['redshift']}")
+                distance = cosmology.luminosity_distance(
+                    options["redshift"]).to_value("10 pc")
+                self.config["photometry_flux"] *= distance**2
+                self.config["photometry_flux_var"] *= distance**4
+
+        print("-> Configuration done.")
+
 
 class EquivalentWidthFitModule(BaseModule):
     """Base class for equivalent width fit modules in BESTA."""
