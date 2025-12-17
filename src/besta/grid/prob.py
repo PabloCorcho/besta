@@ -10,6 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, List
+import warnings
 
 import numpy as np
 try:
@@ -123,6 +124,162 @@ class FlatPrior(Prior):
 
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         return np.zeros(targets.shape[0], dtype=float)
+
+
+@dataclass
+class GaussianPrior1D(Prior):
+    """
+    1-D Gaussian prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    mu : float
+        Mean of the Gaussian prior.
+    sigma : float
+        Standard deviation of the Gaussian prior.
+    """
+
+    target_col: int
+    mu: float
+    sigma: float
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        return _normal_logpdf(t, self.mu, self.sigma)
+
+@dataclass
+class UniformPrior1D(Prior):
+    """
+    1-D uniform prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    low : float
+        Lower bound of the uniform prior.
+    high : float
+        Upper bound of the uniform prior.
+    """
+
+    target_col: int
+    low: float
+    high: float
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        logp = np.where((t >= self.low) & (t <= self.high),
+                        -np.log(self.high - self.low),
+                        -np.inf)
+        return logp
+
+@dataclass
+class DeltaPrior1D(Prior):
+    """
+    1-D delta-function prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    value : float
+        Location of the delta prior.
+    tolerance : float, optional
+        Width around `value` to assign finite log-probability (default 1e-6).
+    """
+
+    target_col: int
+    value: float
+    tolerance: float = 1e-6
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        logp = np.where(np.abs(t - self.value) <= self.tolerance,
+                        -np.log(2.0 * self.tolerance),
+                        -np.inf)
+        return logp
+
+@dataclass
+class ExponentialPrior1D(Prior):
+    """
+    1-D exponential prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    scale : float
+        Scale parameter (mean) of the exponential prior.
+    """
+
+    target_col: int
+    scale: float
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        logp = np.where(t >= 0,
+                        -t / self.scale - np.log(self.scale),
+                        -np.inf)
+        return logp
+
+@dataclass
+class ExponentialTruncatedPrior1D(Prior):
+    """
+    1-D truncated exponential prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    scale : float
+        Scale parameter (mean) of the exponential prior.
+    t_max : float
+        Maximum value of the target (support upper bound).
+    """
+
+    target_col: int
+    scale: float
+    t_max: float
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        norm = 1.0 - np.exp(-self.t_max / self.scale)
+        logp = np.where((t >= 0) & (t <= self.t_max),
+                        -t / self.scale - np.log(self.scale * norm),
+                        -np.inf)
+        return logp
+
+@dataclass
+class PowerLawPrior1D(Prior):
+    """
+    1-D power-law prior over a single target column.
+
+    Parameters
+    ----------
+    target_col : int
+        Index of the target column to build the prior on (e.g., redshift).
+    alpha : float
+        Power-law index (p(t) ~ t^alpha).
+    t_min : float
+        Minimum value of the target (support lower bound).
+    t_max : float
+        Maximum value of the target (support upper bound).
+    """
+
+    target_col: int
+    alpha: float
+    t_min: float
+    t_max: float
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        t = targets[:, self.target_col]
+        norm = (self.t_max ** (self.alpha + 1) - self.t_min ** (self.alpha + 1)) / (self.alpha + 1)
+        logp = np.where((t >= self.t_min) & (t <= self.t_max),
+                        self.alpha * np.log(t) - np.log(norm),
+                        -np.inf)
+        return logp
 
 
 @dataclass
@@ -320,7 +477,7 @@ class EmpiricalFlatteningPriorND(Prior):
                 raise RuntimeError("No models in any joint bin; cannot fit prior.")
 
             counts_flat = np.clip(counts_flat, self.count_floor, None)
-
+            self.counts_flat = counts_flat
             # Per-cell prior mass proportional to 1 / counts
             inv_counts_flat = 1.0 / counts_flat
             inv_counts_flat /= np.sum(inv_counts_flat)
@@ -345,21 +502,41 @@ class EmpiricalFlatteningPriorND(Prior):
         logp : ndarray, shape (N,)
             Log prior for each target row.
         """
-        if not hasattr(self, "_log_inv_mass_list"):
-            raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
 
         t = targets[:, self.target_cols]  # (N, D)
         N, D = t.shape
         logp = np.zeros(N, dtype=float)
 
-        for d in range(D):
-            edges = self.edges_list[d]
-            td = t[:, d]
-            j = np.digitize(td, edges) - 1
-            j = np.clip(j, 0, edges.size - 2)
+        if self.mode == "factorised":
+            if not hasattr(self, "_log_inv_mass_list"):
+                raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
 
-            log_inv_mass_d = self._log_inv_mass_list[d]
-            logp += log_inv_mass_d[j]
+            for d in range(D):
+                edges = self.edges_list[d]
+                td = t[:, d]
+                j = np.digitize(td, edges) - 1
+                j = np.clip(j, 0, edges.size - 2)
+    
+                log_inv_mass_d = self._log_inv_mass_list[d]
+                logp += log_inv_mass_d[j]
+
+        elif self.mode == "joint":
+            if not hasattr(self, "_log_mass_per_cell"):
+                raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
+            
+            bin_indices = []
+            for d in range(D):
+                edges = self.edges_list[d]
+                td = t[:, d]
+                j = np.digitize(td, edges) - 1
+                # Clip into valid range
+                j = np.clip(j, 0, edges.size - 2)
+                bin_indices.append(j)
+            
+            linear_indices = np.ravel_multi_index(
+                bin_indices, dims=self._bin_sizes
+            )
+            logp += self._log_mass_per_cell[linear_indices]
 
         return logp
 
@@ -466,7 +643,210 @@ class HierarchicalPrior(Prior):
     def fit_from_data(self, targets: np.ndarray, observables: np.ndarray, weights: np.ndarray | None = None) -> None:
         pass
 
-# class MainSequencePrior(HierarchicalPrior):
+@dataclass
+class CompositePrior(Prior):
+    """
+    Composite prior combining multiple target-only Priors.
+
+    The total log prior is defined as a weighted sum of component
+    log priors:
+
+        log p_total(model) = sum_i w_i * log p_i(model)
+
+    where each p_i is a Prior that does *not* depend on observables.
+
+    Parameters
+    ----------
+    priors : sequence of Prior
+        List or tuple of prior instances to combine. Each must implement
+        `log_prob_for_models(targets)` and must NOT require observables.
+    weights : sequence of float, optional
+        Per-component multiplicative weights for the log-probabilities.
+        If None, all weights are taken as 1.0. A zero weight effectively
+        disables a component. Negative weights are allowed but should be
+        used with care, as they correspond to dividing by p_i(model) in
+        linear space.
+    """
+
+    priors: Sequence[Prior]
+    weights: Optional[Sequence[float]] = None
+
+    def __post_init__(self):
+        self.priors = list(self.priors)
+        if not self.priors:
+            raise ValueError("CompositePrior requires at least one component prior.")
+
+        # Disallow observable-dependent priors here to keep the API clean.
+        for i, pr in enumerate(self.priors):
+            if isinstance(pr, ObservableDependentPrior):
+                raise TypeError(
+                    f"CompositePrior component {i} is observable-dependent "
+                    "(ObservableDependentPrior); use ObservableCompositePrior instead."
+                )
+
+        if self.weights is not None:
+            if len(self.weights) != len(self.priors):
+                raise ValueError(
+                    "weights must have the same length as priors "
+                    f"({len(self.weights)} != {len(self.priors)})"
+                )
+            self._weights = np.asarray(self.weights, dtype=float)
+        else:
+            self._weights = None
+
+    def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
+        """
+        Evaluate the composite log prior for each model row.
+
+        Parameters
+        ----------
+        targets : ndarray, shape (N, Q)
+            Model targets array.
+
+        Returns
+        -------
+        logp : ndarray, shape (N,)
+            Composite log prior per model.
+        """
+        N = targets.shape[0]
+        logp_total: Optional[np.ndarray] = None
+
+        for i, pr in enumerate(self.priors):
+            w_i = 1.0 if self._weights is None else float(self._weights[i])
+            if w_i == 0.0:
+                continue
+            lp_i = pr.log_prob_for_models(targets)
+            if lp_i.shape != (N,):
+                raise ValueError(
+                    f"Component prior {i} returned shape {lp_i.shape}, expected ({N},)"
+                )
+
+            if w_i != 1.0:
+                lp_i = w_i * lp_i
+
+            logp_total = lp_i if logp_total is None else (logp_total + lp_i)
+
+        if logp_total is None:
+            warnings.warn("All weights were zero in CompositePrior; returning flat prior.")
+            return np.zeros(N, dtype=float)
+
+        return logp_total
+
+
+@dataclass
+class ObservableCompositePrior(ObservableDependentPrior):
+    """
+    Composite prior combining Priors, including observable-dependent ones.
+
+    The total log prior is defined as a weighted sum of component
+    log priors:
+
+        log p_total(model) = sum_i w_i * log p_i(model)
+
+    Components can be:
+      - Plain Prior (target-only), evaluated as
+            p_i.log_prob_for_models(targets)
+      - ObservableDependentPrior, evaluated as
+            p_i.log_prob_for_models(targets, observables=...)
+
+    Parameters
+    ----------
+    priors : sequence of Prior
+        List or tuple of prior instances to combine. Each must implement
+        `log_prob_for_models(...)` following the Prior or
+        ObservableDependentPrior API.
+    weights : sequence of float, optional
+        Per-component multiplicative weights for the log-probabilities.
+        If None, all weights are taken as 1.0. A zero weight effectively
+        disables a component. Negative weights are allowed but should be
+        used with care, as they correspond to dividing by p_i(model) in
+        linear space.
+
+    Notes
+    -----
+    - Because this class inherits from ObservableDependentPrior, external
+      code (e.g. GridFitter / posterior_over_models) should treat it as
+      requiring observables and pass them when available.
+    - If the composite contains any ObservableDependentPrior and
+      `observables` is None, a ValueError is raised.
+    """
+
+    priors: Sequence[Prior]
+    weights: Optional[Sequence[float]] = None
+
+    def __post_init__(self):
+        self.priors = list(self.priors)
+        if not self.priors:
+            raise ValueError("ObservableCompositePrior requires at least one component prior.")
+
+        if self.weights is not None:
+            if len(self.weights) != len(self.priors):
+                raise ValueError(
+                    "weights must have the same length as priors "
+                    f"({len(self.weights)} != {len(self.priors)})"
+                )
+            self._weights = np.asarray(self.weights, dtype=float)
+        else:
+            self._weights = None
+
+    def log_prob_for_models(
+        self,
+        targets: np.ndarray,
+        observables: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """
+        Evaluate the composite log prior for each model row.
+
+        Parameters
+        ----------
+        targets : ndarray, shape (N, Q)
+            Model targets array.
+        observables : ndarray, shape (N, P), optional
+            Model observables. Required if any component is an
+            ObservableDependentPrior. If such a prior is present and
+            observables is None, a ValueError is raised.
+
+        Returns
+        -------
+        logp : ndarray, shape (N,)
+            Composite log prior per model.
+        """
+        N = targets.shape[0]
+        logp_total: Optional[np.ndarray] = None
+        need_obs = any(isinstance(pr, ObservableDependentPrior) for pr in self.priors)
+
+        if need_obs and observables is None:
+            raise ValueError(
+                "ObservableCompositePrior includes observable-dependent components "
+                "but 'observables' was not provided."
+            )
+
+        for i, pr in enumerate(self.priors):
+            w_i = 1.0 if self._weights is None else float(self._weights[i])
+            if w_i == 0.0:
+                continue  # skip null-weight component
+
+            # Evaluate component prior
+            if isinstance(pr, ObservableDependentPrior):
+                lp_i = pr.log_prob_for_models(targets, observables=observables)
+            else:
+                lp_i = pr.log_prob_for_models(targets)
+
+            if lp_i.shape != (N,):
+                raise ValueError(
+                    f"Component prior {i} returned shape {lp_i.shape}, expected ({N},)"
+                )
+
+            if w_i != 1.0:
+                lp_i = w_i * lp_i
+
+            logp_total = lp_i if logp_total is None else (logp_total + lp_i)
+
+        if logp_total is None:
+            # All weights were zero; fall back to flat
+            return np.zeros(N, dtype=float)
+
+        return logp_total
 
 # ============================== Likelihoods ==============================
 
@@ -705,10 +1085,10 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
     log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2
     """
 
-    def __init__(self, prefer_batch: bool = False):
+    def __init__(self, bandwidth_floor: float = 0.0, scale: float = 1.0,
+                 prefer_batch: bool = False):
+        super().__init__(bandwidth_floor=bandwidth_floor, scale=scale)
         self.prefer_batch = prefer_batch
-        if not NUMBA_OK:
-            print("[Numba] not available; falling back to base class")
 
     def log_likelihood(self, x_native, sigma_native, X_models):
         if not NUMBA_OK:
@@ -720,20 +1100,3 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
         h = np.ascontiguousarray(sigma_native, dtype=np.float64)
 
         return _loglike_gaussprod_diag(X, x, h)
-
-    def log_likelihood_batched(self, Xq_native, Hq_native, X_models):
-        """
-        Optional batched path used by your fit_batch if you choose to add it.
-        Xq_native: (M,P) queries; Hq_native: (M,P) bandwidths; X_models: (N,P)
-        """
-        if not NUMBA_OK:
-            # fallback: loop queries with base class
-            out = np.empty((Xq_native.shape[0], X_models.shape[0]), dtype=float)
-            for m in range(Xq_native.shape[0]):
-                out[m] = super().log_likelihood(Xq_native[m], Hq_native[m], X_models)
-            return out
-
-        Xq = np.ascontiguousarray(Xq_native, dtype=np.float64)
-        Hq = np.ascontiguousarray(Hq_native, dtype=np.float64)
-        X  = np.ascontiguousarray(X_models, dtype=np.float64)
-        return _loglike_gaussprod_diag_batched(X, Xq, Hq)
