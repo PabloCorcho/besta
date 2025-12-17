@@ -215,7 +215,7 @@ def make_ini_file(filename, config):
                 else:
                     content += str(value)
                 f.write(f"{content}\n")
-        f.write(f"; \(ﾟ▽ﾟ)/")
+        f.write(r"; \(ﾟ▽ﾟ)/")
 
 
 def make_values_file(config, overwrite=True):
