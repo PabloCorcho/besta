@@ -12,8 +12,9 @@ from scipy.spatial import cKDTree
 from besta.grid.grid import ModelGrid
 
 # ----------------------------
-# Utility transforms
+# Utilities
 # ----------------------------
+
 def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
                    pca_variance: float = 1.0) -> Dict[str, Any]:
     """
@@ -31,7 +32,8 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
     Returns
     -------
     t : dict
-        Transformation. Contains keys: mode, mu, sd, W, b, kept_dims.
+        Transformation. Contains keys: mode, mu (mean), sd (standard dev.),
+        W, b, kept_dims.
     """
     mode = (mode or "standardize").lower()
     if mode == "none":
@@ -44,7 +46,7 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
     Xc = X - mu
 
     if mode == "standardize":
-        sd = np.nanstd(Xc, axis=0, ddof=0)
+        sd = np.nanstd(Xc, axis=0)
         sd = np.where(sd == 0.0, 1.0, sd)
         # y = (x - mu) / sd
         return {"mode": "standardize", "mu": mu, "sd": sd, "W": None, "b": None,
@@ -55,12 +57,15 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
         U, S, Vt = np.linalg.svd(Xc / np.sqrt(max(1, Xc.shape[0] - 1)),
                                  full_matrices=False)
         eigvals = S**2
+        # Determine number of components
         cum = np.cumsum(eigvals) / np.sum(eigvals) if np.sum(eigvals) > 0 else np.ones_like(eigvals)
-        r = int(np.searchsorted(cum, float(pca_variance)) + 1)
+        r = np.searchsorted(cum, float(pca_variance)) + 1
+        # Clip to valid range
         r = max(1, min(r, Vt.shape[0]))
         Vr = Vt[:r, :]                   # r x D
         lambdar = eigvals[:r]            # r
         inv_sqrt = 1.0 / np.sqrt(np.where(lambdar > 0, lambdar, 1.0))
+        # Transformation matrix
         W = (Vr * inv_sqrt[:, None])     # r x D
         return {"mode": "pca_whiten", "mu": mu, "sd": None, "W": W, "b": None,
                 "kept_dims": np.arange(r)}
@@ -107,8 +112,9 @@ def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
     return sig_native
 
 # ----------------------------
-# Base interface
+# Base class
 # ----------------------------
+
 class BaseBinner:
     """
     Abstract candidate selector interface.
@@ -141,20 +147,6 @@ class BaseBinner:
     def load(cls, path: str) -> "BaseBinner":
         raise NotImplementedError
 
-    @staticmethod
-    def _norm_candidate_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        # Fill reasonable defaults and ignore unknowns gracefully
-        out = {
-            "select_by": kwargs.get("select_by", "sigma"),
-            "target_factor": float(kwargs.get("target_factor", 2.0)),
-            "expand_factor": float(kwargs.get("expand_factor", 2.0)),
-            "target_k": kwargs.get("target_k", None),
-            "k": kwargs.get("k", None),
-            "radius_factor": float(kwargs.get("radius_factor", 2.0)),
-            "max_expand_steps": int(kwargs.get("max_expand_steps", 4)),
-        }
-        return out
-
     def batch_candidates(self,
                          Y_native: np.ndarray,
                          SIG_native: Optional[np.ndarray] = None,
@@ -169,8 +161,7 @@ class BaseBinner:
             for m in range(s, e):
                 sig = None if SIG_native is None else SIG_native[m]
                 # normalize once here so subclasses can assume the unified keys
-                norm_kwargs = self._norm_candidate_kwargs(kwargs)
-                idx, aux = self.candidates(Y_native[m], sig, **norm_kwargs)
+                idx, aux = self.candidates(Y_native[m], sig, **kwargs)
                 out_idx[m] = idx
                 out_aux[m] = aux
         return out_idx, out_aux
@@ -378,6 +369,12 @@ class RectBinner(BaseBinner):
     transform: str = "standardize"
     pca_variance: float = 1.0
     edges_mode: str = "quantile"
+    mode: str = "sigma"
+    target_factor: float = 2.0
+    expand_factor: float = 2.0
+    target_k: Optional[int] = None
+    k: Optional[int] = None
+    max_expand_steps: int = 4
 
     # fitted attributes
     _T: Dict[str, Any] = field(default_factory=dict)
@@ -503,44 +500,11 @@ class RectBinner(BaseBinner):
 
     def candidates(self,
                    y_native: np.ndarray,
-                   sigmas_native: Optional[np.ndarray] = None,
-                   *,
-                   select_by: str = "sigma",
-                   target_factor: float = 2.0,
-                   expand_factor: float = 2.0,
-                   target_k: Optional[int] = None,
-                   k: Optional[int] = None,
-                   radius_factor: float = 2.0,
-                   max_expand_steps: int = 4) -> Tuple[np.ndarray, int]:
+                   sigmas_native: Optional[np.ndarray] = None
+                   ) -> Tuple[np.ndarray, int]:
         """
-        Unified candidate selector (RectBinner).
-
-        Modes
-        -----
-        select_by = "sigma":
-            Use sigmas in transformed space, choose level by `target_factor`,
-            expand by `expand_factor * sigma`.
-        select_by = "target_k":
-            Choose level that yields >= target_k in the base cell and expand
-            isotropically (by cell radius) up to `max_expand_steps` if needed.
-        select_by = "knn":
-            Approximated via "target_k" with target_k = k (no geometric kNN here).
-        select_by = "radius":
-            Equivalent to "sigma" using `expand_factor = radius_factor`.
+        Candidate selector.
         """
-        # Normalize/bridge modes to RectBinner's native behaviours
-        mode = (select_by or "sigma").lower()
-        if mode == "knn":
-            # Best RectBinner equivalent is "target_k"
-            if k is None or int(k) <= 0:
-                k = 1
-            target_k = int(k)
-            mode = "target_k"
-        elif mode == "radius":
-            # Map radius-based request onto sigma expansion
-            expand_factor = float(radius_factor)
-            mode = "sigma"
-
         # Build transformed query and sigma
         Xq = y_native[self.dims]
         y_trans = _apply_transform(Xq[None, :], self._T)[0]
@@ -556,16 +520,16 @@ class RectBinner(BaseBinner):
             else:
                 sig_trans = s_native
 
-        if mode == "target_k":
-            if target_k is None or int(target_k) <= 0:
-                target_k = 1
-            lev = self._choose_level_by_targetK(y_trans, target_k=int(target_k))
+        if self.mode == "target_k":
+            if self.target_k is None or int(self.target_k) <= 0:
+                self.target_k = 1
+            lev = self._choose_level_by_targetK(y_trans, target_k=int(self.target_k))
             layer = self._layers[lev]
             base_key = tuple(self._digitize_nd(y_trans[None, :], self._edges[lev])[0])
             idxs = [layer[k] for k in (base_key,) if k in layer]
             total = sum(len(a) for a in idxs)
             step = 1
-            while total < target_k and step <= int(max_expand_steps):
+            while total < self.target_k and step <= int(self.max_expand_steps):
                 keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=None,
                                                    expand_factor=1.0, min_keys_radius=step)
                 idxs = [layer[k] for k in keys if k in layer]
@@ -576,10 +540,11 @@ class RectBinner(BaseBinner):
             return np.unique(np.concatenate(idxs)), lev
 
         if sig_trans is None:
-            raise ValueError("sigmas_native must be provided for select_by='sigma'/'radius'")
-        lev = self._choose_level_by_sigma(sig_trans, target_factor=float(target_factor))
-        keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=sig_trans,
-                                           expand_factor=float(expand_factor))
+            raise ValueError("sigmas_native must be provided for mode='radius'")
+        lev = self._choose_level_by_sigma(
+            sig_trans, target_factor=float(self.target_factor))
+        keys = self._expand_neighbour_keys(
+            y_trans, lev, sig_trans=sig_trans, expand_factor=self.expand_factor)
         layer = self._layers[lev]
         idxs = [layer[k] for k in keys if k in layer]
         if not idxs:
@@ -599,7 +564,9 @@ class RectBinner(BaseBinner):
         }
 
     def save(self, path: str) -> None:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir_ = os.path.dirname(path)
+        if dir_:
+            os.makedirs(dir_, exist_ok=True)
         blob = {
             "cls": "RectBinner",
             "dims": self.dims,
@@ -611,6 +578,7 @@ class RectBinner(BaseBinner):
             "_T": {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self._T.items()},
             "_edges": [[e.tolist() for e in lev] for lev in self._edges],
             "_layers": {str(li): {str(k): v.tolist() for k, v in layer.items()} for li, layer in enumerate(self._layers)},
+            "_level_bin_size": self._level_bin_size.tolist(),
             "_grid_n": self._grid_n,
             "_D_eff": self._D_eff,
         }
@@ -647,6 +615,7 @@ class RectBinner(BaseBinner):
         obj._layers = layers
         obj._grid_n = int(d["_grid_n"])
         obj._D_eff = int(d["_D_eff"])
+        obj._level_bin_size = np.asarray(d["_level_bin_size"], float)
         return obj
 
     def plot_bins(self, grid):
@@ -688,15 +657,20 @@ class KDTreeBinner(BaseBinner):
         Variance to keep if using pca_whiten.
     leafsize : int
         KDTree leaf size, trade off build vs query speed.
+    select_mode : {"radius","knn"}
+        Candidate selection mode.
+    target_k : int
+        Target number of candidates for select_mode="knn".
+    radius_factor : float
+        Radius scaling factor for select_mode="radius".
     """
 
     dims: List[int]
     transform: str = "standardize"
     pca_variance: float = 1.0
     leafsize: int = 100
-    select_mode: str = "radius"
-    target_k: int = None
-    k: int = None
+    select_mode: str = "knn"  # "radius" | "knn"
+    target_k: int = 100
     radius_factor: float = 2.0
 
     _T: Dict[str, Any] = field(default_factory=dict)
@@ -724,28 +698,9 @@ class KDTreeBinner(BaseBinner):
 
     def candidates(self,
                    y_native: np.ndarray,
-                   sigmas_native: Optional[np.ndarray] = None,
-                   *,
-                   select_by: str = "sigma",
-                   target_factor: float = 2.0,   # unused; accepted for API parity
-                   expand_factor: float = 2.0,   # unused; accepted for API parity
-                   target_k: Optional[int] = None,
-                   k: Optional[int] = None,
-                   radius_factor: float = 2.0,
-                   max_expand_steps: int = 4     # unused; accepted for API parity
+                   sigmas_native: Optional[np.ndarray] = None
                    ) -> Tuple[np.ndarray, Optional[int]]:
-        """
-        Unified candidate selector (KDTreeBinner).
-
-        Modes
-        -----
-        select_by = "knn":
-            exact kNN with k (or target_k).
-        select_by = "radius":
-            ball query with radius = radius_factor * ||sigma_trans||_2.
-        select_by = "target_k":
-            mapped to kNN with k = target_k.
-        """
+        """Candidate selector."""
         if self._tree is None or self._Xz is None:
             raise RuntimeError("fit must be called before candidates")
 
@@ -753,11 +708,8 @@ class KDTreeBinner(BaseBinner):
         xz = _apply_transform(x, self._T)[0]
 
         # Map modes
-        if self.select_mode == "target_k":
-            k = target_k if (target_k is not None) else k
-
         if self.select_mode == "knn":
-            kk = int(k) if k is not None else 1
+            kk = self.target_k
             kk = max(1, min(kk, self._Xz.shape[0]))
             d, ind = self._tree.query(xz, k=kk)
             ind = np.atleast_1d(ind).astype(np.int64)
@@ -793,7 +745,9 @@ class KDTreeBinner(BaseBinner):
     def save(self, path: str) -> None:
         if self._Xz is None:
             raise RuntimeError("fit must be called before save")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir_ = os.path.dirname(path)
+        if dir_:
+            os.makedirs(dir_, exist_ok=True)
         blob = {
             "cls": "KDTreeBinner",
             "dims": self.dims,
