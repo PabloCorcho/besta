@@ -30,11 +30,11 @@ class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
     @abstractmethod
-    def make_observable(*args, **kwargs):
+    def make_observable(self, *args, **kwargs):
         """Create an observable from an input set of model parameters."""
 
     @abstractmethod
-    def execute(self, block, config):
+    def execute(self, block: DataBlock, config: dict):
         """Execute the pipeline."""
         return super().execute(block, config)
 
@@ -86,14 +86,37 @@ class BaseModule(ClassModule):
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
         print("Wavelength coverage: ", wavelength[[0, -1]])
         print("Size: ", wavelength.size)
-        # Wavelegth range to include in the fit
+
+        # Convert units if needed
+        if options.has_value("wlUnits"):
+            print("Converting wavelength units to Angstrom")
+            wl_units = u.Unit(options["wlUnits"])
+            wavelength = (wavelength << wl_units).to("Angstrom").value
+        else:
+            print("Assuming input wavelength units are in Angstrom")
+            wl_units = u.angstrom
+
+        if options.has_value("fluxUnits"):
+            print("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
+            flux_units = u.Unit(options["fluxUnits"])
+            flux = (flux << flux_units).to(
+                "1e-16 erg / (s cm2 Angstrom)").value
+            error = (error << flux_units).to(
+                "1e-16 erg / (s cm2 Angstrom)").value
+        else:
+            print("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
+            flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
+
+        # Wavelength range to include in the fit
         if options.has_value("wlRange"):
-            wl_range = options["wlRange"]
+            wl_range = (np.asarray(options["wlRange"]) << wl_units
+            ).to("Angstrom").value
         else:
             wl_range = wavelength[[0, -1]]
-        # Wavelegth range to renormalize the spectra
+        # Wavelength range to renormalize the spectra
         if options.has_value("wlNormRange"):
-            wl_norm_range = options["wlNormRange"]
+            wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
+            ).to("Angstrom").value
         else:
             wl_norm_range = wavelength[[0, -1]]
         # Input redshift (initial guess)
@@ -108,6 +131,10 @@ class BaseModule(ClassModule):
                 np.loadtxt(os.path.expandvars(options["mask"])), dtype=float)
         else:
             weights = np.ones_like(flux)
+        
+        if weights.size != flux.size:
+            raise ValueError(
+                "Input mask size does not match the input spectrum size.")
         # Load the instrumental LSF
         if options.has_value("lsf"):
             lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
@@ -120,9 +147,11 @@ class BaseModule(ClassModule):
         print(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
         print("Constraining fit to wavelength range: ", wl_range)
-        good_idx = np.where((wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[
-            0
-        ]
+        good_idx = np.where(
+            (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
+        if len(good_idx) == 0:
+            raise ValueError("No wavelength points found within the given"
+                             "wavelength range.")
         wavelength = wavelength[good_idx]
         flux = flux[good_idx]
         cov = error[good_idx] ** 2
@@ -166,20 +195,28 @@ class BaseModule(ClassModule):
             norm_flux = np.nanmedian(flux[norm_idx])
             flux /= norm_flux
             cov /= norm_flux**2
+            flux_units = u.dimensionless_unscaled
         else:
             norm_flux = 1.0
 
         if luminosity:
-            dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
+            if redshift > 0:
+                print(f"Converting input flux to luminosity at redshift {redshift}")
+                dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
+                dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
+            else:
+                print("Converting input flux to luminosity at 10 pc")
+                dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
             #  Input spectra is expected to be a specific flux density per
             # wavelength unit.
-            dl_sq = 4 * np.pi * dl_sq**2 * (1 + redshift)
-            dl_sq = np.max((dl_sq, 1.0))
             flux *= dl_sq
-            cov *= dl_sq
+            cov *= dl_sq * dl_sq
 
         self.config["flux"] = flux
         self.config["cov"] = cov
+        self.config["redshift"] = redshift
+        self.config["wlUnits"] = wl_units
+        self.config["fluxUnits"] = flux_units
         self.config["norm_flux"] = norm_flux
         self.config["wavelength"] = wavelength << u.angstrom
         self.config["ln_wave"] = ln_wave
@@ -201,12 +238,23 @@ class BaseModule(ClassModule):
 
         # Read the data
         filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
-        # Assuming flux units == nanomaggies
         flux, flux_err = np.loadtxt(
             photometry_file, usecols=(1, 2), unpack=True, dtype=float
         )
+
+        nanomaggie = u.def_unit('nanomaggie', 3631e-9 * u.Jy)
+        if options.has_value("fluxUnits"):
+            print("Converting flux units to nanomaggies")
+            flux_units = u.Unit(options["fluxUnits"])
+            flux = (flux << flux_units).to(nanomaggie).value
+            error = (error << flux_units).to(nanomaggie).value
+        else:
+            print("Assuming input flux units are in nanomaggies")
+            flux_units = nanomaggie
+
         self.config["photometry_flux"] = flux
         self.config["photometry_flux_var"] = flux_err**2
+        self.config["photometry_flux_units"] = flux_units
         # TODO: include redshift and flux conversion to luminosities
         # Load the photometric filters
         photometric_filters = []
@@ -434,6 +482,7 @@ class BaseModule(ClassModule):
             return
         ext_law = options.get_string("ExtinctionLaw")
         print("Extinction law: ", ext_law)
+        # TODO: add more extinction laws
         self.config["extinction_law"] = dust.DustScreen(ext_law)
         print("-> Configuration is done.")
 
@@ -449,7 +498,10 @@ class BaseModule(ClassModule):
         sfh_model_name = options["SFHModel"]
         sfh_args = []
         key = "SFHArgs1"
-        while options.has_value(key):
+        i = 1
+        while options.has_value(f"SFHArgs{i}"):
+            key = f"SFHArgs{i}"
+            i += 1
             value = options[key]
             if isinstance(value, str):
                 if "," in value:
@@ -511,3 +563,15 @@ class BaseModule(ClassModule):
             loglike = -0.5 * np.sum(chi2)
 
         return loglike
+
+class SpectraFitModule(BaseModule):
+    """Base class for spectral fitting modules in BESTA."""
+    pass
+
+class PhotometryFitModule(BaseModule):
+    """Base class for photometry fitting modules in BESTA."""
+    pass
+
+class EquivalentWidthFitModule(BaseModule):
+    """Base class for equivalent width fit modules in BESTA."""
+    pass
