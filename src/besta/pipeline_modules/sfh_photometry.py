@@ -126,7 +126,7 @@ class SFHPhotometryModule(PhotometryFitModule):
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
             # print("Invalid")
-            block[section_names.likelihoods, "SFHPhotometry_like"] = -1e5 * penalty
+            block[section_names.likelihoods, self.like_name] = -1e5 * penalty
             block["parameters", "normalization"] = 0.0
             return 0
         flux_model = self.make_observable(block)
@@ -139,7 +139,7 @@ class SFHPhotometryModule(PhotometryFitModule):
         if like > self.config["best_fit_like"]:
             self.config["best_fit"] = flux_model
             self.config["best_fit_like"] = like
-        block[section_names.likelihoods, "SFHPhotometry_like"] = like
+        block[section_names.likelihoods, self.like_name] = like
         return 0
 
     def cleanup(self):

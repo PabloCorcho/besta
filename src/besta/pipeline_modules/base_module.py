@@ -40,6 +40,8 @@ class BaseModule(ClassModule):
         # Likelihood name
         if options.has_value("like_name"):
             self.like_name = options["like_name"]
+            if "_like" not in self.like_name:
+                self.like_name += "_like"
         else:
             self.like_name = self.name + "_like"
 
