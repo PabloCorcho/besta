@@ -541,7 +541,7 @@ class PhotometryFitModule(BaseModule):
             print("Converting flux units to nanomaggies")
             flux_units = u.Unit(options["fluxUnits"])
             flux = (flux << flux_units).to(nanomaggie).value
-            error = (error << flux_units).to(nanomaggie).value
+            flux_err = (flux_err << flux_units).to(nanomaggie).value
         else:
             print("Assuming input flux units are in nanomaggies")
             flux_units = nanomaggie
