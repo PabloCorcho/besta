@@ -54,7 +54,7 @@ def _fit_batch_cands_worker(args):
     Parameters
     ----------
     args : tuple
-        (m, X_native, SIG_native, binner, target_factor, expand_factor, grid_n)
+        (m, X_native, SIG_native, binner, grid_n)
 
     Returns
     -------
@@ -65,9 +65,9 @@ def _fit_batch_cands_worker(args):
     lev : int or None
         Level used by the binner, or None if no binner.
     """
-    (m, X_native, SIG_native, binner, target_factor, expand_factor, grid_n) = args
+    (m, X_native, SIG_native, binner, grid_n) = args
     if binner is None:
-        idx = np.arange(grid_n)
+        idx = np.arange(grid_n, dtype=np.int64)
         lev = None
     else:
         y_sub = X_native[binner.dims]
@@ -75,12 +75,13 @@ def _fit_batch_cands_worker(args):
         idx, lev = binner.candidates(
             y_native=y_sub,
             sigmas_native=s_sub,
-            target_factor=target_factor,
-            expand_factor=expand_factor,
         )
         if idx.size == 0:
-            idx = np.arange(grid_n)
+            # Fallback: full grid if binner returns no candidates
+            idx = np.arange(grid_n, dtype=np.int64)
     return m, idx, lev
+
+
 
 
 def _fit_batch_post_worker(args):
@@ -1235,8 +1236,6 @@ class GridFitter:
         X_native: np.ndarray,
         SIG_native: np.ndarray,
         binner: Any | None = None,
-        target_factor: float = 2.0,
-        expand_factor: float = 2.0,
         n_jobs: int = 1,
         backend: str = "thread",
         stats_for: Optional[Sequence[int | str]] = None,
@@ -1249,7 +1248,7 @@ class GridFitter:
         safety_margin: float = 1.2,
         tasks_per_worker: Optional[int] = None,
         dry_run: bool = False,
-    ) -> dict:
+        ) -> dict:
         """
         Evaluate model posteriors for multiple queries.
 
@@ -1303,12 +1302,9 @@ class GridFitter:
         SIG_native : ndarray, shape (M, P)
             Per-dimension uncertainties in native units.
         binner : object, optional
-            Must expose `.dims` and `.candidates(y_native, sigmas_native, ...)`.
-            If None, all models are considered as candidates for every query.
-        target_factor : float, optional
-            For sigma-based rectangular binners, factor to match bin widths.
-        expand_factor : float, optional
-            For sigma-based rectangular binners, neighbourhood expansion factor.
+            Must expose `.dims` and `.candidates(y_native, sigmas_native)`.
+            All configuration (e.g. sigma/target-based selection) is handled
+            internally by the binner itself.
         n_jobs : int, optional
             Maximum concurrency (threads or processes, per backend).
         backend : {"thread","process"}, optional
@@ -1376,8 +1372,6 @@ class GridFitter:
             X_native=X_native,
             SIG_native=SIG_native,
             binner=binner,
-            target_factor=target_factor,
-            expand_factor=expand_factor,
             memcheck_sample=memcheck_sample,
             stats_for=stats_for,
             stats_bins=stats_bins,
@@ -1420,8 +1414,6 @@ class GridFitter:
                         X_native[m],
                         SIG_native[m],
                         binner,
-                        target_factor,
-                        expand_factor,
                         self.grid.n_models,
                     )
                 )
@@ -1436,8 +1428,6 @@ class GridFitter:
                     cands[m] = idx
                     levels[m] = lev
         else:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
             with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
                 futs = [ex.submit(_cands_chunk, s, e) for (s, e) in step1_slices]
                 for fut in as_completed(futs):
@@ -1654,6 +1644,7 @@ class GridFitter:
             print("fit_batch complete.")
         return out
 
+
     def corner_for_targets(
         self,
         x_native: np.ndarray,
@@ -1853,8 +1844,6 @@ class GridFitter:
         X_native: Optional[np.ndarray] = None,
         SIG_native: Optional[np.ndarray] = None,
         binner: Optional[Any] = None,
-        target_factor: float = 2.0,
-        expand_factor: float = 2.0,
         memcheck_sample: int = 256,
         rng: Optional[np.random.Generator] = None,
         # Stats footprint
@@ -1886,10 +1875,8 @@ class GridFitter:
             If provided with a `binner`, a pilot sample is used to estimate the
             average number of candidate models per query.
         binner : object, optional
-            Must expose `dims` and a `candidates(y_native, sigmas_native, target_factor, expand_factor)`
-            method. If omitted or pilot cannot run, falls back to worst-case (all models).
-        target_factor, expand_factor : float, optional
-            Passed to the `binner.candidates` call in the pilot.
+            Must expose `dims` and a `candidates(y_native, sigmas_native)` method.
+            If omitted or pilot cannot run, falls back to worst-case (all models).
         memcheck_sample : int, optional
             Max number of queries to sample for candidate-size estimation.
         rng : numpy.random.Generator, optional
@@ -1926,8 +1913,6 @@ class GridFitter:
                         idx, _lev = binner.candidates(
                             y_native=y_sub,
                             sigmas_native=s_sub,
-                            target_factor=target_factor,
-                            expand_factor=expand_factor,
                         )
                         nci = int(np.asarray(idx).size)
                         sizes.append(
@@ -1944,7 +1929,6 @@ class GridFitter:
             cand_mean = float(N)
 
         # --- memory for candidates, posts, and levels ---
-        # For each query we store one int array 'cands[m]' and one float array 'posts[m]'
         candidates_bytes = int(M * cand_mean * int_bytes)
         post_models_bytes = int(M * cand_mean * float_bytes)
         # Optional levels (one int or None per query); store as int64 estimate
@@ -1992,8 +1976,6 @@ class GridFitter:
         X_native: Optional[np.ndarray] = None,
         SIG_native: Optional[np.ndarray] = None,
         binner: Optional[Any] = None,
-        target_factor: float = 2.0,
-        expand_factor: float = 2.0,
         memcheck_sample: int = 256,
         stats_for: Optional[Sequence[int | str]] = None,
         stats_bins: Optional[Sequence[np.ndarray]] = None,
@@ -2013,7 +1995,7 @@ class GridFitter:
         ----------
         M : int
             Number of queries to evaluate.
-        X_native, SIG_native, binner, target_factor, expand_factor, memcheck_sample
+        X_native, SIG_native, binner, memcheck_sample
             Passed to `estimate_fit_batch_memory` to refine candidate sizes.
         stats_for, stats_bins, return_posts_for_stats
             Passed through to count stats arrays and optional posts_target storage.
@@ -2038,8 +2020,6 @@ class GridFitter:
             X_native=X_native,
             SIG_native=SIG_native,
             binner=binner,
-            target_factor=target_factor,
-            expand_factor=expand_factor,
             memcheck_sample=memcheck_sample,
             stats_for=stats_for,
             stats_bins=stats_bins,
@@ -2050,7 +2030,7 @@ class GridFitter:
         avail_ram = available_memory_bytes()
         limit = min(avail_ram, int(max_memory_gb * (1024**3)))
 
-        avail_ram = self._human_bytes(avail_ram)
+        avail_ram_h = self._human_bytes(avail_ram)
         hb_est = self._human_bytes(est)
         hb_lim = self._human_bytes(limit)
         hb_c = self._human_bytes(breakdown["candidates_bytes"])
@@ -2065,16 +2045,18 @@ class GridFitter:
                 f"Breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
                 f"stats={hb_s}, posts_target={hb_pt}.\n"
                 "Suggestions:\n"
-                "  • Use a tighter binner or reduce target/expand factors to shrink candidate sets.\n"
+                "  • Configure the binner to return fewer candidates per query "
+                "(e.g. narrower selection, fewer neighbours).\n"
                 "  • Disable `return_posts_for_stats` or reduce the number of bins per target.\n"
                 "  • Compute fewer targets in `stats_for`, or run in smaller M with external batching.\n"
                 "  • Persist or stream results instead of keeping all per-query posteriors in memory."
             )
         else:
             breakdown["message"] = (
-                "fit_batch memory check"
-                f"- estimated peak (with safety margin) {hb_est} (current limit {hb_lim}, avail RAM {avail_ram}).\n"
-                f"- breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
-                f"- stats={hb_s}, posts_target={hb_pt}.\n"
+                "fit_batch memory check: "
+                f"estimated peak (with safety margin) {hb_est} "
+                f"(current limit {hb_lim}, avail RAM {avail_ram_h}).\n"
+                f"Breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
+                f"stats={hb_s}, posts_target={hb_pt}.\n"
             )
         return breakdown
