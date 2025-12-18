@@ -142,14 +142,18 @@ class MainPipeline(object):
             print("MaxLike solution: ", solution)
 
             if plot_result:
-                # Initialise the module to reconstruct the solution
-                pipeline_module = reader.last_module
                 solution_datablock = reader.solution_to_datablock(prev_solution)
-                self.plot_fit(
-                    pipeline_module, solution_datablock, pipe_config=subpipe_config
-                )
+                    
+                # Initialise the module to reconstruct the solution
+                for par_module in reader.modules:
+                    print("Plotting results for module: ", par_module)
+                    pipeline_module = reader.get_module(par_module)
+                    self.plot_fit(
+                        pipeline_module, solution_datablock,
+                        pipe_config=subpipe_config, figname=par_module
+                    )
 
-    def plot_fit(self, module, solution: DataBlock, pipe_config):
+    def plot_fit(self, module, solution: DataBlock, pipe_config, figname=None):
         """Plot the fit."""
         flux_model = module.make_observable(solution, parse=True)
         if isinstance(flux_model, tuple):
@@ -225,13 +229,15 @@ class MainPipeline(object):
         inax.grid(visible=True)
         inax.tick_params(labelleft=False)
 
-        figname = os.path.basename(
-            pipe_config["output"].get("figurename",
-                                      pipe_config["output"]["filename"]))
+        if figname is None:
+            figname = os.path.basename(
+                pipe_config["output"].get("figurename",
+                pipe_config["output"]["filename"]))
+
         output_file = os.path.join(
             os.path.dirname(pipe_config["output"]["filename"]),
-            f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
-            )
+            f"{figname}_best_fit_spectra.png",
+        )
 
         fig.savefig(os.path.expandvars(output_file), bbox_inches="tight")
         print(f"Fit plot saved at: {output_file}")
