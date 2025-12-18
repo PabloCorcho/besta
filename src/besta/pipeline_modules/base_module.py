@@ -58,7 +58,7 @@ class BaseModule(ClassModule):
         return super().execute(block, config)
 
     @abstractmethod
-    def plot_fit(self, *args, **kwargs):
+    def plot_solution(self, *args, **kwargs):
         """Plot the fit results."""
         pass
 
@@ -538,7 +538,7 @@ class SpectraFitModule(BaseModule):
             print(f"Not using multiplicative Legendre polynomials")
         print("-> Configuration done")
 
-    def plot_fit(self, solution: DataBlock, figname=None):
+    def plot_solution(self, solution: DataBlock, figname=None):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
         if isinstance(flux_model, tuple):
@@ -708,12 +708,12 @@ class PhotometryFitModule(BaseModule):
 
         print("-> Configuration done.")
 
-    def plot_fit(self, solution: DataBlock, figname=None):
+    def plot_solution(self, solution: DataBlock, figname=None):
         pass
 
 class EquivalentWidthFitModule(BaseModule):
     """Base class for equivalent width fit modules in BESTA."""
     pass
 
-    def plot_fit(self, solution: DataBlock, figname=None):
+    def plot_solution(self, solution: DataBlock, figname=None):
         pass
