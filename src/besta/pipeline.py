@@ -142,16 +142,20 @@ class MainPipeline(object):
             print("MaxLike solution: ", solution)
 
             if plot_result:
-                solution_datablock = reader.solution_to_datablock(prev_solution)
+                solution_datablock = reader.solution_to_datablock(
+                    prev_solution)
                     
                 # Initialise the module to reconstruct the solution
                 for par_module in reader.modules:
                     print("Plotting results for module: ", par_module)
                     pipeline_module = reader.get_module(par_module)
-                    self.plot_fit(
-                        pipeline_module, solution_datablock,
-                        pipe_config=subpipe_config, figname=par_module
+                    figname = subpipe_config["output"].get(
+                        "figurename",
+                        subpipe_config["output"]["filename"].replace(".txt", "")
+                        + f"_{par_module}_best_fit_spectra.png",
                     )
+                    pipeline_module.plot_fit(solution_datablock,
+                                             figname=figname)
 
     def plot_fit(self, module, solution: DataBlock, pipe_config, figname=None):
         """Plot the fit."""
