@@ -19,6 +19,7 @@ class SFHSpectraModule(SpectraFitModule):
 
         """
         super().__init__(options)
+        options = self.parse_options(options)
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)

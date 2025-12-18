@@ -22,6 +22,7 @@ class SFHPhotometryModule(PhotometryFitModule):
 
         """
         super().__init__(options)
+        options = self.parse_options(options)
         # Pipeline values file
         self.config = {"redshift": options["redshift"],
                        "best_fit": None,

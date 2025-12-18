@@ -20,6 +20,7 @@ class KinDustModule(SpectraFitModule):
 
         """
         super().__init__(options)
+        options = self.parse_options(options)
         if options.has_value("save_ssp"):
             self.solution = []
             self.ssp_output = options["save_ssp"]
