@@ -7,6 +7,9 @@ import os
 import pickle
 import sys
 
+from matplotlib import pyplot as plt
+from besta.visualization import draw_dict_in_axes
+
 import numpy as np
 from sklearn.decomposition import NMF
 from astropy import units as u
@@ -53,6 +56,11 @@ class BaseModule(ClassModule):
     def execute(self, block: DataBlock, config: dict):
         """Execute the pipeline."""
         return super().execute(block, config)
+
+    @abstractmethod
+    def plot_fit(self, *args, **kwargs):
+        """Plot the fit results."""
+        pass
 
     @classmethod
     def get_path(cls):
@@ -530,6 +538,120 @@ class SpectraFitModule(BaseModule):
             print(f"Not using multiplicative Legendre polynomials")
         print("-> Configuration done")
 
+    def plot_fit(self, solution: DataBlock, figname=None):
+        """Plot the fit."""
+        flux_model = self.make_observable(solution, parse=True)
+        if isinstance(flux_model, tuple):
+            weights = flux_model[1]
+            flux_model = flux_model[0]
+        else:
+            weights = np.ones_like(flux_model)
+        # Include input weights
+        weights *= self.config["weights"]
+
+        # Grab the solution values (visualuzation purpose only)
+        param_keys = [k[1] for k in solution.keys("parameters") if k[0] == "parameters"]
+        param_val = [solution["parameters", k] for k in param_keys]
+
+        fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
+                                constrained_layout=True,
+                                width_ratios=[4, 1],
+                                height_ratios=[2, 1],
+                                figsize=(np.round(flux_model.size / 300, 0), 6))
+        plt.suptitle(f"Module: {self.name}")
+
+        # Display the solution
+        ax = axs[0, 1]
+        ax.set_title("Model parameters")
+        text = draw_dict_in_axes(ax, dict(zip(param_keys, param_val)))
+        ax.axis("off")
+        # Plot input spectra and best-fit model
+        ax = axs[0, 0]
+        ax.fill_between(
+            self.config["wavelength"].value,
+            self.config["flux"] - self.config["cov"] ** 0.5,
+            self.config["flux"] + self.config["cov"] ** 0.5,
+            color="k",
+            alpha=0.5,
+        )
+        ax.plot(
+            self.config["wavelength"], self.config["flux"], c="k", label="Observed",
+            lw=0.7)
+        # Show masked pixels
+        nan_mask = np.ones_like(self.config["flux"])
+        nan_mask[weights <= 0] = np.nan
+        ax.plot(
+            self.config["wavelength"],
+            self.config["flux"] * nan_mask,
+            c="r",
+            lw=0.7,
+            label="Masked",
+        )
+        # Plot model
+        ax.plot(self.config["wavelength"], flux_model, c="b", label="Model",
+                lw=0.7)
+        # Plot residuals
+        residuals = flux_model - self.config["flux"]
+        ax.plot(
+            self.config["wavelength"],
+            residuals,
+            c="orange",
+            label="Residuals",
+            lw=0.7
+        )
+        ax.axhline(0, ls="--", color="k", alpha=0.2)
+        ax.set_ylabel("Flux")
+        ax.legend(bbox_to_anchor=(0.5, 1.01), loc="lower center",
+                  ncols=4, fontsize=8)
+
+        p5, p95 = np.nanpercentile(self.config["flux"], [5, 95])
+        p_residuals = np.nanpercentile(residuals, 5) * 0.95
+        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
+
+        # Plot chi2
+        good_pixels = weights > 0
+        chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["cov"]
+        mean_chi2 = np.nanmean(chi2[good_pixels])
+        median_chi2 = np.nanmedian(chi2[good_pixels])
+        nmad_chi2 = 1.4826 * np.nanmedian(
+            np.abs(chi2[good_pixels] - median_chi2))
+        loglike = self.log_like(self.config["flux"][good_pixels],
+                                flux_model[good_pixels],
+                                self.config["cov"][good_pixels],
+                                weights=weights[good_pixels])
+        ax = axs[1, 0]
+        ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)
+        ax.grid(visible=True)
+        ax.set_ylabel(r"$\chi^2$")
+        ax.set_yscale("symlog", linthresh=1.0)
+        ax.set_xlabel("Wavelength (AA)")
+        
+        ax = axs[1, 1]
+        ax.hist(
+            chi2,
+            bins=np.geomspace(0.01, 100),
+            orientation="horizontal",
+            color="k",
+            histtype="step"
+        )
+        ax.annotate(f"Median chi2: {np.nanmedian(chi2):.1f}"
+                    + f"\nMean chi2: {mean_chi2:.1f}"
+                    + f"\nNMAD chi2: {nmad_chi2:.1f}"
+                    + f"\nLog-likelihood: {loglike:.1f}",
+                    xy=(0.05, 0.95), xycoords="axes fraction", va="top",
+                    fontsize=8)
+        ax.set_xlabel("No. pixels")
+        ax.grid(visible=True)
+        ax.tick_params(labelleft=False)
+
+        if figname is not None:
+            fig.savefig(figname, bbox_inches="tight",
+                    dpi=300)
+            print(f"Fit plot saved at: {figname}")
+
+        plt.close()
+        return fig
+
 
 class PhotometryFitModule(BaseModule):
     """Base class for photometry fitting modules in BESTA."""
@@ -586,7 +708,12 @@ class PhotometryFitModule(BaseModule):
 
         print("-> Configuration done.")
 
+    def plot_fit(self, solution: DataBlock, figname=None):
+        pass
 
 class EquivalentWidthFitModule(BaseModule):
     """Base class for equivalent width fit modules in BESTA."""
     pass
+
+    def plot_fit(self, solution: DataBlock, figname=None):
+        pass
