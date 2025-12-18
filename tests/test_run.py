@@ -46,7 +46,7 @@ class TestPipelineManagerFit(unittest.TestCase):
         os.remove("./FullSpectralFit_auto.ini")
         os.remove("./full_fit_exponential_sfh.txt")
         os.remove("./full_fit_exponential_sfh.maxlike.txt")
-        os.remove("./FullSpectralFit_full_fit_exponential_sfh_best_fit_spectra.png")
+        os.remove("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png")
 
     def test_fit(self):
         configuration = {
