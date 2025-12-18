@@ -34,7 +34,6 @@ class BaseModule(ClassModule):
         Args:
             options: options from startup file (i.e. .ini file)
         """
-        super().__init__(options)
         options = self.parse_options(options)
         self.config = {}
         # Likelihood name
@@ -44,6 +43,7 @@ class BaseModule(ClassModule):
                 self.like_name += "_like"
         else:
             self.like_name = self.name + "_like"
+            print("Setting module likelihood name to default: ", self.like_name)
 
     @abstractmethod
     def make_observable(self, *args, **kwargs):
@@ -77,7 +77,10 @@ class BaseModule(ClassModule):
             options = DataBlock.from_dict(options)
             if options.has_section(option_section):
                 options._delete_section(option_section)
-            for section, name in options.keys(self.name):
+            keys = options.keys(self.name)
+            if not keys:
+                raise ValueError(f"No options found for module {self.name}")
+            for section, name in keys:
                 options[option_section, name] = options[section, name]
             options = SectionOptions(options)
         return options
