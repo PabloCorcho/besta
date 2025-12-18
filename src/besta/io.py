@@ -4,6 +4,7 @@ import functools
 import numpy as np
 import psutil
 import cosmosis
+from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
@@ -366,15 +367,46 @@ class Reader(object):
         self._values_file = value
 
     @property
-    def last_module_name(self) -> str:
-        """Name of the last module used in the pipeline."""
-        return self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
+    def modules(self) -> list:
+        """List of modules used in the pipeline as specified in the ini file."""
+        return self.ini["pipeline"]["modules"].split(" ")
 
+    @property
+    def module_names(self) -> list:
+        """List of module names used in the pipeline."""
+        return [mod.replace(" ", "").split("_")[0] + "Module" for mod in self.modules]
+
+    def get_module(self, module_name):
+        """Get a pipeline module by name.
+
+        Parameters
+        ----------
+        module_name : str
+            Name of the module to retrieve.
+
+        Returns
+        -------
+        module : instance
+            An instance of the requested pipeline module.
+        """
+        if module_name not in self.modules:
+            raise ValueError(f"Module {module_name} not found in the pipeline.")
+        module_options = self.ini[module_name]
+        # The module expects its options under a section with its name
+        module_class = module_name.split("_")[0] 
+        if "Module" not in module_class:
+            module_class += "Module"
+        options = {module_class.replace("Module", ""): module_options}
+        if not hasattr(pipeline_modules, module_class):
+            raise ValueError(
+                f"Module class {module_class} not found in besta.pipeline_modules.")
+        return getattr(pipeline_modules, module_class)(options)
+
+    #TODO: deprecate
     @property
     def last_module(self):
         """An instance of the last pipeline module used in the run."""
-        return getattr(pipeline_modules, self.last_module_name + "Module")(
-            self.ini)
+        return self.get_module(self.modules[-1])
 
     @property
     def config(self) -> dict:
