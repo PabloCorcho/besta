@@ -521,7 +521,7 @@ class Reader(object):
         post_sort = np.argsort(self.results_table[log_prob][good_sample])
         assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
         # Select the top frac per cent
-        first_row = int(post_sort.size / 100 * frac)
+        first_row = max(1, np.ceil(post_sort.size / 100 * frac))
         solutions = self.results_table[post_sort][-first_row:]
         if as_datablock:
             all_solutions = [self.solution_to_datablock(
