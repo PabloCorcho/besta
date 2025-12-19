@@ -61,6 +61,8 @@ def weighted_1d_cmf(x, weights):
     """Compute the cumulative probability distribution from a sample."""
     sort_idx = np.argsort(x)
     cmf = np.cumsum(weights[sort_idx])
+    if cmf[-1] == 0:
+        raise ValueError("All weights are zero; cannot build a cumulative distribution.")
     cmf /= cmf[-1]
     return x[sort_idx], sort_idx, cmf
 
@@ -207,11 +209,15 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
+            if not np.any(mask):
+                print(f"No finite samples for {key}; skipping PDF/percentiles.")
+                continue
             value_sorted, sort_idx, cmf = weighted_1d_cmf(
                 value[mask], posterior[mask])
 
             value_pct = np.interp(percentiles, cmf, value_sorted)
-            logpost_pct = np.interp(percentiles, cmf, logpost[sort_idx])
+            logpost_pct = np.interp(
+                percentiles, cmf, logpost[mask][sort_idx])
             # TODO: duplicated
             value_mean = np.sum(posterior[mask] * value[mask])
 
