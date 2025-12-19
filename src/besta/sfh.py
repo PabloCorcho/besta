@@ -11,6 +11,32 @@ import pst
 from besta.config import cosmology
 
 
+def _softmax(x):
+    """Numerically stable softmax."""
+    x = np.asarray(x, dtype=float)
+    x_shift = x - np.max(x)
+    exp_x = np.exp(x_shift)
+    return exp_x / np.sum(exp_x)
+
+
+def _sigmoid(x):
+    """Simple sigmoid to clamp values into (0, 1)."""
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def validate_monotonic(array, *, strict=True, name="array"):
+    """Validate that the input array is monotonic increasing."""
+    arr = np.asarray(array)
+    diff = np.diff(arr)
+    if strict:
+        ok = np.all(diff > 0)
+    else:
+        ok = np.all(diff >= 0)
+    if not ok:
+        raise ValueError(f"{name} must be monotonically increasing.")
+    return True
+
+
 # Star formation history models
 
 
@@ -38,6 +64,8 @@ class SFHBase(ABC):
     def __init__(self, *args, **kwargs):
         self.redshift = kwargs.get("redshift", 0.0)
         self.today = kwargs.get("today", cosmology.age(self.redshift))
+        # Optional transforms to enforce physicality; defaults preserve legacy behaviour
+        self.use_transforms = kwargs.get("use_transforms", False)
 
     def make_ini(self, ini_file):
         """Create a cosmosis .ini file.
@@ -169,7 +197,12 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def parse_datablock(self, datablock: DataBlock):
         logm_formed = self.get_sfh_parameters_array(datablock)
-        cumulative = np.cumsum(10**logm_formed)
+        if self.use_transforms:
+            # Enforce fractions that sum to one
+            mass_frac = _softmax(logm_formed)
+            cumulative = np.cumsum(mass_frac)
+        else:
+            cumulative = np.cumsum(10**logm_formed)
         if cumulative[-1] > 1.0:
             return 0, cumulative[-1]
         cumulative = np.insert(cumulative, (0, cumulative.size), (0, 1))
@@ -244,6 +277,8 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def parse_datablock(self, datablock: DataBlock):
         coefficients = self.get_sfh_parameters_array(datablock)
+        if self.use_transforms:
+            coefficients = _sigmoid(coefficients)
         # The first coefficient correspond to the mass fraction between
         # the origin of the universe and the first input time (largest lookback time)
         self.bin_masses[0] = coefficients[0]
@@ -324,6 +359,8 @@ class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def parse_datablock(self, datablock: DataBlock):
         coefficients = self.get_sfh_parameters_array(datablock)
+        if self.use_transforms:
+            coefficients = _sigmoid(coefficients)
         # The first coefficient correspond to the mass fraction between
         # the origin of the universe and the first input time (largest lookback time)
         self.bin_masses[0] = coefficients[0]
@@ -457,6 +494,11 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def parse_datablock(self, datablock: DataBlock):
         times = self.get_sfh_parameters_array(datablock)
+        if self.use_transforms:
+            # Enforce strictly increasing times within [0, today]
+            deltas = np.exp(times)  # positive
+            times = np.cumsum(deltas)
+            times = times / times[-1] * self.today.to_value("Gyr")
         delta_t = times[1:] - times[:-1]
         if (delta_t <= 0).any():
             return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
