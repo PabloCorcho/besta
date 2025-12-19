@@ -41,12 +41,18 @@ class TestPipelineManagerFit(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         print("Removing files")
-        os.remove("./test_spectra_exp_sfh.dat") 
-        os.remove("./values.ini")
-        os.remove("./FullSpectralFit_auto.ini")
-        os.remove("./full_fit_exponential_sfh.txt")
-        os.remove("./full_fit_exponential_sfh.maxlike.txt")
-        os.remove("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png")
+        if os.path.exists("./test_spectra_exp_sfh.dat"):
+            os.remove("./test_spectra_exp_sfh.dat")
+        if os.path.exists("./values.ini"):
+            os.remove("./values.ini")
+        if os.path.exists("./FullSpectralFit_auto.ini"):
+            os.remove("./FullSpectralFit_auto.ini")
+        if os.path.exists("./full_fit_exponential_sfh.txt"):
+            os.remove("./full_fit_exponential_sfh.txt")
+        if os.path.exists("./full_fit_exponential_sfh.maxlike.txt"):
+            os.remove("./full_fit_exponential_sfh.maxlike.txt")
+        if os.path.exists("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png"):
+            os.remove("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png")
 
     def test_fit(self):
         configuration = {
@@ -80,62 +86,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             "quiet": "F",
             "timing": "T",
             "debug": "T",
-            "extra_output": "parameters/normalization"
-        },
-
-        "FullSpectralFit": {
-                "file": FullSpectralFitModule.get_path(),
-                "redshift": 0.0,
-                "inputSpectrum": "./test_spectra_exp_sfh.dat",
-                #"mask": "./a2744_65_mask.txt",
-                "SSPModel": "PopStar",
-                "SSPModelArgs": "cha",
-                "SSPDir": "None",
-                "wlRange": [3500.0, 9000.0],
-                "SFHModel": "ExponentialSFH",
-                "velscale": 50.0,
-                "ExtinctionLaw": "ccm89",
-                }}
-
-        t0 = time()
-        main_pipe = MainPipeline([configuration], n_cores_list=[1])
-        main_pipe.execute_all(plot_result=True)
-        tend = time()
-        print("TOTAL ELAPSED TIME (min): ", (tend - t0) / 60)
-
-    def test_fit(self):
-        configuration = {
-        
-        "runtime": {
-            "sampler": "maxlike emcee"
-        },
-
-        "maxlike": {
-            "method": "Nelder-Mead",
-            "tolerance": 1e-3,
-            "maxiter": 3000,
-        },
-
-        "emcee": {
-            "walkers": 32,
-            "samples": 100,
-            "nsteps": 100,
-        },
-
-        "output": {
-            "filename": "./full_fit_exponential_sfh",
-            "format": "text"
-        },
-
-        "pipeline": {
-            "modules": "FullSpectralFit",
-    #        "values": "./full_fit_values.ini",
-            "values": "./values.ini",
-            "likelihoods": "FullSpectralFit",
-            "quiet": "F",
-            "timing": "T",
-            "debug": "T",
-            "extra_output": "parameters/normalization"
+            "extra_output": "parameters/stellar_mass"
         },
 
         "FullSpectralFit": {
@@ -172,7 +123,7 @@ class TestPipelineManagerFit(unittest.TestCase):
         # self.assertTrue(np.isclose(maxlike_sol["ism_metallicity_today"], 0.02,
         #                           atol=0.01),
         #                "Wrong present-day metallicity")
-        # self.assertTrue(np.isclose(maxlike_sol["normalization"], 1.0,
+        # self.assertTrue(np.isclose(maxlike_sol["stellar_mass"], 1.0,
         #                           atol=0.1),
         #                "Wrong exponential SFH tau")        
 
@@ -181,7 +132,7 @@ class TestPipelineManagerFit(unittest.TestCase):
         print("Percentiles av: ", post_hdul["PERCENTILES"].data["av_pct"])
         print("Percentiles logtau: ", post_hdul["PERCENTILES"].data["logtau_pct"])
         print("Percentiles ism_metallicity_today: ", post_hdul["PERCENTILES"].data["ism_metallicity_today_pct"])
-        print("Percentiles normalization: ", post_hdul["PERCENTILES"].data["normalization_pct"])
+        print("Percentiles stellar_mass: ", post_hdul["PERCENTILES"].data["stellar_mass_pct"])
 
 if __name__ == "__main__":
     unittest.main()
