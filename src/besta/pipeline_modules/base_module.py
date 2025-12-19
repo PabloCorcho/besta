@@ -318,6 +318,9 @@ class BaseModule(ClassModule):
                 if "," in value:
                     value = np.array(value.split(","), dtype=float)
             sfh_args.append(value)
+        # Optional: enable parameter transforms inside SFH models
+        if options.has_value("use_transforms"):
+            self.config["use_transforms"] = bool(options["use_transforms"])
         print("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **self.config)
@@ -470,6 +473,8 @@ class SpectraFitModule(BaseModule):
         # Check error
         if (cov <= 0).any():
             raise ValueError("Input flux error contains negative or null values.")
+        if np.nansum(weights) <= 0:
+            raise ValueError("All input weights are zero; cannot perform fit.")
 
         print("Number of selected pixels within wavelength range: ", good_idx.size)
         if options.has_value("velscale"):
