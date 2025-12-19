@@ -217,6 +217,16 @@ These options are used by :meth:`besta.pipeline.base.BaseModule.prepare_sfh_mode
       SFHArgs1: 1.5
       SFHArgs2: "0.1,0.3,1.0,3.0"
 
+- ``use_transforms`` *(optional, default: False)*
+
+  When set to ``True``, SFH models that support it internally transform free
+  parameters to enforce physicality (e.g. softmax for mass fractions to ensure
+  they sum to 1, sigmoid or cumulative positive deltas to enforce monotonic
+  times). This does **not** change parameter names, but it changes their
+  meaning: priors in the ``values`` file should then be defined on the
+  unconstrained latent variables (typically centred around 0 with symmetric
+  ranges, e.g. ``-3 0 3``) rather than on the final fractions/times.
+
 
 Dust extinction law
 ^^^^^^^^^^^^^^^^^^^
