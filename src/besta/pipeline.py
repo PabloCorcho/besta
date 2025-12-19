@@ -133,6 +133,11 @@ class MainPipeline(object):
                 ini_filename=ini_filename,
                 ini_values_filename=ini_values_filename,
             )
+
+            if ini_filename is None:
+                print("Pipeline execution failed, stopping.")
+                return 1
+
             # Extract best solution
             print("Extracting results from the run")
             reader = io.Reader(ini_filename)

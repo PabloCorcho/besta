@@ -60,7 +60,9 @@ def weighted_sample_covariance(x, weights, unbiased=False):
 def weighted_1d_cmf(x, weights):
     """Compute the cumulative probability distribution from a sample."""
     sort_idx = np.argsort(x)
-    return x[sort_idx], sort_idx, np.cumsum(weights[sort_idx])
+    cmf = np.cumsum(weights[sort_idx])
+    cmf /= cmf[-1]
+    return x[sort_idx], sort_idx, cmf
 
 
 def read_results_file(path):
@@ -205,7 +207,8 @@ def compute_pdf_from_results(
         for key in parameter_keys:
             value = table[key].value
             mask = np.isfinite(value)
-            value_sorted, sort_idx, cmf = weighted_1d_cmf(value[mask], posterior[mask])
+            value_sorted, sort_idx, cmf = weighted_1d_cmf(
+                value[mask], posterior[mask])
 
             value_pct = np.interp(percentiles, cmf, value_sorted)
             logpost_pct = np.interp(percentiles, cmf, logpost[sort_idx])
@@ -261,7 +264,7 @@ def compute_pdf_from_results(
                 fig.savefig(
                     os.path.join(
                         os.path.dirname(output_filename),
-                        f"stat_analysis_pdf_{key_1}.png",
+                        f"stat_analysis_pdf_{key}.png",
                     ),
                     dpi=200,
                     bbox_inches="tight",
@@ -294,7 +297,9 @@ def compute_pdf_from_results(
                 value_1[mask].min(), value_1[mask].max(), pdf_size + 1
             )
             bins_1 = (binedges_1[:-1] + binedges_1[1:]) / 2
-            binedges_2 = np.linspace(value_1[mask].min(), value_1[mask].max(), pdf_size)
+
+            binedges_2 = np.linspace(value_2[mask].min(), value_2[mask].max(),
+                                     pdf_size + 1)
             bins_2 = (binedges_2[:-1] + binedges_2[1:]) / 2
 
             try:

@@ -212,7 +212,7 @@ def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
         )
         - veloffset_pixel
     )
-    losvd_kernel = spectrum.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
+    losvd_kernel = losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
     ssp.L_lambda = (
         fftconvolve(
             ssp.L_lambda.value,

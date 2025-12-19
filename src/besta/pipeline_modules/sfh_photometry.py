@@ -106,7 +106,8 @@ class SFHPhotometryModule(PhotometryFitModule):
         if parse:
             sfh_model.parse_datablock(block)
         av = block["parameters", "a_v"]
-        av_idx = np.searchsorted(self.config["av_grid"], av)
+        av_idx = np.searchsorted(self.config["av_grid"], av).clip(
+            1, len(self.config["av_grid"]) - 1)
         w_idx = (av - self.config["av_grid"][av_idx - 1]) / (
             self.config["av_grid"][av_idx] - self.config["av_grid"][av_idx - 1]
         )

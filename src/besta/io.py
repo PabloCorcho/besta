@@ -498,8 +498,8 @@ class Reader(object):
         Parameters
         ----------
         frac : float, optional
-            Fraction of the solutions to return, e.g. ``pct=1`` will return
-            the top 1 per cent with the highest probability.
+            Percentage of the solutions to return, e.g. ``frac=10`` will return
+            the top 10 per cent with the highest probability.
         log_prob : str, optional
             Column name to use for computing the maximum likelihood. Default is
             ``post``.
@@ -519,6 +519,8 @@ class Reader(object):
         """
         good_sample = self.results_table[log_prob] != 0
         post_sort = np.argsort(self.results_table[log_prob][good_sample])
+        assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
+        # Select the top frac per cent
         first_row = int(post_sort.size / 100 * frac)
         solutions = self.results_table[post_sort][-first_row:]
         if as_datablock:
