@@ -111,6 +111,8 @@ class SFHPhotometryModule(PhotometryFitModule):
         w_idx = (av - self.config["av_grid"][av_idx - 1]) / (
             self.config["av_grid"][av_idx] - self.config["av_grid"][av_idx - 1]
         )
+        w_idx = np.clip(w_idx, 0, 1)
+
         photometry = self.config["photometry_grid"][av_idx] * w_idx + self.config[
             "photometry_grid"
         ][av_idx - 1] * (1 - w_idx)
