@@ -354,8 +354,7 @@ class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
 
     def prepare_observed_spectra(
-        self, options: DataBlock, normalize=False, luminosity=False
-    ):
+        self, options: DataBlock, normalize=False):
         """Prepare the input spectra data.
 
         Parameters
@@ -430,6 +429,30 @@ class SpectraFitModule(BaseModule):
                                         dtype=float)
         else:
             instrumental_lsf = np.zeros_like(wavelength)
+        
+        # Optional masking of telluric regions
+        if options.has_value("mask_telluric") and options["mask_telluric"]:
+            telluric_pad = options.get_double("telluric_pad", default=0.0)
+            telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
+            print(f"Masking telluric regions with pad={telluric_pad} Angstrom")
+            weights, tell_mask = spectrum.mask_telluric_regions(
+                wavelength, flux, error, weights,
+                pad=telluric_pad,
+                return_mask=True)
+            print("Number of masked pixels: ", np.count_nonzero(tell_mask))
+            self.config["telluric_mask"] = tell_mask
+
+        # Optional masking of emission lines
+        if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
+            weights, line_mask = spectrum.mask_strong_emission_lines(
+                wavelength, flux, error, weights,
+                redshift=redshift,
+                # line_list=emission_line_list,
+                # half_width=line_half_width,
+                return_mask=True)
+            print("Number of masked pixels: ", np.count_nonzero(line_mask))
+            self.config["emission_lines_mask"] = line_mask
+
         # Apply redshift
         print(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
@@ -486,24 +509,18 @@ class SpectraFitModule(BaseModule):
         else:
             norm_flux = 1.0
 
-        if luminosity:
-            if redshift > 0:
-                print(f"Converting input flux to luminosity at redshift {redshift}")
-                dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
-                dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
-            else:
-                print("Converting input flux to luminosity at 10 pc")
-                dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
-            #  Input spectra is expected to be a specific flux density per
-            # wavelength unit.
-            flux *= dl_sq
-            cov *= dl_sq * dl_sq
+        if redshift > 0:
+            dl_sq = cosmology.luminosity_distance(redshift).to("cm").value ** 2
+            dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
+        else:
+            dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
 
         self.config["flux"] = flux
         self.config["cov"] = cov
         self.config["redshift"] = redshift
         self.config["wlUnits"] = wl_units
         self.config["fluxUnits"] = flux_units
+        self.config["dl_sq"] = dl_sq
         self.config["norm_flux"] = norm_flux
         self.config["wavelength"] = wavelength << u.angstrom
         self.config["ln_wave"] = ln_wave
@@ -557,16 +574,33 @@ class SpectraFitModule(BaseModule):
                                 constrained_layout=True,
                                 width_ratios=[4, 1],
                                 height_ratios=[2, 1],
-                                figsize=(np.round(flux_model.size / 300, 0), 6))
+                                figsize=(16, 9))
         plt.suptitle(f"Module: {self.name}")
 
-        # Display the solution
+        # Display the information
         ax = axs[0, 1]
-        ax.set_title("Model parameters")
-        text = draw_dict_in_axes(ax, dict(zip(param_keys, param_val)))
+        # Pixel masking information
+        mask_info = {"Total pixels": self.config["flux"].size,
+                     "Masked pixels (w=0)": np.sum(weights <= 0),
+                     " - Telluric": np.sum(
+                        self.config.get("telluric_mask", 0)),
+                     " - Emission lines": np.sum(
+                        self.config.get("emission_lines_mask", 0))}
+        sections = [("Model parameters", dict(zip(param_keys, param_val))),
+                    ("Masking", mask_info)]
+        text = draw_dict_in_axes(ax, sections, section_spacing=1,
+                          title_style="underline")
         ax.axis("off")
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
+        snr = np.nanpercentile(
+            self.config["flux"] / np.sqrt(self.config["cov"]),
+            (16, 50, 84)
+        )
+        ax.annotate(f"SNR (16, 50, 84 percentiles): "
+                    f"{snr[0]:.1f}, {snr[1]:.1f}, {snr[2]:.1f}",
+                    xy=(0.02, 0.98), xycoords="axes fraction", va="top",
+                    fontsize=8)
         ax.fill_between(
             self.config["wavelength"].value,
             self.config["flux"] - self.config["cov"] ** 0.5,
@@ -575,8 +609,8 @@ class SpectraFitModule(BaseModule):
             alpha=0.5,
         )
         ax.plot(
-            self.config["wavelength"], self.config["flux"], c="k", label="Observed",
-            lw=0.7)
+            self.config["wavelength"], self.config["flux"], c="k",
+            label="Observed", lw=0.7)
         # Show masked pixels
         nan_mask = np.ones_like(self.config["flux"])
         nan_mask[weights <= 0] = np.nan
@@ -585,7 +619,7 @@ class SpectraFitModule(BaseModule):
             self.config["flux"] * nan_mask,
             c="r",
             lw=0.7,
-            label="Masked",
+            label="Non-zero weights",
         )
         # Plot model
         ax.plot(self.config["wavelength"], flux_model, c="b", label="Model",
@@ -595,14 +629,21 @@ class SpectraFitModule(BaseModule):
         ax.plot(
             self.config["wavelength"],
             residuals,
-            c="orange",
+            c="grey",
             label="Residuals",
+            lw=0.7
+        )
+        ax.plot(
+            self.config["wavelength"],
+            residuals * nan_mask,
+            c="orange",
+            label="Residuals (w>0)",
             lw=0.7
         )
         ax.axhline(0, ls="--", color="k", alpha=0.2)
         ax.set_ylabel("Flux")
         ax.legend(bbox_to_anchor=(0.5, 1.01), loc="lower center",
-                  ncols=4, fontsize=8)
+                  ncols=5, fontsize=8)
 
         p5, p95 = np.nanpercentile(self.config["flux"], [5, 95])
         p_residuals = np.nanpercentile(residuals, 5) * 0.95

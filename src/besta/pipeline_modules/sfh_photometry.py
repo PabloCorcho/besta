@@ -126,7 +126,7 @@ class SFHPhotometryModule(PhotometryFitModule):
     def execute(self, block):
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            # print("Invalid")
+            # print("Invalid samples")
             block[section_names.likelihoods, self.like_name] = -1e5 * penalty
             block["parameters", "normalization"] = 0.0
             return 0

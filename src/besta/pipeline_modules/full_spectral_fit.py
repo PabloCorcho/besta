@@ -33,9 +33,11 @@ class FullSpectralFitModule(SpectraFitModule):
         sfh_model = self.config["sfh_model"]
         if parse:
             sfh_model.parse_datablock(block)
-        flux_model = sfh_model.model.compute_SED(
+        luminosity_model = sfh_model.model.compute_SED(
             self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
-        ).value
+        )
+        flux_model = 1e10 * luminosity_model.to_value("1e-16 erg / (s Angstrom)"
+        ) / self.config["dl_sq"]
 
         # Kinematics
         velscale = self.config["velscale"]
@@ -78,7 +80,7 @@ class FullSpectralFitModule(SpectraFitModule):
         normalization = np.nanmedian(
             self.config["flux"][weights > 0] / flux_model[weights > 0]
         )
-        block["parameters", "normalization"] = normalization
+        block["parameters", "stellar_mass"] = np.log10(normalization) + 10
         return flux_model * normalization, weights
 
     def execute(self, block):
@@ -89,9 +91,9 @@ class FullSpectralFitModule(SpectraFitModule):
         """
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            print("Invalid")
+            print("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["parameters", "normalization"] = 0.0
+            block["parameters", "stellar_mass"] = 0.0
             return 0
         # Obtain parameters from setup
         cov = self.config["cov"]

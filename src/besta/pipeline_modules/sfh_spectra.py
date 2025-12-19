@@ -69,7 +69,7 @@ class SFHSpectraModule(SpectraFitModule):
     def execute(self, block):
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            print("Invalid")
+            print("Invalid sample")
             block[section_names.likelihoods, "SFHSpectra_like"] = -1e20 * penalty
             block["parameters", "normalization"] = 0.0
             return 0
