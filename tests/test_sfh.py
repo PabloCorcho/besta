@@ -301,5 +301,58 @@ class TestExponentialSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(mass) >= 0))
 
 
+class TestTransforms(unittest.TestCase):
+
+    def test_fixed_time_softmax_roundtrip(self):
+        lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
+        model = sfh.FixedTimeSFH(lookback_bins, ism_metallicity_today=0.02,
+                                 use_transforms=True)
+        latent = np.array([0.1, -0.2, 0.3, 0.0])
+        physical = model.to_physical(latent)
+        np.testing.assert_allclose(physical.sum(), 1.0, rtol=1e-6)
+        # softmax inverse defined up to additive constant; center both
+        inv = model.to_latent(physical)
+        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(),
+                                   rtol=1e-6, atol=1e-8)
+        params = {k: v for k, v in zip(model.sfh_bin_keys, latent)}
+        params["alpha_powerlaw"] = 1.0
+        params["ism_metallicity_today"] = 0.02
+        status, info = model.parse_datablock(DataBlock.from_dict({"parameters": params}))
+        self.assertEqual(status, 1)
+        self.assertIsNone(info)
+        self.assertAlmostEqual(model.model.table_mass.to_value(u.Msun)[-1], 1.0, places=6)
+
+    def test_fixed_time_ssfr_softmax_roundtrip(self):
+        lookback_bins = np.array([0.5, 1.0, 2.0]) * u.Gyr
+        model = sfh.FixedTime_sSFR_SFH(lookback_bins, ism_metallicity_today=0.02,
+                                       use_transforms=True)
+        latent = np.array([0.0, 0.1, -0.1])
+        physical_logssfr = model.to_physical(latent)
+        inv = model.to_latent(physical_logssfr)
+        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(),
+                                   rtol=1e-6, atol=1e-8)
+
+    def test_fixed_cosmic_time_sigmoid_roundtrip(self):
+        lookback_bins = np.array([1.0, 2.5, 5.0]) * u.Gyr
+        model = sfh.FixedCosmicTimeSFH(lookback_bins, ism_metallicity_today=0.02,
+                                       use_transforms=True)
+        latent = np.array([0.2, -0.1, 0.5])
+        physical = model.to_physical(latent)
+        self.assertTrue(np.all((physical > 0) & (physical < 1)))
+        inv = model.to_latent(physical)
+        np.testing.assert_allclose(inv, latent, rtol=1e-6)
+
+    def test_fixed_mass_frac_time_roundtrip(self):
+        mass_fractions = np.array([0.2, 0.5, 0.8])
+        model = sfh.FixedMassFracSFH(mass_fractions, ism_metallicity_today=0.02,
+                                     use_transforms=True)
+        latent = np.array([0.0, 0.1, -0.2])
+        physical = model.to_physical(latent)
+        self.assertTrue(np.all(np.diff(physical) > 0))
+        inv = model.to_latent(physical)
+        # defined up to additive constant
+        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(), rtol=1e-6)
+
+
 if __name__ == "__main__":
     unittest.main()
