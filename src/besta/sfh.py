@@ -502,24 +502,38 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return 1, None
 
     def to_physical(self, latent):
-        """Softmax-transform latent sSFR coefficients into sSFR."""
+        """Return log10 sSFR over each timescale.
+
+        If transforms are enabled, map latent vars -> softmax increments -> cumulative
+        mass, then convert to average sSFR over each interval.
+        """
+        latent = np.asarray(latent, dtype=float)
         if self.use_transforms:
-            mass_frac = _softmax(latent)
-            ssfr = mass_frac / self.lookback_time[1:-1].to_value("yr")
-            return np.where(ssfr > 0, np.log10(ssfr), -15.0)
-        return np.asarray(latent, dtype=float)
+            lt_yr = self.lookback_time[1:-1].to_value("yr")
+            increments = _softmax(latent)
+            cumulative = np.concatenate(([0.0], np.cumsum(increments), [1.0]))
+            ssfr = (1 - cumulative[1:-1]) / lt_yr
+            ssfr = np.clip(ssfr, 1e-20, None)
+            return np.log10(ssfr)
+        return latent
 
     def to_latent(self, physical):
-        """Inverse of the softmax branch (up to additive constant)."""
+        """Inverse mapping from log10 sSFR back to latent (softmax) space."""
+        physical = np.asarray(physical, dtype=float)
+        if not self.use_transforms:
+            return physical
         lt_yr = self.lookback_time[1:-1].to_value("yr")
-        frac = 1 - lt_yr * 10**physical
-        frac = np.insert(frac, [0, frac.size], [0.0, 1.0])
-        if frac.ndim != 1:
-            raise ValueError("Expected 1D array of mass fractions.")
-        if not np.isclose(frac.sum(), 1.0, atol=1e-6):
-            raise ValueError("Mass fractions must sum to 1 to invert softmax.")
-        log_frac = np.log(frac)
-        return log_frac - log_frac.mean()
+        ssfr = 10**physical
+        cumulative = 1 - lt_yr * ssfr
+        cumulative = np.insert(cumulative, [0, cumulative.size], [0.0, 1.0])
+        if (np.diff(cumulative) <= 0).any():
+            raise ValueError("Provided sSFR yields non-monotonic cumulative mass.")
+        # Rescale cumulative to [0, 1] and drop duplicate final edge
+        cumulative = (cumulative - cumulative[0]) / (cumulative[-1] - cumulative[0])
+        increments = np.diff(cumulative)[:-1]
+        increments /= increments.sum()
+        log_inc = np.log(increments)
+        return log_inc - log_inc.mean()
 
 
 class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
