@@ -21,8 +21,3 @@
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: besta.pipeline_modules.SFHSpectraModule
-   :members:
-   :undoc-members:
-   :show-inheritance:

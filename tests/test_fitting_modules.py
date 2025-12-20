@@ -7,6 +7,7 @@ from cosmosis import DataBlock
 from besta.pipeline_modules.base_module import SpectraFitModule
 from besta.pipeline_modules.kin_dust import KinDustModule
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
+import importlib
 
 
 def make_dummy_spectrum(tmp_path):
@@ -113,3 +114,8 @@ def test_full_spectral_fit_make_observable(tmp_path):
     flux_model, weights = mod.make_observable(block)
     assert flux_model.shape == mod.config["flux"].shape
     assert weights.shape == mod.config["flux"].shape
+
+
+def test_sfh_spectra_module_removed():
+    with pytest.raises(AttributeError):
+        importlib.reload(importlib.import_module("besta.pipeline_modules")).SFHSpectraModule
