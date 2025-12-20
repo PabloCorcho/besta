@@ -227,6 +227,159 @@ These options are used by :meth:`besta.pipeline.base.BaseModule.prepare_sfh_mode
   unconstrained latent variables (typically centred around 0 with symmetric
   ranges, e.g. ``-3 0 3``) rather than on the final fractions/times.
 
+  Supported models: ``FixedTimeSFH``, ``FixedCosmicTimeSFH``, ``FlexibleCosmicTimeSFH``,
+  ``FixedMassFracSFH``, and ``FixedTime_sSFR_SFH``. See :mod:`besta.sfh` for the
+  precise mappings and their inverses (``to_physical``/``to_latent`` hooks).
+
+Values/prior file tips
+----------------------
+
+Priors are defined in the CosmoSIS ``values`` file. A typical snippet:
+
+.. code-block:: ini
+
+   [parameters]
+   av = 0 0.1 1.0
+   los_vel = -500 0 500
+   los_sigma = 50 100 400
+   logtau = -1 0.5 1.7
+   alpha_powerlaw = 0 1 10
+   ism_metallicity_today = 0.005 0.01 0.08
+   legendre_1 = -0.2 0 0.2
+
+If ``use_transforms=True`` for your SFH, set priors on the latent variables:
+
+- softmax latents: symmetric ranges around 0 (e.g. ``coeff_1 = -3 0 3``),
+- sigmoid latents: broad symmetric ranges (e.g. ``coeff_at_2.5 = -3 0 3``),
+- exp/delta latents: symmetric ranges around 0 (e.g. ``t_at_frac_0.5 = -3 0 3``).
+
+CosmoSIS will treat single numbers as fixed parameters; missing parameters are
+back-filled with fixed values when converting solutions to :class:`cosmosis.DataBlock`
+objects for plotting or post-processing.
+
+Configuration examples
+**********************
+
+Photometry-only fit
+^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: ini
+
+   [runtime]
+   sampler = maxlike
+
+   [output]
+   filename = ./photometry_fit
+   format = text
+
+   [pipeline]
+   modules = SFHPhotometry
+   values = ./values.ini
+   likelihoods = SFHPhotometry
+
+   [SFHPhotometry]
+   file = path/to/besta/pipeline_modules/sfh_photometry.py
+   inputPhotometry = ./photometry.dat
+   fluxUnits = nanomaggie
+   redshift = 0.05
+   SFHModel = ExponentialSFH
+   SSPModel = PopStar
+   SSPModelArgs = "cha"
+   SSPDir = None
+   ExtinctionLaw = ccm89
+
+Single-spectrum fit
+^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: ini
+
+   [runtime]
+   sampler = maxlike emcee
+
+   [output]
+   filename = ./spectral_fit
+   format = text
+
+   [pipeline]
+   modules = FullSpectralFit
+   values = ./values.ini
+   likelihoods = FullSpectralFit
+   extra_output = parameters/stellar_mass
+
+   [FullSpectralFit]
+   file = path/to/besta/pipeline_modules/full_spectral_fit.py
+   inputSpectrum = ./spectrum.dat
+   wlUnits = Angstrom
+   fluxUnits = 1e-16 erg / (s cm2 Angstrom)
+   wlRange = 3500.0 9000.0
+   velscale = 50.0
+   SSPModel = PopStar
+   SSPModelArgs = cha
+   SSPDir = None
+   SFHModel = ExponentialSFH
+   ExtinctionLaw = ccm89
+   legendre_deg = 4
+
+Two spectra of the same object (joint fit)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a given object, you can fit as many observables as you want by including multiple
+``FullSpectralFit`` modules in the pipeline. For example, to fit blue and red
+spectra of the same galaxy simultaneously with shared parameters:
+
+.. code-block:: python
+
+   from besta.pipeline import MainPipeline
+   from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
+
+   cfg = {
+       "output": {"filename": "./fit_all", "format": "text"},
+       "pipeline": {
+           "modules": "FullSpectralFit_blue FullSpectralFit_red",
+           "values": "./values_blue.ini",
+           "likelihoods": "FullSpectralFit_blue FullSpectralFit_red",
+       },
+       "FullSpectralFit_blue": {
+           "file": FullSpectralFitModule.get_path(),
+           "inputSpectrum": "./spectrum_blue.dat",
+           "wlRange": [3500.0, 5500.0],
+           "wlUnits": "Angstrom",
+           "fluxUnits": "1e-16 erg / (s cm2 Angstrom)",
+           "velscale": 70.0,
+           "SSPModel": "PopStar",
+           "SSPModelArgs": "cha",
+           "SSPDir": "None",
+           "SFHModel": "ExponentialSFH",
+           "ExtinctionLaw": "ccm89",
+           "like_name": "FullSpectralFit_blue",
+       },
+       "FullSpectralFit_red": {
+           "file": FullSpectralFitModule.get_path(),
+           "inputSpectrum": "./spectrum_red.dat",
+           "wlRange": [5500.0, 9000.0],
+           "wlUnits": "Angstrom",
+           "fluxUnits": "1e-16 erg / (s cm2 Angstrom)",
+           "velscale": 50.0,
+           "SSPModel": "PopStar",
+           "SSPModelArgs": "cha",
+           "SSPDir": "None",
+           "SFHModel": "ExponentialSFH",
+           "ExtinctionLaw": "ccm89",
+           "like_name": "FullSpectralFit_red",
+       }
+   }
+
+   pipeline = MainPipeline([cfg], n_cores_list=[1])
+   pipeline.execute_all(plot_result=True)
+
+Not that, while using the same SSP model, the resolution and wavelength range
+can differ between spectra.
+
+.. note::
+
+    It is important to set different ``like_name`` values for each module to avoid name clashes in the likelihood calculation.
+
+
 
 Dust extinction law
 ^^^^^^^^^^^^^^^^^^^
