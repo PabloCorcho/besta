@@ -24,6 +24,14 @@ def _sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 
+def _logit(x):
+    """Inverse of sigmoid on (0,1)."""
+    x = np.asarray(x, dtype=float)
+    if np.any((x <= 0) | (x >= 1)):
+        raise ValueError("Logit is only defined for values strictly within (0, 1).")
+    return np.log(x) - np.log1p(-x)
+
+
 def validate_monotonic(array, *, strict=True, name="array"):
     """Validate that the input array is monotonic increasing."""
     arr = np.asarray(array)
@@ -66,6 +74,15 @@ class SFHBase(ABC):
         self.today = kwargs.get("today", cosmology.age(self.redshift))
         # Optional transforms to enforce physicality; defaults preserve legacy behaviour
         self.use_transforms = kwargs.get("use_transforms", False)
+
+    # --- Transform hooks ---
+    def to_physical(self, latent):
+        """Map latent parameters to physical space (default: identity)."""
+        return latent
+
+    def to_latent(self, physical):
+        """Map physical parameters back to latent space (default: identity)."""
+        return physical
 
     def make_ini(self, ini_file):
         """Create a cosmosis .ini file.
@@ -214,6 +231,25 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
         return 1, None
 
+    def to_latent(self, physical):
+        """
+        Inverse of the softmax branch (up to an additive constant).
+        We center the log-fractions to have zero mean for determinism.
+        """
+        frac = np.asarray(physical, dtype=float)
+        if frac.ndim != 1:
+            raise ValueError("Expected 1D array of mass fractions.")
+        if not np.isclose(frac.sum(), 1.0, atol=1e-6):
+            raise ValueError("Mass fractions must sum to 1 to invert softmax.")
+        log_frac = np.log(frac)
+        return log_frac - log_frac.mean()
+
+    def to_physical(self, latent):
+        """Softmax-transform latent masses into fractions that sum to 1."""
+        if self.use_transforms:
+            return _softmax(latent)
+        return np.asarray(latent, dtype=float)
+
 
 class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
@@ -297,6 +333,18 @@ class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             datablock["parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
         )
         return 1, None
+
+    def to_physical(self, latent):
+        """Apply sigmoid to keep coefficients within (0,1) when transforms enabled."""
+        if self.use_transforms:
+            return _sigmoid(latent)
+        return np.asarray(latent, dtype=float)
+
+    def to_latent(self, physical):
+        """Inverse of sigmoid for the coefficient branch."""
+        if self.use_transforms:
+            return _logit(physical)
+        return np.asarray(physical, dtype=float)
 
 
 class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
@@ -432,8 +480,16 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     def parse_datablock(self, datablock: DataBlock):
         lt_yr = self.lookback_time[1:-1].to_value("yr")
         ssfr_over_last = self.get_sfh_parameters_array(datablock)
-        mass_frac = 1 - lt_yr * 10**ssfr_over_last
-        mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
+        if self.use_transforms:
+            # Same as FixedTimeSFH
+            # Map unconstrained latents to positive fractions that sum to 1
+            increments = _softmax(ssfr_over_last)
+            mass_frac = np.concatenate(
+                ([0.0], np.cumsum(increments).clip(0, 1), [1.0]))
+        else:
+            mass_frac = 1 - lt_yr * 10**ssfr_over_last
+            mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
+
         if (mass_frac[1:] - mass_frac[:-1] < 0).any():
             delta_m = mass_frac[1:] - mass_frac[:-1]
             return 0, 1 + np.abs(delta_m[delta_m < 0].sum())
@@ -444,6 +500,26 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             datablock["parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
         )
         return 1, None
+
+    def to_physical(self, latent):
+        """Softmax-transform latent sSFR coefficients into sSFR."""
+        if self.use_transforms:
+            mass_frac = _softmax(latent)
+            ssfr = mass_frac / self.lookback_time[1:-1].to_value("yr")
+            return np.where(ssfr > 0, np.log10(ssfr), -15.0)
+        return np.asarray(latent, dtype=float)
+
+    def to_latent(self, physical):
+        """Inverse of the softmax branch (up to additive constant)."""
+        lt_yr = self.lookback_time[1:-1].to_value("yr")
+        frac = 1 - lt_yr * 10**physical
+        frac = np.insert(frac, [0, frac.size], [0.0, 1.0])
+        if frac.ndim != 1:
+            raise ValueError("Expected 1D array of mass fractions.")
+        if not np.isclose(frac.sum(), 1.0, atol=1e-6):
+            raise ValueError("Mass fractions must sum to 1 to invert softmax.")
+        log_frac = np.log(frac)
+        return log_frac - log_frac.mean()
 
 
 class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
@@ -510,6 +586,24 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             datablock["parameters", "ism_metallicity_today"] << u.dimensionless_unscaled
         )
         return 1, None
+
+    def to_physical(self, latent):
+        """Map unconstrained latents to strictly increasing times (Gyr)."""
+        if self.use_transforms:
+            deltas = np.exp(latent)
+            times = np.cumsum(deltas)
+            times = times / times[-1] * self.today.to_value("Gyr")
+            return times
+        return np.asarray(latent, dtype=float)
+
+    def to_latent(self, physical):
+        """Inverse of the exp/cumsum mapping (up to normalisation)."""
+        if self.use_transforms:
+            times = np.asarray(physical, dtype=float)
+            validate_monotonic(times, strict=True, name="times")
+            deltas = np.diff(np.insert(times, 0, 0))
+            return np.log(deltas)
+        return np.asarray(physical, dtype=float)
 
 
 # class FixedMassFracLinSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
