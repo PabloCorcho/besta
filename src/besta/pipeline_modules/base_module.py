@@ -319,8 +319,11 @@ class BaseModule(ClassModule):
                     value = np.array(value.split(","), dtype=float)
             sfh_args.append(value)
         # Optional: enable parameter transforms inside SFH models
+        self.config["use_transforms"] = False
         if options.has_value("use_transforms"):
             self.config["use_transforms"] = bool(options["use_transforms"])
+        if self.config["use_transforms"]:
+            print("Enabling parameter transforms inside SFH model")
         print("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **self.config)
@@ -591,7 +594,18 @@ class SpectraFitModule(BaseModule):
                         self.config.get("telluric_mask", 0)),
                      " - Emission lines": np.sum(
                         self.config.get("emission_lines_mask", 0))}
-        sections = [("Model parameters", dict(zip(param_keys, param_val))),
+        model_params = dict(zip(param_keys, param_val))
+        model_params["use_transforms"] = self.config.get(
+            "use_transforms", False)
+        if model_params["use_transforms"]:
+            sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
+            sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
+
+            for key, value in zip(self.config["sfh_model"].sfh_bin_keys,
+                                  sfh_params_phys):
+                model_params[key] = value
+
+        sections = [("Model parameters", model_params),
                     ("Masking", mask_info)]
         text = draw_dict_in_axes(ax, sections, section_spacing=1,
                           title_style="underline")
