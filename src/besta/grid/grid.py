@@ -15,6 +15,7 @@ from itertools import product
 
 import os
 import json
+import pickle
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
 import numpy as np
@@ -23,6 +24,7 @@ from matplotlib.colors import LogNorm
 from astropy.table import Table, Column
 from astropy.io import fits
 import h5py
+from scipy.spatial import cKDTree
 
 from besta.grid.prob import (
     Prior,
@@ -39,6 +41,8 @@ from besta.postprocess import (
     photoz_metrics,
     weighted_quantiles,
 )
+
+from pst.transforms import LinearStandardiser
 
 from besta.io import available_memory_bytes
 
@@ -211,7 +215,7 @@ def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
     """
     M = len(costs)
     T = max(1, n_jobs * tasks_per_worker)
-    total = float(np.sum(costs)) if M else 0.0
+    total = np.sum(costs) if M else 0.0
     target = total / T if T > 0 else total
 
     slices = []
@@ -265,8 +269,11 @@ class ModelGrid:
     meta: Dict[str, Any] = field(default_factory=dict)
 
     # Cached stats for standardisation
-    _obs_mu: Optional[np.ndarray] = field(default=None, init=False, repr=False)
-    _obs_sd: Optional[np.ndarray] = field(default=None, init=False, repr=False)
+    observable_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
+    target_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
+
+    _kdtree: Optional["cKDTree"] = field(default=None, init=False, repr=False)
+    _kdtree_standardized: Optional[bool] = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.observables.ndim != 2:
@@ -305,7 +312,7 @@ class ModelGrid:
         col = self.target_names.index(key)
         return self.targets[:, col]
 
-    def select(self, idx: np.ndarray, observables=None, targets=None) -> "ModelGrid":
+    def select(self, idx: np.ndarray, observables=None, targets=None, standardisers=True) -> "ModelGrid":
         """
         Return a new ModelGrid containing a subset of models.
 
@@ -313,6 +320,12 @@ class ModelGrid:
         ----------
         idx : ndarray of int, shape (K,)
             Indices to select.
+        observables : list of str or list of int, optional, default=None
+            Names or indices of observables to include.
+        targets : list of str or list of int, optional, default=None
+            Names or indices of targets to include.
+        standardisers : bool, optional, default=True
+            Whether to propagate fitted standardisers.
 
         Returns
         -------
@@ -329,7 +342,7 @@ class ModelGrid:
         if isinstance(targets[0], str):
             targets = [self.target_names.index(n) for n in targets]
 
-        return ModelGrid(
+        sub = ModelGrid(
             observables=self.observables[idx][:, observables].copy(),
             targets=self.targets[idx][:, targets].copy(),
             observable_names=[self.observable_names[o] for o in observables],
@@ -338,7 +351,59 @@ class ModelGrid:
             meta=dict(self.meta),
         )
 
+        if standardisers:
+            if self.observable_standardiser.is_fit:
+                sub.observable_standardiser.mean = self.observable_standardiser.mean[observables].copy()
+                sub.observable_standardiser.sd = self.observable_standardiser.sd[observables].copy()
+            if self.target_standardiser.is_fit:
+                sub.target_standardiser.mean = self.target_standardiser.mean[targets].copy()
+                sub.target_standardiser.sd = self.target_standardiser.sd[targets].copy()
+
+        return sub
+
     # ------------ standardisation ------------
+    def fit_target_standardiser(self, mask: Optional[np.ndarray] = None) -> None:
+        """Fit mean/std for target standardisation used by KDTree distances.
+        
+        Parameters
+        ----------
+        mask : ndarray of bool, shape (N,), optional
+            If provided, use only masked entries to compute stats.
+        """
+        X = self.targets if mask is None else self.targets[mask]
+        self.target_standardiser.fit(X, ddof=0)
+
+    def transform_targets(self, X: np.ndarray) -> np.ndarray:
+        """
+        Apply fitted target standardisation.
+
+        Parameters
+        ----------
+        X : ndarray, shape (..., Q)
+            Targets to standardise.
+
+        Returns
+        -------
+        X_std : ndarray, shape (..., Q)
+            Standardised targets.
+
+        Raises
+        ------
+        RuntimeError
+            If fit_target_standardiser has not been called.
+        """
+        if not self.target_standardiser.is_fit:
+            raise RuntimeError("fit_target_standardiser must be called before transform_targets")
+        return self.target_standardiser.transform(X)
+
+    def inverse_transform_targets(self, X_std: np.ndarray) -> np.ndarray:
+        """
+        Inverse of transform_targets.
+        """
+        if not self.target_standardiser.is_fit:
+            raise RuntimeError("fit_target_standardiser must be called before inverse_transform_targets")
+        return self.target_standardiser.inverse_transform(X_std)
+
     def fit_standardiser(self, mask: Optional[np.ndarray] = None) -> None:
         """
         Fit mean and standard deviation for observable standardisation.
@@ -349,15 +414,11 @@ class ModelGrid:
             If provided, use only masked entries to compute stats.
         """
         X = self.observables if mask is None else self.observables[mask]
-        mu = np.nanmean(X, axis=0)
-        sd = np.nanstd(X, axis=0, ddof=0)
-        sd = np.where(sd == 0.0, 1.0, sd)
-        self._obs_mu = mu
-        self._obs_sd = sd
+        self.observable_standardiser.fit(X, ddof=0)
 
     def transform_observables(self, X: np.ndarray) -> np.ndarray:
         """
-        Apply fitted standardisation to a matrix of observables.
+        Apply fitted observable standardisation.
 
         Parameters
         ----------
@@ -374,11 +435,190 @@ class ModelGrid:
         RuntimeError
             If fit_standardiser has not been called.
         """
-        if self._obs_mu is None or self._obs_sd is None:
-            raise RuntimeError(
-                "fit_standardiser must be called before transform_observables"
+        if not self.observable_standardiser.is_fit:
+            raise RuntimeError("fit_standardiser must be called before transform_observables")
+        return self.observable_standardiser.transform(X)
+
+    def inverse_transform_observables(self, X_std: np.ndarray) -> np.ndarray:
+        """
+        Inverse of transform_observables.
+
+        Parameters
+        ----------
+        X_std : ndarray, shape (..., P)
+            Standardised observables to inverse.
+
+        Returns
+        -------
+        X : ndarray, shape (..., P)
+            Inverse transformed observables.
+
+        Raises
+        ------
+        RuntimeError
+            If fit_standardiser has not been called.
+        """
+        if not self.observable_standardiser.is_fit:
+            raise RuntimeError("fit_standardiser must be called before inverse_transform_observables")
+        return self.observable_standardiser.inverse_transform(X_std)
+
+    def invalidate_knn_index(self) -> None:
+        """Invalidate cached KDTree."""
+        self._kdtree = None
+        self._kdtree_standardized = None
+
+    def get_kdtree(self, *, standardize: bool = True):
+        """
+        Return a cached cKDTree over targets (optionally standardized).
+        Builds it once and reuses for subsequent queries.
+
+        Notes
+        -----
+        If you mutate self.targets in-place, call invalidate_knn_index().
+        """
+        # Reuse if it matches requested mode
+        if self._kdtree is not None and self._kdtree_standardized == standardize:
+            return self._kdtree
+
+        X = np.asarray(self.targets, dtype=float)
+        if X.ndim != 2 or X.shape[1] != self.n_targets:
+            raise ValueError("targets must be 2D (N, Q)")
+
+        if standardize:
+            if self._tgt_mu is None or self._tgt_sd is None:
+                self.fit_target_standardiser()
+            Xn = self.transform_targets(X)
+        else:
+            Xn = X
+
+        self._kdtree = cKDTree(Xn)
+        self._kdtree_standardized = standardize
+        return self._kdtree
+
+    def interpolate_observables(
+        self,
+        targets_query: np.ndarray,
+        *,
+        fill_value: float = np.nan,
+        k: int = 32,
+        p: float = 2.0,
+        eps: float = 1e-12,
+        standardize: bool = True,
+        mode: str = "local_linear",   # "idw" | "local_linear"
+        ridge: float = 1e-8,          # Tikhonov regularization for stability
+    ) -> np.ndarray:
+        """
+        Interpolate observables for arbitrary target values using cached KDTree.
+
+        mode="idw"         : inverse-distance weighted KNN (your current behaviour)
+        mode="local_linear": weighted local affine fit (exact for linear functions)
+        """
+        tq = np.atleast_2d(np.asarray(targets_query, dtype=float))
+        if tq.shape[1] != self.n_targets:
+            raise ValueError(
+                f"targets_query must have shape (M, {self.n_targets}); got {tq.shape}"
             )
-        return (X - self._obs_mu) / self._obs_sd
+
+        bad_q = ~np.isfinite(tq).all(axis=1)
+        out = np.full((tq.shape[0], self.n_observables), fill_value, dtype=float)
+        if bad_q.all():
+            return out
+
+        if standardize:
+            if self._tgt_mu is None or self._tgt_sd is None:
+                self.fit_target_standardiser()
+            tqn = self.transform_targets(tq)
+        else:
+            tqn = tq
+
+        tree = self.get_kdtree(standardize=standardize)
+        k_eff = max(1, min(k, self.n_models))
+
+        dists, idx = tree.query(tqn[~bad_q], k=k_eff, workers=-1)
+        if k_eff == 1:
+            dists = dists[:, None]
+            idx = idx[:, None]
+
+        neigh_obs = self.observables[idx]  # (Mgood, k, P)
+        neigh_tgt = (self.targets[idx] if not standardize else self.targets_standardized[idx]) \
+            if hasattr(self, "targets_standardized") else None
+
+        # If you don't already store standardized targets, build them on the fly:
+        if neigh_tgt is None:
+            if standardize:
+                neigh_tgt = (self.targets[idx] - self._tgt_mu) / self._tgt_sd
+            else:
+                neigh_tgt = self.targets[idx]
+
+        obs_q = np.empty((dists.shape[0], self.n_observables), dtype=float)
+
+        zero = dists <= eps
+        any_zero = zero.any(axis=1)
+
+        # Exact matches: average exact neighbors
+        if np.any(any_zero):
+            zrows = np.where(any_zero)[0]
+            for r in zrows:
+                m = zero[r]
+                obs_q[r] = np.nanmean(neigh_obs[r, m, :], axis=0)
+
+        # Non-exact rows
+        rows = np.where(~any_zero)[0]
+        if rows.size == 0:
+            out[~bad_q] = obs_q
+            return out
+
+        if mode == "idw":
+            w = 1.0 / (np.power(dists[rows], p) + eps)
+            wsum = np.sum(w, axis=1, keepdims=True)
+            w = np.where(wsum > 0, w / wsum, 0.0)
+            obs_q[rows] = np.einsum("nk,nkp->np", w, neigh_obs[rows])
+
+        elif mode == "local_linear":
+            # Weighted local affine fit per query:
+            # y ≈ a + B (x - xq)
+            # Implemented as weighted least squares on design matrix [1, (x - xq)]
+            D = self.n_targets
+            P = self.n_observables
+
+            for rr in rows:
+                xq = tqn[~bad_q][rr]              # (D,)
+                Xn = neigh_tgt[rr]                # (k, D)
+                Yn = neigh_obs[rr]                # (k, P)
+                dn = dists[rr]                    # (k,)
+
+                # weights (same spirit as IDW)
+                w = 1.0 / (np.power(dn, p) + eps)  # (k,)
+                # build design matrix: (k, 1+D)
+                A = np.empty((k_eff, 1 + D), dtype=float)
+                A[:, 0] = 1.0
+                A[:, 1:] = (Xn - xq[None, :])
+
+                # Apply weights via sqrt(w)
+                sw = np.sqrt(w)[:, None]  # (k,1)
+                Aw = A * sw               # (k,1+D)
+                Yw = Yn * sw              # (k,P)
+
+                # Solve (Aw^T Aw + ridge I) beta = Aw^T Yw
+                G = Aw.T @ Aw
+                if ridge > 0:
+                    G = G + ridge * np.eye(G.shape[0])
+                rhs = Aw.T @ Yw
+
+                try:
+                    beta = np.linalg.solve(G, rhs)   # (1+D, P)
+                    obs_q[rr] = beta[0]              # prediction at xq (delta=0)
+                except np.linalg.LinAlgError:
+                    print("Fallback to IDW")
+                    # Fallback to IDW if ill-conditioned
+                    ww = w / (w.sum() + eps)
+                    obs_q[rr] = ww @ Yn
+
+        else:
+            raise ValueError(f"Unknown mode={mode!r} (use 'idw' or 'local_linear').")
+
+        out[~bad_q] = obs_q
+        return out
 
     # ------------ I/O ------------
     def to_dict(self) -> Dict[str, Any]:
@@ -1027,6 +1267,68 @@ class ModelGrid:
                 except Exception:
                     g.attrs["meta"] = json.dumps({}, ensure_ascii=True)
 
+    @classmethod
+    def from_pickle(cls, path):
+        """
+        Load a ModelGrid from a pickle file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the pickle file.
+
+        Returns
+        -------
+        grid : ModelGrid
+        """
+        with open(path, "rb") as f:
+            obj = pickle.load(f)
+        if not isinstance(obj, cls):
+            raise TypeError(f"Pickle file does not contain a ModelGrid; got {type(obj)}")
+        return obj
+    
+    def to_pickle(self, path):
+        """
+        Save the ModelGrid to a pickle file.
+
+        Parameters
+        ----------
+        path : str
+            Output pickle file path.
+        """
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load_auto(cls, path, **kwargs):
+        """
+        Auto-load a ModelGrid from a file based on its extension.
+
+        Supported formats:
+          .fits, .fit, .fts      FITS table via from_fits_table
+          .hdf5, .h5             HDF5 via from_hdf5
+          .pkl, .pickle          Pickle via from_pickle
+        
+        Parameters
+        ----------
+        path : str
+            Path to the file.
+        **kwargs
+            Additional keyword arguments passed to the specific loader.
+        
+        Returns
+        -------
+        grid : ModelGrid
+        """
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".fits", ".fit", ".fts"):
+            return cls.from_fits_table(path, **kwargs)
+        elif ext in (".hdf5", ".h5"):
+            return cls.from_hdf5(path, **kwargs)
+        elif ext in (".pkl", ".pickle"):
+            return cls.from_pickle(path)
+        else:
+            raise ValueError(f"Unsupported file extension '{ext}' for auto-loading")
 
 # ---------------------------------------------------------------------
 # ModelGrid fitter
@@ -1218,7 +1520,7 @@ class GridFitter:
             except ValueError as e:
                 raise KeyError(f"Unknown target column '{target_col}'") from e
         else:
-            j = int(target_col)
+            j = target_col
 
         y = self.grid.targets[idx, j]
         hist, _ = np.histogram(y, bins=bins, weights=w, density=False)
@@ -1703,7 +2005,9 @@ class GridFitter:
 
         Y = self.grid.targets[idx][:, cols]
         w = w / np.sum(w)
-
+        best_fit = np.argmax(w)
+        best_y = Y[best_fit]
+        mean_y = np.sum(Y * w[:, None], axis=0)
         D = len(cols)
         if isinstance(bins, int):
             bins_list = [bins] * D
@@ -1733,13 +2037,15 @@ class GridFitter:
                 lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
-                edges = np.linspace(
-                    mid - kappa_sigma_edges * (mid - lo),
-                    mid + kappa_sigma_edges * (hi - mid),
-                    bi + 1,
-                )
+                min_v = mid - kappa_sigma_edges * (mid - lo)
+                max_v = mid + kappa_sigma_edges * (hi - mid)
+                if min_v == max_v:
+                    min_v = Y[:, i].min() * 0.9
+                    max_v = Y[:, i].max() * 1.1
+                edges = np.linspace(min_v, max_v, bi + 1)
             else:
                 edges = np.asarray(bi)
+
             all_edges.append(edges)
             hist, _ = np.histogram(Y[:, i], bins=edges, weights=w)
             width = np.diff(edges)
@@ -1748,10 +2054,16 @@ class GridFitter:
             ax.fill_between(centers, 0, dens, step="mid", alpha=alpha_hist, color=color)
             ax.plot(centers, dens, lw=1.0, color=color)
             if true_target_vals is not None:
-                ax.axvline(true_target_vals[i], color="r")
+                ax.axvline(true_target_vals[i], color="r", label="True")
             for qv in q[i]:
-                ax.axvline(qv, ls="--", lw=1.0, color=color)
+                ax.axvline(qv, ls="--", lw=1.0, color="gold")
+                
+            tlt = ", ".join([f"{v:.3f}" for v in q[i]])
+            ax.set_title(tlt)
+            ax.axvline(best_y[i], color="fuchsia", lw=1.0, label="Max-like")
+            ax.axvline(mean_y[i], color="lime", lw=1.0, label="Mean")
 
+        ax.legend(fontsize=8)
         # Lower triangle
         for i in range(1, D):
             for j in range(i):
@@ -1922,7 +2234,7 @@ class GridFitter:
                         sizes = []
                         break
                 if sizes:
-                    cand_mean = float(np.mean(sizes))
+                    cand_mean = np.mean(sizes)
 
         # Worst case if no pilot or pilot failed
         if cand_mean is None or not np.isfinite(cand_mean) or cand_mean <= 0:
