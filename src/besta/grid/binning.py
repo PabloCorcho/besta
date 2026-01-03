@@ -219,8 +219,14 @@ class BaseBinner:
         X = grid.observables
         names = grid.observable_names
         rng = np.random.default_rng(random_state)
-        N = X.shape[0]
-        bg_idx = rng.choice(N, size=min(N, max_background), replace=False)
+        n_back = min(X.shape[0], max_background)
+        n_candidates = cand_idx.size
+        frac_candidates = n_candidates / X.shape[0]
+
+        if n_back > 0:
+            bg_idx = rng.choice(X.shape[0], size=n_back, replace=False)
+        else:
+            bg_idx = np.array([], dtype=int)
         xq_nat = y_native[dims_plot]
         sq_nat = None if sigmas_native is None else sigmas_native[dims_plot]
 
@@ -239,10 +245,16 @@ class BaseBinner:
             # Diagonals
             for i in range(D):
                 ax = axes[i, i]
-                ax.hist(X_bg[:, i], bins=40, density=True, alpha=0.25, lw=0, label="grid")
+                if X_bg is not None:
+                    ax.hist(X_bg[:, i], bins=40, density=False, alpha=0.25,
+                            lw=0, label="grid",
+                            log=True)
                 if X_c.size:
-                    ax.hist(X_c[:, i], bins=40, density=True, alpha=0.5, lw=0, label="candidates")
+                    ax.hist(X_c[:, i], bins=40, density=False, alpha=0.5, lw=0, label="candidates",
+                            log=True)
                 ax.axvline(xq[i], color="k", lw=1.2)
+                ax.axvline(xq[i] - sq[i], color="k", lw=1.2, ls=":")
+                ax.axvline(xq[i] + sq[i], color="k", lw=1.2, ls=":")
                 ax.set_ylabel("density")
                 ax.set_xlabel(axis_labels[i])
                 if i == 0:
@@ -252,9 +264,13 @@ class BaseBinner:
             for i in range(D):
                 for j in range(i + 1, D):
                     ax = axes[j, i]  # lower triangle
-                    ax.plot(X_bg[:, i], X_bg[:, j], ",", alpha=background_alpha, ms=background_ms, color="0.5")
+                    if X_bg is not None:
+                        ax.plot(X_bg[:, i], X_bg[:, j], ",",
+                                alpha=background_alpha,
+                                ms=background_ms, color="0.5")
                     if X_c.size:
-                        ax.plot(X_c[:, i], X_c[:, j], ",", alpha=cand_alpha, ms=cand_ms, color="C0")
+                        ax.plot(X_c[:, i], X_c[:, j], ",", alpha=cand_alpha,
+                                ms=cand_ms, color="C0")
                     ax.plot(xq[i], xq[j], marker="+", ms=query_ms, color="fuchsia")
                     if show_sigma_boxes and (sq is not None):
                         wi = sigma_scale * float(sq[i])
@@ -270,7 +286,7 @@ class BaseBinner:
                     # hide upper triangle
                     axes[i, j].axis("off")
 
-            title = "Candidates vs grid" + (f" [{title_suffix}]" if title_suffix else "")
+            title = f"Candidates ({n_candidates} / {frac_candidates:.3f}%) vs grid" + (f" [{title_suffix}]" if title_suffix else "")
             if suptitle:
                 title = f"{title} – {suptitle}"
             fig.suptitle(title)
@@ -285,7 +301,10 @@ class BaseBinner:
         make_trans = plot_space in ("transformed", "both") and has_transform
 
         if make_native:
-            X_bg_nat = X[bg_idx][:, dims_plot]
+            if bg_idx.size > 0:
+                X_bg_nat = X[bg_idx][:, dims_plot]
+            else:
+                X_bg_nat = None
             X_c_nat = X[cand_idx][:, dims_plot] if cand_idx.size else np.empty((0, D))
             figN, axN = _make_pairplot(
                 X_bg_nat, X_c_nat, xq_nat, sq_nat,
@@ -672,6 +691,8 @@ class KDTreeBinner(BaseBinner):
     select_mode: str = "knn"  # "radius" | "knn"
     target_k: int = 100
     radius_factor: float = 2.0
+    radius_shape: str = "ellipsoid"  # "ball" | "ellipsoid" | "box"
+    sigma_floor: float = 1e-12
 
     _T: Dict[str, Any] = field(default_factory=dict)
     _tree: Optional[cKDTree] = field(default=None)
@@ -696,6 +717,32 @@ class KDTreeBinner(BaseBinner):
         self._tree = cKDTree(Xz, leafsize=self.leafsize)
         return self
 
+    def _sigma_to_tree_space(self, s_native: np.ndarray) -> np.ndarray:
+        """
+        Map per-dimension 1-sigma uncertainties from native dims -> tree space dims.
+
+        Returns
+        -------
+        s_z : (D,) ndarray
+            1-sigma vector in the KDTree coordinate system (same dims as Xz).
+        """
+        s = np.asarray(s_native[self.dims], float)
+        tmode = self._T.get("mode", "none")
+
+        if tmode == "standardize":
+            s_z = s / self._T["sd"]
+        elif tmode == "pca_whiten":
+            # Xz = (X - mu) @ W.T + b (typical), here we propagate diagonal covariance
+            # If Cov_native = diag(s^2), then var along dim j in z-space is sum_i W[j,i]^2 s_i^2
+            W = np.asarray(self._T["W"], float)  # shape (D, D) (assumed)
+            s_z = np.sqrt(np.clip((W**2) @ (s**2), self.sigma_floor, np.inf))
+        else:
+            s_z = s
+
+        # ensure strictly positive
+        s_z = np.maximum(s_z, self.sigma_floor)
+        return s_z
+
     def candidates(self,
                    y_native: np.ndarray,
                    sigmas_native: Optional[np.ndarray] = None
@@ -718,17 +765,47 @@ class KDTreeBinner(BaseBinner):
         # radius mode
         if sigmas_native is None:
             raise ValueError("sigmas_native required for select_mode='radius'")
-        s = np.asarray(sigmas_native[self.dims], float)
-        tmode = self._T.get("mode", "none")
-        if tmode == "standardize":
-            s_z = s / self._T["sd"]
-        elif tmode == "pca_whiten":
-            W = self._T["W"]
-            s_z = np.sqrt(np.clip((W**2 @ (s**2)), 1e-12, np.inf))
+
+        s_z = self._sigma_to_tree_space(sigmas_native)
+
+        shape = (self.radius_shape or "ball").lower()
+        if shape == "ball":
+            r = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
+            inds = self._tree.query_ball_point(xz, r=r)
         else:
-            s_z = s
-        r = self.radius_factor * np.linalg.norm(s_z)
-        inds = self._tree.query_ball_point(xz, r=r)
+            # conservative candidate fetch with a scalar radius,
+            # then exact filter.
+            if shape == "ellipsoid":
+                # if ||(dx / s_z)||_2 <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
+                r_cons = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
+                cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons),
+                                  dtype=np.int64)
+
+                if cand.size:
+                    dz = self._Xz[cand] - xz[None, :]
+                    u = dz / s_z[None, :]                  # normalize per dimension
+                    ok = (np.sum(u*u, axis=1) <= (self.radius_factor**2))
+                    inds = cand[ok].tolist()
+                else:
+                    inds = []
+
+            elif shape == "box":
+                # if max_i |dx_i|/s_i <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
+                # (still a valid conservative ball for candidates)
+                r_cons = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
+                cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
+
+                if cand.size:
+                    dz = np.abs(self._Xz[cand] - xz[None, :])
+                    ok = np.all(dz <= (self.radius_factor * s_z)[None, :], axis=1)
+                    inds = cand[ok].tolist()
+                else:
+                    inds = []
+
+            else:
+                raise ValueError(f"Unknown radius_shape={self.radius_shape!r} "
+                                 f"(expected 'ball','ellipsoid','box')")
+
         inds = np.asarray(inds, dtype=np.int64)
         if inds.size == 0:
             # fallback to 1-NN
