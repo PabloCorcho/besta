@@ -42,7 +42,7 @@ from besta.postprocess import (
     weighted_quantiles,
 )
 
-from pst.transforms import LinearStandardiser
+from .transforms import LinearStandardiser
 
 from besta.io import available_memory_bytes
 
@@ -267,7 +267,7 @@ class ModelGrid:
     target_names: List[str]
     weights: Optional[np.ndarray] = None
     meta: Dict[str, Any] = field(default_factory=dict)
-
+    check_boundaries: Optional["Callable[[np.ndarray], bool]"] = field(default=None, init=True, repr=False)
     # Cached stats for standardisation
     observable_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
     target_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
@@ -289,7 +289,8 @@ class ModelGrid:
         if self.weights is not None:
             if self.weights.shape != (self.observables.shape[0],):
                 raise ValueError("weights must have shape (N,)")
-
+        if self.check_boundaries is not None and not callable(self.check_boundaries):
+            raise ValueError("check_boundaries must be callable if provided")
     # ------------ basic properties ------------
     @property
     def n_models(self) -> int:
@@ -485,15 +486,38 @@ class ModelGrid:
             raise ValueError("targets must be 2D (N, Q)")
 
         if standardize:
-            if self._tgt_mu is None or self._tgt_sd is None:
-                self.fit_target_standardiser()
-            Xn = self.transform_targets(X)
+            Xn = self.target_standardiser.transform(X)
         else:
             Xn = X
 
         self._kdtree = cKDTree(Xn)
         self._kdtree_standardized = standardize
         return self._kdtree
+
+    def in_boundaries(self, targets_query: np.ndarray) -> np.ndarray:
+        """
+        Check which target queries are within the model grid boundaries.
+
+        Parameters
+        ----------
+        targets_query : ndarray, shape (M, Q)
+            Target query points.
+
+        Returns
+        -------
+        in_bounds : ndarray of bool, shape (M,)
+            Whether each query is within the grid boundaries.
+        """
+        if self.check_boundaries is None:
+            return np.ones(targets_query.shape[0], dtype=bool)
+            # in_bounds = np.ones(tq.shape[0], dtype=bool)
+            # for j in range(self.n_targets):
+            #     tmin = np.min(self.targets[:, j])
+            #     tmax = np.max(self.targets[:, j])
+            #     in_bounds &= (tq[:, j] >= tmin) & (tq[:, j] <= tmax)
+        else:
+            in_bounds = self.check_boundaries(targets_query)
+        return in_bounds
 
     def interpolate_observables(
         self,
@@ -519,15 +543,13 @@ class ModelGrid:
                 f"targets_query must have shape (M, {self.n_targets}); got {tq.shape}"
             )
 
-        bad_q = ~np.isfinite(tq).all(axis=1)
+        bad_q = ~np.isfinite(tq).all(axis=1) | ~self.in_boundaries(tq)
         out = np.full((tq.shape[0], self.n_observables), fill_value, dtype=float)
         if bad_q.all():
             return out
 
         if standardize:
-            if self._tgt_mu is None or self._tgt_sd is None:
-                self.fit_target_standardiser()
-            tqn = self.transform_targets(tq)
+            tqn = self.target_standardiser.transform(tq)
         else:
             tqn = tq
 
@@ -543,10 +565,11 @@ class ModelGrid:
         neigh_tgt = (self.targets[idx] if not standardize else self.targets_standardized[idx]) \
             if hasattr(self, "targets_standardized") else None
 
-        # If you don't already store standardized targets, build them on the fly:
+        # Build standardized targets on the fly:
         if neigh_tgt is None:
             if standardize:
-                neigh_tgt = (self.targets[idx] - self._tgt_mu) / self._tgt_sd
+                self.targets_standardized = self.target_standardiser.transform(self.targets)
+                neigh_tgt = self.targets_standardized[idx]
             else:
                 neigh_tgt = self.targets[idx]
 
