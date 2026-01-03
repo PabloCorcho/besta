@@ -676,7 +676,6 @@ class CompositePrior(Prior):
         if not self.priors:
             raise ValueError("CompositePrior requires at least one component prior.")
 
-        # Disallow observable-dependent priors here to keep the API clean.
         for i, pr in enumerate(self.priors):
             if isinstance(pr, ObservableDependentPrior):
                 raise TypeError(
@@ -1040,7 +1039,8 @@ def posterior_over_models(x_native: np.ndarray,
     logL = likelihood.log_likelihood(x_native, sigma_native, X_models)
 
     if prior_needs_observables:
-        logP = prior.log_prob_for_models(targets_models, observables=observables_models if observables_models is not None else X_models)  # type: ignore
+        logP = prior.log_prob_for_models(targets_models,
+        observables=observables_models if observables_models is not None else X_models)
     else:
         logP = prior.log_prob_for_models(targets_models)
 
