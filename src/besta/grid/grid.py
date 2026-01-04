@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Mon Nov  3 16:16:53 2025
+Model grid container and fitting machinery.
 
-@author: pcorchoc
+This module defines the ModelGrid class, which stores a grid of models with
+their parameters and provides methods for fitting and evaluating these models.
 """
 
 from __future__ import annotations
@@ -50,6 +49,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
+# Multiprocessing backend
 
 def _fit_batch_cands_worker(args):
     """
@@ -84,9 +84,6 @@ def _fit_batch_cands_worker(args):
             # Fallback: full grid if binner returns no candidates
             idx = np.arange(grid_n, dtype=np.int64)
     return m, idx, lev
-
-
-
 
 def _fit_batch_post_worker(args):
     """
@@ -163,7 +160,6 @@ def _fit_batch_post_worker(args):
     w = w / s if s > 0 and np.isfinite(s) else np.full_like(w, 1.0 / w.size)
     return m, w
 
-
 def _fit_batch_stats_worker(args):
     """
     Worker for batch fit step 3: compute one target's histogram and stats for one query.
@@ -191,7 +187,6 @@ def _fit_batch_stats_worker(args):
     st = hist_stats(centers, post, find_multimodal=False)
     return m, post, st
 
-
 def _guess_slices_step_1(n_objects, n_observables, n_jobs, tasks_per_worker=6):
     # fewer, larger slices when P is large
     base_tasks = n_jobs * tasks_per_worker
@@ -206,7 +201,6 @@ def _guess_slices_step_1(n_objects, n_observables, n_jobs, tasks_per_worker=6):
         out.append((s, s + size))
         s += size
     return out
-
 
 def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
     """
@@ -233,6 +227,7 @@ def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
     # If we ended up with fewer than T slices, that’s fine. Executor will still load balance.
     return slices
 
+# Base model grid class
 
 @dataclass
 class ModelGrid:
@@ -259,6 +254,28 @@ class ModelGrid:
         Optional sampling weights for models. Defaults to uniform if None.
     meta : dict, optional
         Free-form metadata for provenance, settings, and units.
+    check_boundaries : callable, optional
+        Function to check if model parameters are within valid boundaries.
+        If None, no boundary checks are performed. The function should take a
+        model parameter vector as input and return a boolean indicating
+        whether the parameters are valid. This is only used during interpolation.
+    observable_standardiser : LinearStandardiser
+        Standardiser for observable quantities.
+    target_standardiser : LinearStandardiser
+        Standardiser for target quantities.
+
+    Examples
+    --------
+    >>> grid = ModelGrid(
+    ...     observables=np.array([[1.0, 0.5], [0.8, 0.3], [1.2, 0.7]]),
+    ...     targets=np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]),
+    ...     observable_names=["obs1", "obs2"],
+    ...     target_names=["target1", "target2"]
+    ... )
+    >>> print(grid.n_models)
+    3
+    >>> print(grid.n_observables)
+    2
     """
 
     observables: np.ndarray
@@ -267,10 +284,13 @@ class ModelGrid:
     target_names: List[str]
     weights: Optional[np.ndarray] = None
     meta: Dict[str, Any] = field(default_factory=dict)
-    check_boundaries: Optional["Callable[[np.ndarray], bool]"] = field(default=None, init=True, repr=False)
+    check_boundaries: Optional["Callable[[np.ndarray], bool]"] = field(
+        default=None, init=True, repr=False)
     # Cached stats for standardisation
-    observable_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
-    target_standardiser: LinearStandardiser = field(default_factory=LinearStandardiser, init=False, repr=False)
+    observable_standardiser: LinearStandardiser = field(
+        default_factory=LinearStandardiser, init=False, repr=False)
+    target_standardiser: LinearStandardiser = field(
+        default_factory=LinearStandardiser, init=False, repr=False)
 
     _kdtree: Optional["cKDTree"] = field(default=None, init=False, repr=False)
     _kdtree_standardized: Optional[bool] = field(default=None, init=False, repr=False)
@@ -463,21 +483,14 @@ class ModelGrid:
             raise RuntimeError("fit_standardiser must be called before inverse_transform_observables")
         return self.observable_standardiser.inverse_transform(X_std)
 
+    # ------------ KDTree for KNN and interpolation ------------
     def invalidate_knn_index(self) -> None:
         """Invalidate cached KDTree."""
         self._kdtree = None
         self._kdtree_standardized = None
 
     def get_kdtree(self, *, standardize: bool = True):
-        """
-        Return a cached cKDTree over targets (optionally standardized).
-        Builds it once and reuses for subsequent queries.
-
-        Notes
-        -----
-        If you mutate self.targets in-place, call invalidate_knn_index().
-        """
-        # Reuse if it matches requested mode
+        """Get a KDTree either stored in cash or built on the fly."""
         if self._kdtree is not None and self._kdtree_standardized == standardize:
             return self._kdtree
 
@@ -486,6 +499,11 @@ class ModelGrid:
             raise ValueError("targets must be 2D (N, Q)")
 
         if standardize:
+            if not self.target_standardiser.is_fit:
+                raise RuntimeError(
+                    "target_standardiser is not fit. Call fit_target_standardiser() "
+                    "before get_kdtree(standardize=True)."
+                )
             Xn = self.target_standardiser.transform(X)
         else:
             Xn = X
@@ -644,49 +662,90 @@ class ModelGrid:
         return out
 
     # ------------ I/O ------------
+    def _std_to_state(std) -> Dict[str, Any]:
+        """Serialisable state for LinearStandardiser."""
+        if std is None:
+            return {"is_fit": False, "mean": None, "sd": None}
+        return {
+            "is_fit": bool(getattr(std, "is_fit", False)),
+            "mean": None if getattr(std, "mean", None) is None else np.asarray(std.mean),
+            "sd": None if getattr(std, "sd", None) is None else np.asarray(std.sd),
+        }
+
+    def _state_to_std(state: Mapping[str, Any], std) -> None:
+        """Restore LinearStandardiser from state into an existing instance."""
+        if not state:
+            return
+        is_fit = bool(state.get("is_fit", False))
+        if not is_fit:
+            return
+        mean = state.get("mean", None)
+        sd = state.get("sd", None)
+        if mean is None or sd is None:
+            return
+        std.mean = np.asarray(mean, dtype=float).copy()
+        std.sd = np.asarray(sd, dtype=float).copy()
+
+
     def to_dict(self) -> Dict[str, Any]:
         """
-        Serialise grid to a simple dictionary.
+        Serialise grid to a dictionary that is np.savez / JSON-friendly
+        (except numpy arrays, which are fine for np.savez).
 
-        Returns
-        -------
-        out : dict
-            Dictionary with arrays, names, and metadata.
+        Notes
+        -----
+        - check_boundaries is NOT serialised (it is generally not portable).
+        If you need it, store a string key in meta and resolve via a registry.
         """
         return {
-            "observables": self.observables.copy(),
-            "targets": self.targets.copy(),
+            "observables": np.asarray(self.observables),
+            "targets": np.asarray(self.targets),
             "observable_names": list(self.observable_names),
             "target_names": list(self.target_names),
-            "weights": None if self.weights is None else self.weights.copy(),
-            "meta": dict(self.meta),
+            "weights": None if self.weights is None else np.asarray(self.weights),
+            "meta": dict(self.meta or {}),
+            "standardisers": {
+                "observables": _std_to_state(self.observable_standardiser),
+                "targets": _std_to_state(self.target_standardiser),
+            },
+            # Explicitly exclude runtime-only/cache/callables:
+            "check_boundaries_key": self.meta.get("check_boundaries_key", None),
         }
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "ModelGrid":
+    def from_dict(
+        cls,
+        d: Mapping[str, Any],
+        *,
+        check_boundaries: Optional["Callable[[np.ndarray], np.ndarray]"] = None,
+    ) -> "ModelGrid":
         """
-        Build a ModelGrid from a dictionary as produced by to_dict.
+        Build a ModelGrid from a dictionary as produced by to_dict().
 
         Parameters
         ----------
         d : mapping
-            Mapping with keys observables, targets, observable_names,
-            target_names, weights (optional), and meta (optional).
-
-        Returns
-        -------
-        grid : ModelGrid
+            Mapping produced by to_dict().
+        check_boundaries : callable, optional
+            Optional boundary function to attach at load time.
+            (Not serialised by default.)
         """
-        return cls(
+        grid = cls(
             observables=np.asarray(d["observables"]),
             targets=np.asarray(d["targets"]),
             observable_names=list(d["observable_names"]),
             target_names=list(d["target_names"]),
-            weights=None
-            if d.get("weights", None) is None
-            else np.asarray(d["weights"]),
-            meta=dict(d.get("meta", {})),
+            weights=None if d.get("weights", None) is None else np.asarray(d["weights"]),
+            meta=dict(d.get("meta", {}) or {}),
+            check_boundaries=check_boundaries,
         )
+
+        std = d.get("standardisers", {}) or {}
+        _state_to_std(std.get("observables", {}), grid.observable_standardiser)
+        _state_to_std(std.get("targets", {}), grid.target_standardiser)
+
+        return grid
+
 
     @classmethod
     def from_fits_table(
@@ -701,7 +760,7 @@ class ModelGrid:
         meta_key="MODELGRID_META",
     ):
         """
-        Build a ModelGrid from a FITS table, with automatic discovery.
+        Build a ModelGrid from an Astropy FITS table.
 
         Priority order:
           1) Auto-load if table.meta contains OBSNAME and TGTNAME written by to_fits_table.
@@ -1068,106 +1127,79 @@ class ModelGrid:
     def to_fits_table(
         self,
         path,
-        table_hdu=1,
-        overwrite=False,
-        include_meta=True,
-        meta_key="MODELGRID_META",
+        *,
+        hdu_name: str = "MODELGRID",
+        overwrite: bool = False,
+        include_meta: bool = True,
+        meta_key: str = "MODELGRID_META",
         fill_value=np.nan,
     ):
-        """
-        Save the grid as a FITS table.
+        try:
+            from astropy.table import Table, Column
+            from astropy.io import fits
+        except Exception as e:
+            raise ImportError("astropy is required for to_fits_table") from e
 
-        Observables and targets are written as scalar columns. Column names
-        are taken from observable_names and target_names. If weights are
-        present they are written as a column named "weight". The table
-        metadata will include a JSON blob with grid metadata if include_meta
-        is True.
-
-        Parameters
-        ----------
-        path : str
-            Output FITS path.
-        table_hdu : int or str, optional
-            HDU index or name to write the table to. If the file does not
-            exist, it will be created with a primary HDU plus one table HDU.
-            Default is 1.
-        overwrite : bool, optional
-            If True, overwrite an existing file. Default False.
-        include_meta : bool, optional
-            If True, write JSON-encoded meta and some info into the table
-            header. Default True.
-        meta_key : str, optional
-            Header key for the JSON metadata. Default "MODELGRID_META".
-        fill_value : float, optional
-            Value used to fill masked values if present. Default NaN.
-
-        Raises
-        ------
-        ImportError
-            If astropy is not available.
-        ValueError
-            If shapes are inconsistent.
-        """
         N, P = self.observables.shape
         Nt, Q = self.targets.shape
         if N != Nt:
             raise ValueError("observables and targets must have same number of rows")
 
-        # Build table
         tab = Table()
-        # Observables
+
         for j, name in enumerate(self.observable_names):
             col = np.asarray(self.observables[:, j])
             if hasattr(col, "mask"):
                 col = np.ma.filled(col, fill_value)
-            tab.add_column(Column(col, name=name))
+            tab.add_column(Column(col, name=str(name)))
 
-        # Targets
         for j, name in enumerate(self.target_names):
             col = np.asarray(self.targets[:, j])
             if hasattr(col, "mask"):
                 col = np.ma.filled(col, fill_value)
-            tab.add_column(Column(col, name=name))
+            tab.add_column(Column(col, name=str(name)))
 
-        # Weights
         if self.weights is not None:
             w = np.asarray(self.weights)
+            if hasattr(w, "mask"):
+                w = np.ma.filled(w, fill_value)
             tab.add_column(Column(w, name="weight"))
 
-        # Minimal meta in table header
-        tab.meta = tab.meta or {}
-        tab.meta["NMODELS"] = int(N)
-        tab.meta["NOBS"] = int(P)
-        tab.meta["NTGT"] = int(Q)
-        tab.meta["OBSNAME"] = ",".join(self.observable_names)
-        tab.meta["TGTNAME"] = ",".join(self.target_names)
+        tab.meta = dict(tab.meta or {})
+        tab.meta.update(
+            {
+                "NMODELS": int(N),
+                "NOBS": int(P),
+                "NTGT": int(Q),
+                "OBSNAME": ",".join(map(str, self.observable_names)),
+                "TGTNAME": ",".join(map(str, self.target_names)),
+            }
+        )
         if include_meta:
             try:
                 tab.meta[meta_key] = json.dumps(self.meta or {}, ensure_ascii=True)
             except Exception:
-                # Fallback to empty meta if not serialisable
                 tab.meta[meta_key] = json.dumps({}, ensure_ascii=True)
 
-        # Write
-        # If writing to a fresh file or overwrite, astropy can write directly.
-        # If writing to a specific HDU index in an existing file, rebuild HDUList.
+        # Build HDUList: Primary + BinTable
+        primary = fits.PrimaryHDU()
+        bintable = fits.BinTableHDU(tab, name=str(hdu_name))
+
         if overwrite or (not os.path.exists(path)):
-            tab.write(path, overwrite=overwrite)
-            if table_hdu not in (1, "1"):
-                # Re-open and rename the table HDU to the desired index/name if needed
-                with fits.open(path, mode="update") as hdul:
-                    if table_hdu != 1:
-                        # Replace HDU order by inserting Primary if not present
-                        # For simplicity keep table at HDU 1; users can change later if needed
-                        pass
+            fits.HDUList([primary, bintable]).writeto(path, overwrite=overwrite)
             return
 
-        # File exists and overwrite=False -> append or replace table HDU
-        with fits.open(path, mode="append") as hdul:
-            # Append new table HDU
-            hdu = fits.table.TableHDU(data=tab.as_array())
-            hdu.name = "MODELGRID" if isinstance(table_hdu, int) else str(table_hdu)
-            hdul.append(hdu)
+        # Replace if HDU exists by name; else append
+        with fits.open(path, mode="update") as hdul:
+            idx = None
+            for i, h in enumerate(hdul):
+                if getattr(h, "name", None) == str(hdu_name):
+                    idx = i
+                    break
+            if idx is None:
+                hdul.append(bintable)
+            else:
+                hdul[idx] = bintable
             hdul.flush()
 
     def to_hdf5(
@@ -1290,6 +1322,21 @@ class ModelGrid:
                 except Exception:
                     g.attrs["meta"] = json.dumps({}, ensure_ascii=True)
 
+            g.attrs["standardisers"] = json.dumps(
+            {
+                "observables": {
+                    "is_fit": self.observable_standardiser.is_fit,
+                    "mean": None if not self.observable_standardiser.is_fit else self.observable_standardiser.mean.tolist(),
+                    "sd": None if not self.observable_standardiser.is_fit else self.observable_standardiser.sd.tolist(),
+                },
+                "targets": {
+                    "is_fit": self.target_standardiser.is_fit,
+                    "mean": None if not self.target_standardiser.is_fit else self.target_standardiser.mean.tolist(),
+                    "sd": None if not self.target_standardiser.is_fit else self.target_standardiser.sd.tolist(),
+                },
+            },
+            ensure_ascii=True,
+        )
     @classmethod
     def from_pickle(cls, path):
         """
@@ -1358,7 +1405,7 @@ class ModelGrid:
 # ---------------------------------------------------------------------
 class GridFitter:
     """
-    Bayesian fitter over a ModelGrid using pluggable Prior and Likelihood.
+    Bayesian fitter over a ModelGrid using optinal Prior and Likelihood.
 
     The fitter computes posterior weights over candidate models by combining
     a user-provided likelihood p(x | model) with a prior p(model). It can

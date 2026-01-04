@@ -1,1 +1,2 @@
-from .grid import ModelGrid
+from .grid import ModelGrid, GridFitter
+from .prob import *
