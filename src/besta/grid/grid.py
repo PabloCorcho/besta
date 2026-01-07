@@ -8,7 +8,7 @@ their parameters and provides methods for fitting and evaluating these models.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping, Iterator, Union
 from abc import ABC, abstractmethod
 from itertools import product
 
@@ -36,9 +36,10 @@ from besta.grid.prob import (
 from besta.postprocess import (
     compute_fraction_from_map,
     pit_from_discrete_posterior,
-    hist_stats,
+    pdf_stats,
     photoz_metrics,
     weighted_quantiles,
+    weighted_sample_covariance
 )
 
 from .transforms import LinearStandardiser
@@ -49,145 +50,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-# Multiprocessing backend
-
-def _fit_batch_cands_worker(args):
-    """
-    Worker for batch fit step 1: select candidate models for one query.
-
-    Parameters
-    ----------
-    args : tuple
-        (m, X_native, SIG_native, binner, grid_n)
-
-    Returns
-    -------
-    m : int
-        Query index.
-    idx : ndarray of int
-        Candidate indices (unique, sorted).
-    lev : int or None
-        Level used by the binner, or None if no binner.
-    """
-    (m, X_native, SIG_native, binner, grid_n) = args
-    if binner is None:
-        idx = np.arange(grid_n, dtype=np.int64)
-        lev = None
-    else:
-        y_sub = X_native[binner.dims]
-        s_sub = SIG_native[binner.dims]
-        idx, lev = binner.candidates(
-            y_native=y_sub,
-            sigmas_native=s_sub,
-        )
-        if idx.size == 0:
-            # Fallback: full grid if binner returns no candidates
-            idx = np.arange(grid_n, dtype=np.int64)
-    return m, idx, lev
-
-def _fit_batch_post_worker(args):
-    """
-    Worker for batch fit step 2: compute posterior weights for one query.
-
-    Parameters
-    ----------
-    args : tuple
-        (m, X_m, SIG_m, idx, grid_dict, use_std, likelihood, prior, is_obs_dep_prior)
-        where:
-          m : int
-              Query index (for ordering results).
-          X_m : ndarray, shape (P,)
-              Query observables in native units.
-          SIG_m : ndarray, shape (P,)
-              Per-dimension uncertainties in native units.
-          idx : ndarray of int
-              Candidate model indices.
-          grid_dict : dict
-              Serializable dictionary with keys:
-              "observables", "targets", "weights", "_obs_mu", "_obs_sd".
-          use_std : bool
-              If True, evaluate in standardised space.
-          likelihood : Likelihood
-              Likelihood instance (must be picklable for process backend).
-          prior : Prior
-              Prior instance (must be picklable for process backend).
-          is_obs_dep_prior : bool
-              Whether the prior depends on observables.
-
-    Returns
-    -------
-    m : int
-        The input query index.
-    w : ndarray, shape (Nc,)
-        Normalised posterior weights over candidate models.
-    """
-    (m, X_m, SIG_m, idx, grid_dict, use_std, likelihood, prior, is_obs_dep_prior) = args
-
-    Xc_native = grid_dict["observables"][idx]
-    Tc = grid_dict["targets"][idx]
-    wc = grid_dict["weights"][idx] if grid_dict["weights"] is not None else None
-
-    obs_mu = grid_dict.get("_obs_mu", None)
-    obs_sd = grid_dict.get("_obs_sd", None)
-
-    if use_std and (obs_mu is not None) and (obs_sd is not None):
-        x_eval = (X_m - obs_mu) / obs_sd
-        X_eval = (Xc_native - obs_mu) / obs_sd
-        sigma_eval = SIG_m / obs_sd
-        prior_obs = Xc_native  # native for priors depending on observables
-    else:
-        x_eval = X_m
-        X_eval = Xc_native
-        sigma_eval = SIG_m
-        prior_obs = Xc_native
-
-    # Prior
-    if is_obs_dep_prior:
-        logP = prior.log_prob_for_models(Tc, observables=prior_obs)
-    else:
-        logP = prior.log_prob_for_models(Tc)
-
-    # Likelihood
-    logL = likelihood.log_likelihood(x_eval, sigma_eval, X_eval)
-
-    logw = logL + logP
-    if wc is not None:
-        with np.errstate(divide="ignore"):
-            logw = logw + np.log(np.clip(wc, 1e-300, np.inf))
-    a = np.max(logw)
-    w = np.exp(logw - a)
-    s = w.sum()
-    w = w / s if s > 0 and np.isfinite(s) else np.full_like(w, 1.0 / w.size)
-    return m, w
-
-def _fit_batch_stats_worker(args):
-    """
-    Worker for batch fit step 3: compute one target's histogram and stats for one query.
-
-    Parameters
-    ----------
-    args : tuple
-        (m, j, bins, centers, candidates_m, posts_m, targets)
-        where j is the target column index.
-
-    Returns
-    -------
-    m : int
-        Query index.
-    post : ndarray, shape (K,)
-        Normalised posterior over target bins.
-    st : dict
-        Summary dictionary from `hist_stats(centers, post, ...)`.
-    """
-    (m, j, bins, centers, candidates_m, posts_m, targets) = args
-    y = targets[candidates_m, j]
-    hist, _ = np.histogram(y, bins=bins, weights=posts_m, density=False)
-    s = hist.sum()
-    post = hist / s if s > 0 else np.full_like(hist, 1.0 / hist.size)
-    st = hist_stats(centers, post, find_multimodal=False)
-    return m, post, st
-
-def _guess_slices_step_1(n_objects, n_observables, n_jobs, tasks_per_worker=6):
+def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
     # fewer, larger slices when P is large
     base_tasks = n_jobs * tasks_per_worker
     scale = max(1, n_observables // 8)
@@ -445,6 +308,21 @@ class ModelGrid:
     def n_targets(self) -> int:
         """Number of targets Q."""
         return self.targets.shape[1]
+
+    @property
+    def grid_int(self) -> type:
+        """Adaptative int type that accounts for model dimensionality."""
+        if self.n_models > np.iinfo(np.int32).max:
+            return np.int64
+        elif self.n_models > np.iinfo(np.int16).max:
+            return np.int32
+        else:
+            return np.int16
+
+    @property
+    def grid_float(self) -> type:
+        """Adaptative float type that accounts for model precision."""
+        return self.observables.dtype
 
     # ------------ views and subsets ------------
     def get_target(self, key):
@@ -1712,8 +1590,8 @@ class GridFitter:
             j = target_col
 
         y = self.grid.targets[idx, j]
-        hist, _ = np.histogram(y, bins=bins, weights=w, density=False)
-        s = hist.sum()
+        hist, _ = np.histogram(y, bins=bins, weights=w, density=True)
+        s = np.sum(hist * np.diff(bins))
         post = (
             hist / s
             if s > 0 and np.isfinite(s)
@@ -1732,24 +1610,36 @@ class GridFitter:
         stats_for: Optional[Sequence[int | str]] = None,
         stats_bins: Optional[Sequence[np.ndarray]] = None,
         find_multimodal: bool = False,
-        return_posts_for_stats: bool = False,
+        return_pdf_for_stats: bool = False,
         verbose: bool = True,
+        # TODO: remove
         max_memory_gb: Optional[float] = 16.0,
         memcheck_sample: int = 256,
         safety_margin: float = 1.2,
         tasks_per_worker: Optional[int] = None,
         dry_run: bool = False,
+        # Prune posterior samples
         posterior_keep_mass: Optional[float] = 0.99,
         posterior_keep_min_candidates: int = 128,
         posterior_keep_max_candidates: Optional[int] = None,
         posterior_keep_ties: bool = False,
         return_mode: str = "iter",  # "iter" | "list"
-        ) -> dict:
+        # Save results into HDF5
+        output_hdf5_path: Optional[str] = None,
+        output_hdf5_group: str = "/fit_batch",
+        output_hdf5_overwrite: bool = False,
+        output_hdf5_compression: Optional[str] = "gzip",
+        output_hdf5_compression_opts: int = 4,
+        output_hdf5_flush_every: int = 256,
+        output_hdf5_write_only: bool = False,
+
+        ) -> Union[Iterator[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Evaluate model posteriors for multiple queries.
 
         Workflow
         --------
+        #TODO: rewrite according to current implementation
         The computation is split into three stages:
 
         Step 1 — Candidate selection
@@ -1785,11 +1675,7 @@ class GridFitter:
 
         Memory safety
         -------------
-        A pre-flight memory check (``check_fit_batch_memory``) estimates the
-        additional RAM required by the data structures (candidates, posteriors,
-        and optional stats) and raises a ``MemoryError`` if the estimate (with
-        safety margin) exceeds the configured limit or the currently available
-        memory.
+        # TODO: add description and implement checks
 
         Parameters
         ----------
@@ -1814,7 +1700,7 @@ class GridFitter:
             Per-target bin edges. Must have same length as `stats_for` if provided.
         find_multimodal : bool, optional
             If True, attempt to count posterior modes in each 1D histogram.
-        return_posts_for_stats : bool, optional
+        return_pdf_for_stats : bool, optional
             If True, return the full (M, K) discrete posterior for each requested
             target (increases memory).
         verbose : bool, optional
@@ -1857,12 +1743,12 @@ class GridFitter:
 
         Each yielded dict contains:
           - "m": query index
-          - "candidates": kept candidate indices (np.int64)
-          - "post_models": kept posterior weights (np.float64, sum=1)
+          - "candidates": kept candidate indices (int)
+          - "post_models": kept posterior weights (float, sum=1)
           - "level": binner level (or None)
           - "truncation": truncation metadata dict
           - optional "stats": per-target summary dicts
-          - optional "posts_target": per-target (K,) posterior over bins (only if return_posts_for_stats)
+          - optional "posts_target": per-target (K,) posterior over bins (only if return_pdf_for_stats)
 
         """
         X_native = np.asarray(X_native)
@@ -1871,11 +1757,12 @@ class GridFitter:
             raise ValueError("X_native and SIG_native must be 2D arrays (M, P)")
         if X_native.shape != SIG_native.shape:
             raise ValueError("X_native and SIG_native must have the same shape (M, P)")
+
+        # M=queries, P=Observables
         M, P = X_native.shape
 
+        # OTF statistics
         if stats_for is not None:
-            if stats_bins is None or len(stats_for) != len(stats_bins):
-                raise ValueError("stats_bins must be provided and match stats_for length")
             # Resolve stats target indices once
             stats_j = []
             stats_key = []
@@ -1888,6 +1775,11 @@ class GridFitter:
                     key = self.grid.target_names[j]
                 stats_j.append(j)
                 stats_key.append(key)
+            if stats_bins is None or len(stats_for) != len(stats_bins):
+                print("stats_bins not provided, creating bins based on grid")
+                stats_bins = [np.linspace(self.grid.targets[:, j].min(),
+                                          self.grid.targets[:, j].max(),
+                                          100) for j in stats_j]
         else:
             stats_j, stats_key = [], []
 
@@ -1910,21 +1802,26 @@ class GridFitter:
 
         # Organise tasks per worker and slices
         tpw = 8 if (tasks_per_worker is None) else max(1, int(tasks_per_worker))
-        slices = _guess_slices_step_1(M, P, max(1, int(n_jobs)), tasks_per_worker=tpw)
-        
+        slices = _guess_slices(M, P, max(1, int(n_jobs)), tasks_per_worker=tpw)
+        # Pre-flight summary
         if verbose:
             print(
-                f"Starting streaming batch fit: M={M}, P={P}, "
-                f"backend={backend}, n_jobs={n_jobs}, tasks={len(slices)}"
+                f"Starting batch fit: #queries={M}, #observables={P}, "
+                f"batch backend={backend}, n_jobs={n_jobs}, job tasks={len(slices)}"
             )
             if posterior_keep_mass is not None:
                 print(
                     f"  - truncation: keep_mass={posterior_keep_mass}, "
-                    f"min={posterior_keep_min_candidates}, max={posterior_keep_max_candidates}, "
-                    f"ties={posterior_keep_ties}"
+                    f"\n - min candidates={posterior_keep_min_candidates}"
+                    f"\n - max={posterior_keep_max_candidates}"
+                    f"\n - ties={posterior_keep_ties}"
                 )
             if stats_for is not None:
-                print(f"  - stats_for={stats_key} (return_posts_for_stats={return_posts_for_stats})")
+                print(f"OTF statistics")
+                print(f"  - stats_for={stats_key} (return_pdf_for_stats={return_pdf_for_stats})")
+            if output_hdf5_path is not None:
+                print("Data output")
+                print(f"  - HDF5 directory: {output_hdf5_path}:{output_hdf5_group}")
 
         # TODO: implement pre-flight memory-check
         if max_memory_gb is not None:
@@ -1942,14 +1839,14 @@ class GridFitter:
                     )
 
         # Candidate selection helper
-        def _select_candidates_one(m: int) -> Tuple[np.ndarray, Optional[int]]:
+        def _select_candidates_helper(m: int) -> Tuple[np.ndarray, Optional[int]]:
             if binner is None:
-                return np.arange(self.grid.n_models, dtype=np.int64), None
-            y_sub = X_native[m, binner.dims]
-            s_sub = SIG_native[m, binner.dims]
-            idx, lev = binner.candidates(y_native=y_sub, sigmas_native=s_sub)
+                return np.arange(self.grid.n_models, dtype=self.grid.grid_int), None
+            idx, lev = binner.candidates(
+                    y_native=X_native[m, binner.dims],
+                    sigmas_native=SIG_native[m, binner.dims])
             if idx.size == 0:
-                idx = np.arange(self.grid.n_models, dtype=np.int64)
+                idx = np.arange(self.grid.n_models, dtype=self.grid.grid_int)
                 lev = lev
             return idx, lev
 
@@ -1957,7 +1854,7 @@ class GridFitter:
         def _slice_worker(s: int, e: int) -> List[Dict[str, Any]]:
             out = []
             for m in range(s, e):
-                cand_idx, lev = _select_candidates_one(m)
+                cand_idx, lev = _select_candidates_helper(m)
 
                 w_full = self.posterior_over_models(
                     x_native=X_native[m],
@@ -1981,8 +1878,10 @@ class GridFitter:
                 else:
                     cand_kept = cand_idx
                     # ensure normalized
+                    # TODO: this check should be done by the master posterior_over_models
                     ssum = np.sum(w_full)
                     if not np.isfinite(ssum) or ssum <= 0:
+                        # TODO: raise a warning?
                         w_kept = np.full_like(w_full, 1.0 / max(1, w_full.size), dtype=float)
                     else:
                         w_kept = w_full / ssum
@@ -2002,29 +1901,20 @@ class GridFitter:
                 posts_target_out = None
                 if stats_for is not None:
                     stats_out = {}
-                    if return_posts_for_stats:
+                    if return_pdf_for_stats:
                         posts_target_out = {}
                     for key, j, bins in zip(stats_key, stats_j, stats_bins):
                         bins = np.asarray(bins, dtype=float)
-                        centers = 0.5 * (bins[:-1] + bins[1:])
                         y = self.grid.targets[cand_kept, j]
-                        hist, _ = np.histogram(y, bins=bins, weights=w_kept, density=False)
-                        s_hist = float(hist.sum())
-                        post = (
-                            hist / s_hist
-                            if s_hist > 0 and np.isfinite(s_hist)
-                            else np.full_like(hist, 1.0 / max(1, hist.size), dtype=float)
-                        )
-                        st = hist_stats(centers, post, find_multimodal=find_multimodal)
+                        post, _ = np.histogram(y, bins=bins,
+                                               weights=w_kept, density=True)
+                        st = pdf_stats(bins, post, find_multimodal=find_multimodal)
 
                         stats_out[key] = {
-                            "centers": centers,
                             "mean": st["mean"],
                             "std": st["std"],
                             "map": st["map"],
-                            "q16": st["q"][0],
-                            "q50": st["q"][1],
-                            "q84": st["q"][2],
+                            "median": st["median"],
                             "lo68": st["lo68"],
                             "hi68": st["hi68"],
                             "nmodes": (
@@ -2033,9 +1923,9 @@ class GridFitter:
                                 else 1
                             ),
                         }
-                        if return_posts_for_stats:
+                        if return_pdf_for_stats:
                             posts_target_out[key] = post
-
+                # Results summary
                 r = {
                     "m": int(m),
                     "level": lev,
@@ -2050,26 +1940,78 @@ class GridFitter:
                 out.append(r)
             return out
 
+        # (Optional) output to HDF5 file
+        need_h5 = output_hdf5_path is not None
+        writer = None
+        # Prepare stats specs for writer
+        if need_h5:
+            stats_specs = None
+            if stats_for is not None:
+                stats_specs = [
+                    GridFitStatsSpec(key=k, bins=b)
+                    for k, b in zip(stats_key, stats_bins)
+                ]
+
+            writer = GridFitHDF5Writer(
+                path=output_hdf5_path,
+                group=output_hdf5_group,
+                M=M,
+                P=P,
+                configuration={
+                    "M": int(M),
+                    "P": int(P),
+                    "backend": str(backend),
+                    "n_jobs": int(n_jobs),
+                    "tasks_per_worker": int(tpw),
+                    "posterior_keep_mass": None if posterior_keep_mass is None else float(posterior_keep_mass),
+                    "posterior_keep_min_candidates": int(posterior_keep_min_candidates),
+                    "posterior_keep_max_candidates": None if posterior_keep_max_candidates is None else int(posterior_keep_max_candidates),
+                    "posterior_keep_ties": bool(posterior_keep_ties),
+                    "find_multimodal": bool(find_multimodal),
+                    "return_pdf_for_stats": bool(return_pdf_for_stats),
+                    "stats_for": list(stats_key) if stats_for is not None else None,
+                },
+                stats_specs=stats_specs,
+                return_pdf_for_stats=return_pdf_for_stats,
+                overwrite=output_hdf5_overwrite,
+                compression=output_hdf5_compression,
+                compression_opts=output_hdf5_compression_opts,
+                flush_every=output_hdf5_flush_every,
+            )
+
+        # Iterator producer (writes HDF5 only from the main thread/process)
         def _iter_results() -> Iterator[Dict[str, Any]]:
-            if n_jobs == 1:
-                for (s, e) in slices:
-                    if verbose:
-                        print(f"  - slice {s}:{e}")
-                    for r in _slice_worker(s, e):
-                        yield r
+            try:
+                if n_jobs == 1:
+                    for (s, e) in slices:
+                        if verbose:
+                            print(f"  - slice {s}:{e}")
+                        batch = _slice_worker(s, e)
+                        for r in batch:
+                            if writer is not None:
+                                writer.write(r)
+                            if not output_hdf5_write_only:
+                                yield r
+                else:
+                    Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+                    with Executor(max_workers=max(1, int(n_jobs))) as ex:
+                        futs = [ex.submit(_slice_worker, s, e) for (s, e) in slices]
+                        for fut in as_completed(futs):
+                            batch = fut.result()
+                            for r in batch:
+                                if writer is not None:
+                                    writer.write(r)
+                                if not output_hdf5_write_only:
+                                    yield r
+
                 if verbose:
                     print("fit_batch complete.")
-                return
-
-            Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
-            with Executor(max_workers=max(1, int(n_jobs))) as ex:
-                futs = [ex.submit(_slice_worker, s, e) for (s, e) in slices]
-                for fut in as_completed(futs):
-                    batch = fut.result()
-                    for r in batch:
-                        yield r
-            if verbose:
-                print("fit_batch complete.")
+            finally:
+                if writer is not None:
+                    try:
+                        writer.close()
+                    except Exception:
+                        pass
 
         if return_mode == "iter":
             return _iter_results()
@@ -2077,6 +2019,7 @@ class GridFitter:
             return list(_iter_results())
         else:
             raise ValueError("return_mode must be 'iter' or 'list'")
+
 
     def corner_for_targets(
         self,
@@ -2253,264 +2196,341 @@ class GridFitter:
         summary = {"names": names, "q": q, "mean": mu, "cov": cov, "corr": corr}
         return fig, axes, summary
 
-    @staticmethod
-    def compute_pit(
-        z_true: np.ndarray, posts: np.ndarray, edges: np.ndarray
-    ) -> np.ndarray:
-        """
-        PIT values from discrete posteriors.
 
-        Parameters
-        ----------
-        z_true : ndarray, shape (N,)
-        posts : ndarray, shape (N, K)
-        edges : ndarray, shape (K+1,)
+@dataclass
+class GridFitStatsSpec:
+    """
+    Specification for one stats target to be written.
 
-        Returns
-        -------
-        pit : ndarray, shape (N,)
-        """
-        return pit_from_discrete_posterior(z_true, posts, edges)
+    Parameters
+    ----------
+    key : str
+        Target name (used as group name under /stats/<key>).
+    bins : ndarray, shape (K+1,)
+        Bin edges used to build the discrete posterior.
+    """
+    key: str
+    bins: np.ndarray
 
-    @staticmethod
-    def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
-        """
-        Standard photo-z metrics on z_true vs point estimates.
-        """
-        return photoz_metrics(z_true, z_est)
 
-    @staticmethod
-    def _human_bytes(nbytes: int) -> str:
-        """Return a human-friendly string for a byte count."""
-        units = ["B", "KB", "MB", "GB", "TB", "PB"]
-        x = float(nbytes)
-        i = 0
-        while x >= 1024.0 and i < len(units) - 1:
-            x /= 1024.0
-            i += 1
-        return f"{x:.2f} {units[i]}"
+class GridFitHDF5Writer:
+    """
+    HDF5 writer for GridFitter.fit_batch streaming outputs.
 
-    def estimate_fit_batch_memory(
+    Layout written under <group>:
+
+      /configuration           (attrs['json'] with a JSON blob)
+      /index/m                 (M,) int64  [0..M-1]
+      /index/status            (M,) int8   [0=not written, 1=ok, -1=failed]
+      /truncation/*            (M,) scalar datasets (level, n_before, n_after, ...)
+      /candidates/candidates   (M,) vlen int64
+      /candidates/post_models  (M,) vlen float64
+      /stats/<key>/*           per-target scalar arrays (M,) and optional posts_target (M,K)
+
+    Notes
+    -----
+    - Writes are done by index `m` in each result dict, so results may arrive unsorted.
+    - Designed to be used from the *main* thread/process only (collect results from workers,
+      then call writer.write(r) as they arrive).
+    """
+
+    def __init__(
         self,
-        M: int,
+        path: str,
+        group: str,
         *,
-        # Optional pilot sampling to estimate candidate set sizes
-        X_native: Optional[np.ndarray] = None,
-        SIG_native: Optional[np.ndarray] = None,
-        binner: Optional[Any] = None,
-        memcheck_sample: int = 256,
-        rng: Optional[np.random.Generator] = None,
-        # Stats footprint
-        stats_for: Optional[Sequence[int | str]] = None,
-        stats_bins: Optional[Sequence[np.ndarray]] = None,
-        return_posts_for_stats: bool = False,
-        # Dtype sizes
-        float_bytes: int = np.dtype(np.float32).itemsize,
-        int_bytes: int = np.dtype(np.int32).itemsize,
-    ) -> Dict[str, int]:
-        """
-        Estimate peak additional RAM needed by `fit_batch` data structures.
-
-        The estimate includes:
-          - candidates per query (int arrays)
-          - posterior weights per query (float arrays)
-          - per-target statistics arrays (mean, std, map, lo68, hi68, q16, q50, q84, nmodes)
-          - optional posts_target (M x K) per requested target
-
-        It does NOT include the already-loaded ModelGrid arrays themselves,
-        Python interpreter overhead, BLAS scratch memory, or OS allocator
-        fragmentation. A 10-20% headroom is recommended.
-
-        Parameters
-        ----------
-        M : int
-            Number of queries to evaluate.
-        X_native, SIG_native : ndarray, optional
-            If provided with a `binner`, a pilot sample is used to estimate the
-            average number of candidate models per query.
-        binner : object, optional
-            Must expose `dims` and a `candidates(y_native, sigmas_native)` method.
-            If omitted or pilot cannot run, falls back to worst-case (all models).
-        memcheck_sample : int, optional
-            Max number of queries to sample for candidate-size estimation.
-        rng : numpy.random.Generator, optional
-            RNG for sampling. Default uses np.random.default_rng().
-        stats_for, stats_bins : sequence, optional
-            As in `fit_batch`. If provided, stats arrays are counted. If
-            `return_posts_for_stats` is True, M x K floats per target are counted.
-        return_posts_for_stats : bool, optional
-            Whether to include storage for full posterior-over-bins per target.
-        float_bytes, int_bytes : int, optional
-            Byte size of float and int elements (default float64/int64).
-
-        Returns
-        -------
-        breakdown : dict
-            Keys: 'candidates_bytes', 'post_models_bytes', 'levels_bytes',
-                  'stats_bytes', 'posts_target_bytes', 'total_bytes'.
-        """
-        N = self.grid.n_models
-
-        # --- pilot estimate of candidate sizes per query ---
-        cand_mean = None
-        if (binner is not None) and (X_native is not None) and (SIG_native is not None):
-            m = min(M, len(X_native))
-            ns = min(memcheck_sample, m)
-            if ns > 0:
-                rng = rng or np.random.default_rng()
-                sample_idx = rng.choice(m, size=ns, replace=False)
-                sizes = []
-                for i in sample_idx:
-                    y_sub = X_native[i, binner.dims]
-                    s_sub = SIG_native[i, binner.dims]
-                    try:
-                        idx, _lev = binner.candidates(
-                            y_native=y_sub,
-                            sigmas_native=s_sub,
-                        )
-                        nci = int(np.asarray(idx).size)
-                        sizes.append(
-                            nci if nci > 0 else N
-                        )  # fall back to full grid if empty
-                    except Exception:
-                        sizes = []
-                        break
-                if sizes:
-                    cand_mean = np.mean(sizes)
-
-        # Worst case if no pilot or pilot failed
-        if cand_mean is None or not np.isfinite(cand_mean) or cand_mean <= 0:
-            cand_mean = float(N)
-
-        # --- memory for candidates, posts, and levels ---
-        candidates_bytes = int(M * cand_mean * int_bytes)
-        post_models_bytes = int(M * cand_mean * float_bytes)
-        # Optional levels (one int or None per query); store as int64 estimate
-        levels_bytes = int(M * int_bytes)
-
-        # --- stats memory footprint ---
-        stats_bytes = 0
-        posts_target_bytes = 0
-        if stats_for is not None:
-            T = len(stats_for)
-            # Per target we keep 8 float arrays of length M (mean,std,map,lo68,hi68,q16,q50,q84)
-            # and 1 int array of length M (nmodes).
-            per_target_stats = (8 * M * float_bytes) + (M * int_bytes)
-            stats_bytes += T * per_target_stats
-
-            if return_posts_for_stats:
-                if stats_bins is None or len(stats_bins) != T:
-                    # be conservative: assume K=64 per target
-                    Ks = [64] * T
-                else:
-                    Ks = [max(0, (np.asarray(b).size - 1)) for b in stats_bins]
-                posts_target_bytes = int(sum(M * K * float_bytes for K in Ks))
-
-        total_bytes = (
-            candidates_bytes
-            + post_models_bytes
-            + levels_bytes
-            + stats_bytes
-            + posts_target_bytes
-        )
-
-        return {
-            "candidates_bytes": candidates_bytes,
-            "post_models_bytes": post_models_bytes,
-            "levels_bytes": levels_bytes,
-            "stats_bytes": stats_bytes,
-            "posts_target_bytes": posts_target_bytes,
-            "total_bytes": total_bytes,
-        }
-
-    def check_fit_batch_memory(
-        self,
         M: int,
-        *,
-        X_native: Optional[np.ndarray] = None,
-        SIG_native: Optional[np.ndarray] = None,
-        binner: Optional[Any] = None,
-        memcheck_sample: int = 256,
-        stats_for: Optional[Sequence[int | str]] = None,
-        stats_bins: Optional[Sequence[np.ndarray]] = None,
-        return_posts_for_stats: bool = False,
-        max_memory_gb: float = 16.0,
-        safety_margin: float = 1.2,
-    ) -> Dict[str, int]:
+        P: int,
+        configuration: Optional[Dict[str, Any]] = None,
+        stats_specs: Optional[Sequence[GridFitStatsSpec]] = None,
+        return_pdf_for_stats: bool = False,
+        overwrite: bool = False,
+        compression: Optional[str] = "gzip",
+        compression_opts: int = 4,
+        flush_every: int = 256,
+        dtype_posts_target=np.float32,
+        dtype_post_models=np.float64,
+    ) -> None:
+        self.path = str(path)
+        self.group = str(group)
+        self.M = int(M)
+        self.P = int(P)
+        self.return_pdf_for_stats = bool(return_pdf_for_stats)
+        self.overwrite = bool(overwrite)
+        self.compression = compression
+        self.compression_opts = int(compression_opts)
+        self.flush_every = int(flush_every) if flush_every is not None else 0
+        self.dtype_posts_target = np.dtype(dtype_posts_target)
+        self.dtype_post_models = np.dtype(dtype_post_models)
+
+        self._written = 0
+        self._is_closed = True
+
+        self._stats_specs: Tuple[GridFitStatsSpec, ...] = tuple(stats_specs or ())
+
+        # dataset handles (set in _prepare)
+        self.h5: Optional[h5py.File] = None
+        self.g: Optional[h5py.Group] = None
+        self.ds_status = None
+        self.ds_level = None
+        self.ds_n_before = None
+        self.ds_n_after = None
+        self.ds_mass_kept = None
+        self.ds_mass_dropped = None
+        self.ds_cut_weight = None
+        self.ds_ess_before = None
+        self.ds_ess_after = None
+        self.ds_candidates = None
+        self.ds_post_models = None
+        self._stats_handles: Dict[Tuple[str, str], h5py.Dataset] = {}
+
+        self._prepare(configuration=configuration or {})
+
+    # --------------------------
+    # Context manager support
+    # --------------------------
+    def __enter__(self) -> "GridFitHDF5Writer":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        # If an exception happened, we still close cleanly.
+        self.close()
+
+    # --------------------------
+    # Public API
+    # --------------------------
+    def write(self, r: Dict[str, Any]) -> None:
         """
-        Estimate and validate memory needs for `fit_batch`.
+        Write one result dict produced by the streaming fit_batch.
 
-        Raises a MemoryError if the estimated total exceeds `max_memory_gb`
-        after applying a safety margin.
+        Required keys:
+          - 'm' (int)
+          - 'level' (int or None)
+          - 'candidates' (ndarray int)
+          - 'post_models' (ndarray float, sums to 1)
+          - 'truncation' (dict with n_before, n_after, mass_kept, mass_dropped, cut_weight, ess_before, ess_after)
 
-        Returns the same breakdown as `estimate_fit_batch_memory` on success.
-
-        Parameters
-        ----------
-        M : int
-            Number of queries to evaluate.
-        X_native, SIG_native, binner, memcheck_sample
-            Passed to `estimate_fit_batch_memory` to refine candidate sizes.
-        stats_for, stats_bins, return_posts_for_stats
-            Passed through to count stats arrays and optional posts_target storage.
-        max_memory_gb : float, optional
-            Limit in GB. Use None to disable checking.
-        safety_margin : float, optional
-            Multiplier applied to the estimate to account for allocator/BLAS/OS overhead.
+        Optional:
+          - 'stats' : dict keyed by target name
+          - 'posts_target' : dict keyed by target name with (K,) posterior arrays (if enabled)
         """
-        if max_memory_gb is None:
-            # Checking disabled
-            return {
-                "candidates_bytes": 0,
-                "post_models_bytes": 0,
-                "levels_bytes": 0,
-                "stats_bytes": 0,
-                "posts_target_bytes": 0,
-                "total_bytes": 0,
-            }
+        if self._is_closed:
+            raise RuntimeError("Writer is closed.")
 
-        breakdown = self.estimate_fit_batch_memory(
-            M,
-            X_native=X_native,
-            SIG_native=SIG_native,
-            binner=binner,
-            memcheck_sample=memcheck_sample,
-            stats_for=stats_for,
-            stats_bins=stats_bins,
-            return_posts_for_stats=return_posts_for_stats,
-        )
+        m = int(r["m"])
+        if m < 0 or m >= self.M:
+            raise IndexError(f"m={m} out of bounds for M={self.M}")
 
-        est = int(breakdown["total_bytes"] * float(safety_margin))
-        avail_ram = available_memory_bytes()
-        limit = min(avail_ram, int(max_memory_gb * (1024**3)))
+        # vlen candidates + post_models
+        self.ds_candidates[m] = np.asarray(r["candidates"], dtype=np.int64)
+        self.ds_post_models[m] = np.asarray(r["post_models"], dtype=self.dtype_post_models)
 
-        avail_ram_h = self._human_bytes(avail_ram)
-        hb_est = self._human_bytes(est)
-        hb_lim = self._human_bytes(limit)
-        hb_c = self._human_bytes(breakdown["candidates_bytes"])
-        hb_p = self._human_bytes(breakdown["post_models_bytes"])
-        hb_s = self._human_bytes(breakdown["stats_bytes"])
-        hb_pt = self._human_bytes(breakdown["posts_target_bytes"])
+        # truncation + level
+        lev = r.get("level", None)
+        self.ds_level[m] = -1 if lev is None else int(lev)
 
-        if est > limit:
-            raise MemoryError(
-                "fit_batch memory pre-check failed: "
-                f"estimated peak (with safety margin) {hb_est} exceeds limit {hb_lim}.\n"
-                f"Breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
-                f"stats={hb_s}, posts_target={hb_pt}.\n"
-                "Suggestions:\n"
-                "  • Configure the binner to return fewer candidates per query "
-                "(e.g. narrower selection, fewer neighbours).\n"
-                "  • Disable `return_posts_for_stats` or reduce the number of bins per target.\n"
-                "  • Compute fewer targets in `stats_for`, or run in smaller M with external batching.\n"
-                "  • Persist or stream results instead of keeping all per-query posteriors in memory."
+        t = r.get("truncation", {}) or {}
+        self.ds_n_before[m] = int(t.get("n_before", -1))
+        self.ds_n_after[m] = int(t.get("n_after", -1))
+        self.ds_mass_kept[m] = np.float32(t.get("mass_kept", np.nan))
+        self.ds_mass_dropped[m] = np.float32(t.get("mass_dropped", np.nan))
+        self.ds_cut_weight[m] = np.float32(t.get("cut_weight", np.nan))
+        self.ds_ess_before[m] = np.float32(t.get("ess_before", np.nan))
+        self.ds_ess_after[m] = np.float32(t.get("ess_after", np.nan))
+
+        # stats (scalars)
+        stats = r.get("stats", None)
+        if stats is not None:
+            for key, st in stats.items():
+                self._write_stats_scalars(m, key, st)
+
+        # stats (posterior over bins)
+        if self.return_pdf_for_stats:
+            posts_target = r.get("posts_target", None)
+            if posts_target is not None:
+                for key, post in posts_target.items():
+                    self._write_posts_target(m, key, post)
+
+        # mark status OK
+        self.ds_status[m] = 1
+
+        self._written += 1
+        if self.flush_every and (self._written % self.flush_every == 0):
+            self.flush()
+
+    def mark_failed(self, m: int) -> None:
+        """
+        Mark one object as failed (status=-1). Useful if you catch exceptions externally.
+        """
+        if self._is_closed:
+            raise RuntimeError("Writer is closed.")
+        m = int(m)
+        if m < 0 or m >= self.M:
+            raise IndexError(f"m={m} out of bounds for M={self.M}")
+        self.ds_status[m] = -1
+        self._written += 1
+        if self.flush_every and (self._written % self.flush_every == 0):
+            self.flush()
+
+    def flush(self) -> None:
+        if self.h5 is not None and not self._is_closed:
+            self.h5.flush()
+
+    def close(self) -> None:
+        if self._is_closed:
+            return
+        try:
+            self.flush()
+        finally:
+            try:
+                if self.h5 is not None:
+                    self.h5.close()
+            finally:
+                self.h5 = None
+                self.g = None
+                self._is_closed = True
+
+    def _prepare(self, configuration: Dict[str, Any]) -> None:
+        mode = "a" if os.path.exists(self.path) else "w"
+        self.h5 = h5py.File(self.path, mode)
+        self._is_closed = False
+
+        grp_path = self.group
+        if grp_path in self.h5:
+            if self.overwrite:
+                del self.h5[grp_path]
+            else:
+                raise ValueError(
+                    f"HDF5 group '{grp_path}' exists in '{self.path}'. "
+                    "Set overwrite=True to replace it."
+                )
+        self.g = self.h5.create_group(grp_path)
+
+        # /configuration
+        gc = self.g.create_group("configuration")
+        cfg = dict(configuration or {})
+        cfg.setdefault("M", int(self.M))
+        cfg.setdefault("P", int(self.P))
+        cfg.setdefault("group", str(self.group))
+        cfg.setdefault("return_pdf_for_stats", bool(self.return_pdf_for_stats))
+        cfg.setdefault("stats_keys", [s.key for s in self._stats_specs] if self._stats_specs else None)
+        gc.attrs["json"] = json.dumps(cfg, ensure_ascii=True)
+
+        # /index
+        gi = self.g.create_group("index")
+        gi.create_dataset("m", data=np.arange(self.M, dtype=np.int64))
+        self.ds_status = gi.create_dataset("status", shape=(self.M,), dtype=np.int8)
+        self.ds_status[...] = 0  # 0=not written, 1=ok, -1=failed
+
+        # /truncation
+        gt = self.g.create_group("truncation")
+        self.ds_level = gt.create_dataset("level", shape=(self.M,), dtype=np.int32)
+        self.ds_level[...] = -1
+
+        self.ds_n_before = gt.create_dataset("n_before", shape=(self.M,), dtype=np.int32)
+        self.ds_n_before[...] = -1
+        self.ds_n_after = gt.create_dataset("n_after", shape=(self.M,), dtype=np.int32)
+        self.ds_n_after[...] = -1
+
+        self.ds_mass_kept = gt.create_dataset("mass_kept", shape=(self.M,), dtype=np.float32)
+        self.ds_mass_kept[...] = np.nan
+        self.ds_mass_dropped = gt.create_dataset("mass_dropped", shape=(self.M,), dtype=np.float32)
+        self.ds_mass_dropped[...] = np.nan
+        self.ds_cut_weight = gt.create_dataset("cut_weight", shape=(self.M,), dtype=np.float32)
+        self.ds_cut_weight[...] = np.nan
+        self.ds_ess_before = gt.create_dataset("ess_before", shape=(self.M,), dtype=np.float32)
+        self.ds_ess_before[...] = np.nan
+        self.ds_ess_after = gt.create_dataset("ess_after", shape=(self.M,), dtype=np.float32)
+        self.ds_ess_after[...] = np.nan
+
+        # /candidates (variable-length arrays)
+        gcand = self.g.create_group("candidates")
+        vlen_i64 = h5py.vlen_dtype(np.dtype("int64"))
+        vlen_post = h5py.vlen_dtype(self.dtype_post_models)
+        self.ds_candidates = gcand.create_dataset("candidates", shape=(self.M,), dtype=vlen_i64)
+        self.ds_post_models = gcand.create_dataset("post_models", shape=(self.M,), dtype=vlen_post)
+
+        # /stats
+        if self._stats_specs:
+            gs = self.g.create_group("stats")
+            self._stats_handles = {}
+            for spec in self._stats_specs:
+                key = str(spec.key)
+                bins = np.asarray(spec.bins, dtype=float)
+                if bins.ndim != 1 or bins.size < 2:
+                    raise ValueError(f"Invalid bins for stats target '{key}'")
+
+                tg = gs.create_group(key)
+                K = int(bins.size - 1)
+                tg.create_dataset("bins", data=bins)
+                # Scalars per object
+                for name, dtype, fill in [
+                    ("mean", np.float32, np.nan),
+                    ("std", np.float32, np.nan),
+                    ("map", np.float32, np.nan),
+                    ("median", np.float32, np.nan),
+                    ("lo68", np.float32, np.nan),
+                    ("hi68", np.float32, np.nan),
+                ]:
+                    d = tg.create_dataset(name, shape=(self.M,), dtype=dtype)
+                    d[...] = fill
+                    self._stats_handles[(key, name)] = d
+
+                d_nm = tg.create_dataset("nmodes", shape=(self.M,), dtype=np.int16)
+                d_nm[...] = 0
+                self._stats_handles[(key, "nmodes")] = d_nm
+
+                if self.return_pdf_for_stats:
+                    dpt = tg.create_dataset(
+                        "posts_target",
+                        shape=(self.M, K),
+                        dtype=self.dtype_posts_target,
+                        compression=self.compression,
+                        compression_opts=self.compression_opts,
+                        chunks=True,
+                    )
+                    dpt[...] = np.nan
+                    self._stats_handles[(key, "posts_target")] = dpt
+
+        # Make sure initial metadata is on disk
+        self.flush()
+
+    # --------------------------
+    # Internal: stats writing
+    # --------------------------
+    def _write_stats_scalars(self, m: int, key: str, st: Dict[str, Any]) -> None:
+        """
+        Write scalar stats for one target.
+        Missing targets are ignored (allows partial stats).
+        """
+        key = str(key)
+        # Only write keys that exist in file
+        if (key, "mean") not in self._stats_handles:
+            return
+
+        # Support both the compact dict (as produced by our fit_batch) and
+        # extended dicts (ignoring unknown fields).
+        self._stats_handles[(key, "mean")][m] = np.float32(st.get("mean", np.nan))
+        self._stats_handles[(key, "std")][m] = np.float32(st.get("std", np.nan))
+        self._stats_handles[(key, "map")][m] = np.float32(st.get("map", np.nan))
+        self._stats_handles[(key, "median")][m] = np.float32(st.get("median", np.nan))
+        self._stats_handles[(key, "lo68")][m] = np.float32(st.get("lo68", np.nan))
+        self._stats_handles[(key, "hi68")][m] = np.float32(st.get("hi68", np.nan))
+        self._stats_handles[(key, "nmodes")][m] = np.int16(st.get("nmodes", 0))
+
+    def _write_posts_target(self, m: int, key: str, post: Any) -> None:
+        """
+        Write the discrete posterior over bins for one target (shape (K,)).
+        If the dataset doesn't exist or shapes mismatch, raises ValueError.
+        """
+        key = str(key)
+        hkey = (key, "posts_target")
+        if hkey not in self._stats_handles:
+            return
+        dpt = self._stats_handles[hkey]
+        arr = np.asarray(post, dtype=self.dtype_posts_target)
+        if arr.ndim != 1 or arr.shape[0] != dpt.shape[1]:
+            raise ValueError(
+                f"posts_target shape mismatch for '{key}': got {arr.shape}, expected ({dpt.shape[1]},)"
             )
-        else:
-            breakdown["message"] = (
-                "fit_batch memory check: "
-                f"estimated peak (with safety margin) {hb_est} "
-                f"(current limit {hb_lim}, avail RAM {avail_ram_h}).\n"
-                f"Breakdown (pre-margin): candidates={hb_c}, post_models={hb_p}, "
-                f"stats={hb_s}, posts_target={hb_pt}.\n"
-            )
-        return breakdown
+        dpt[m, :] = arr
