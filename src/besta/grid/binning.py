@@ -768,43 +768,41 @@ class KDTreeBinner(BaseBinner):
 
         s_z = self._sigma_to_tree_space(sigmas_native)
 
-        shape = (self.radius_shape or "ball").lower()
-        if shape == "ball":
+        if self.radius_shape == "ball":
             r = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
             inds = self._tree.query_ball_point(xz, r=r)
-        else:
-            # conservative candidate fetch with a scalar radius,
-            # then exact filter.
-            if shape == "ellipsoid":
-                # if ||(dx / s_z)||_2 <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
-                r_cons = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
-                cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons),
-                                  dtype=np.int64)
 
-                if cand.size:
-                    dz = self._Xz[cand] - xz[None, :]
-                    u = dz / s_z[None, :]                  # normalize per dimension
-                    ok = (np.sum(u*u, axis=1) <= (self.radius_factor**2))
-                    inds = cand[ok].tolist()
-                else:
-                    inds = []
+        elif self.radius_shape == "ellipsoid":
+            # if ||(dx / s_z)||_2 <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
+            r_cons = self.radius_factor * np.linalg.norm(s_z, ord=2)
+            cand = np.asarray(
+                self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
 
-            elif shape == "box":
-                # if max_i |dx_i|/s_i <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
-                # (still a valid conservative ball for candidates)
-                r_cons = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
-                cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
-
-                if cand.size:
-                    dz = np.abs(self._Xz[cand] - xz[None, :])
-                    ok = np.all(dz <= (self.radius_factor * s_z)[None, :], axis=1)
-                    inds = cand[ok].tolist()
-                else:
-                    inds = []
-
+            if cand.size:
+                dz = self._Xz[cand] - xz[None, :]
+                u = dz / s_z[None, :]                  # normalize per dimension
+                ok = (np.sum(u*u, axis=1) <= (self.radius_factor**2))
+                inds = cand[ok].tolist()
             else:
-                raise ValueError(f"Unknown radius_shape={self.radius_shape!r} "
-                                 f"(expected 'ball','ellipsoid','box')")
+                inds = []
+
+        elif self.radius_shape == "box":
+            # if max_i |dx_i|/s_i <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
+            # (still a valid conservative ball for candidates)
+            r_cons = self.radius_factor * np.linalg.norm(s_z, ord=2)
+            cand = np.asarray(
+                self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
+
+            if cand.size:
+                dz = np.abs(self._Xz[cand] - xz[None, :])
+                ok = np.all(dz <= (self.radius_factor * s_z)[None, :], axis=1)
+                inds = cand[ok].tolist()
+            else:
+                inds = []
+
+        else:
+            raise ValueError(f"Unknown radius_shape={self.radius_shape!r} "
+                             f"(expected 'ball','ellipsoid','box')")
 
         inds = np.asarray(inds, dtype=np.int64)
         if inds.size == 0:
