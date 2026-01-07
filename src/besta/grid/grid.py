@@ -227,6 +227,125 @@ def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
     # If we ended up with fewer than T slices, that’s fine. Executor will still load balance.
     return slices
 
+def _truncate_posterior_mass(
+    cand_idx: np.ndarray,
+    w: np.ndarray,
+    *,
+    keep_mass: float,
+    min_candidates: int = 0,
+    max_candidates: Optional[int] = None,
+    keep_ties: bool = False,
+    tie_rtol: float = 0.0,
+    tie_atol: float = 0.0,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    """
+    Truncate a discrete posterior w over candidates to the smallest set
+    whose cumulative mass >= keep_mass (after sorting by weight desc).
+
+    Parameters
+    ----------
+    #TODO
+
+    Returns:
+      cand_kept, w_kept (renormalized), meta dict
+
+    """
+    cand_idx = np.asarray(cand_idx, dtype=np.int64)
+    w = np.asarray(w, dtype=float)
+
+    n_before = int(w.size)
+    if n_before == 0:
+        meta = {
+            "n_before": 0,
+            "n_after": 0,
+            "keep_mass": float(keep_mass),
+            "mass_kept": 0.0,
+            "mass_dropped": 1.0,
+            "cut_weight": np.nan,
+            "ess_before": 0.0,
+            "ess_after": 0.0,
+        }
+        return cand_idx, w, meta
+
+    # TODO: remove once properly validated that w is always 1
+    s = np.sum(w)
+    if not np.isfinite(s) or s <= 0:
+        w = np.full_like(w, 1.0 / n_before, dtype=float)
+        s = 1.0
+    else:
+        w = w / s
+
+    # Effective sample size
+    ess_before = 1.0 / np.sum(np.square(w)) if np.all(np.isfinite(w)) else 0.0
+
+    # TODO: remove float enforcement to speed up
+    keep_mass = float(keep_mass)
+    keep_mass = max(0.0, min(1.0, keep_mass))
+
+    # If keep_mass==1, we still may apply max_candidates
+    #TODO: if keep_mass==1, return all candidates
+
+    # Compute the cumulative weights from high to low
+    ord_desc = np.argsort(w)[::-1]
+    w_sorted = w[ord_desc]
+    cs = np.cumsum(w_sorted)
+
+    if keep_mass <= 0.0:
+        k = 0
+    else:
+        k = int(np.searchsorted(cs, keep_mass, side="left") + 1)
+
+    # Clip limits
+    k = max(k, min_candidates)
+    if max_candidates is not None:
+        k = min(k, max_candidates)
+    k = min(k, n_before)
+
+    # Keep ties at boundary if requested (only if k>0 and k<n_before)
+    cut_weight = np.nan
+    if k > 0:
+        cut_weight = w_sorted[k - 1]
+
+    if keep_ties and (k > 0) and (k < n_before):
+        # Include all weights equal to boundary within tolerances
+        wk = w_sorted[k - 1]
+        tol = tie_atol + tie_rtol * abs(wk)
+        eq = np.abs(w_sorted - wk) <= tol
+        # Extend beyond k-1 only
+        if np.any(eq[k:]):
+            last = np.max(np.where(eq)[0])
+            k = int(last + 1)
+            # apply max cap if present
+            if max_candidates is not None:
+                k = min(k, int(max_candidates))
+
+    # Select top-k subsample of candidates
+    keep_local = ord_desc[:k]
+    cand_kept = cand_idx[keep_local]
+    w_kept_raw = w[keep_local]
+    mass_kept = np.sum(w_kept_raw)
+    # Re-normalize weights
+    if not np.isfinite(mass_kept) or mass_kept <= 0:
+        w_kept = np.full_like(
+            w_kept_raw, 1.0 / max(1, w_kept_raw.size), dtype=float)
+        mass_kept = 0.0
+    else:
+        w_kept = w_kept_raw / mass_kept
+
+    ess_after = 1.0 / np.sum(np.square(w_kept)) if w_kept.size > 0 else 0.0
+
+    meta = {
+        "n_before": n_before,
+        "n_after": w_kept.size,
+        "keep_mass": keep_mass,
+        "mass_kept": mass_kept,
+        "mass_dropped": max(0.0, 1.0 - mass_kept),
+        "cut_weight": cut_weight,
+        "ess_before": ess_before,
+        "ess_after": ess_after,
+    }
+    return cand_kept, w_kept, meta
+
 # Base model grid class
 
 @dataclass
@@ -1521,9 +1640,9 @@ class GridFitter:
         if self.use_standardised and hasattr(self.grid, "transform_observables"):
             x_eval = self.grid.transform_observables(x_native)
             x_models_eval = self.grid.transform_observables(x_models_native)
-            if self.grid._obs_sd is None:
+            if not self.grid.observable_standardiser.is_fit:
                 raise RuntimeError("standardiser is not fitted")
-            sigma_eval = sigma_native / self.grid._obs_sd
+            sigma_eval = sigma_native / self.grid.observable_standardiser.sd
             # Priors that depend on observables must see native observables
             prior_obs = x_models_native
         else:
@@ -1620,6 +1739,11 @@ class GridFitter:
         safety_margin: float = 1.2,
         tasks_per_worker: Optional[int] = None,
         dry_run: bool = False,
+        posterior_keep_mass: Optional[float] = 0.99,
+        posterior_keep_min_candidates: int = 128,
+        posterior_keep_max_candidates: Optional[int] = None,
+        posterior_keep_ties: bool = False,
+        return_mode: str = "iter",  # "iter" | "list"
         ) -> dict:
         """
         Evaluate model posteriors for multiple queries.
@@ -1730,102 +1854,51 @@ class GridFitter:
         observables.
         If ``SIG_native`` contains zeros/near-zeros, pre-clip or configure a
         positive floor in your Likelihood to avoid degenerate bandwidths.
+
+        Each yielded dict contains:
+          - "m": query index
+          - "candidates": kept candidate indices (np.int64)
+          - "post_models": kept posterior weights (np.float64, sum=1)
+          - "level": binner level (or None)
+          - "truncation": truncation metadata dict
+          - optional "stats": per-target summary dicts
+          - optional "posts_target": per-target (K,) posterior over bins (only if return_posts_for_stats)
+
         """
+        X_native = np.asarray(X_native)
+        SIG_native = np.asarray(SIG_native)
+        if X_native.ndim != 2 or SIG_native.ndim != 2:
+            raise ValueError("X_native and SIG_native must be 2D arrays (M, P)")
+        if X_native.shape != SIG_native.shape:
+            raise ValueError("X_native and SIG_native must have the same shape (M, P)")
         M, P = X_native.shape
-        if verbose:
-            print("Starting batch fit...")
 
-        # Default behaviour: ~5 tasks per worker, matching prior implementation.
-        tpw = 5 if (tasks_per_worker is None) else max(1, int(tasks_per_worker))
-
-        # -------- Memory pre-flight --------
-        breakdown = self.check_fit_batch_memory(
-            M,
-            X_native=X_native,
-            SIG_native=SIG_native,
-            binner=binner,
-            memcheck_sample=memcheck_sample,
-            stats_for=stats_for,
-            stats_bins=stats_bins,
-            return_posts_for_stats=return_posts_for_stats,
-            max_memory_gb=max_memory_gb,
-            safety_margin=safety_margin,
-        )
-        if dry_run:
-            if verbose:
-                print("Dry-run mode")
-                print(breakdown.get("message", ""))
-            return {}
-
-        # -------- Outputs --------
-        posts: List[np.ndarray] = [None] * M
-        cands: List[np.ndarray] = [None] * M
-        levels: List[Optional[int]] = [None] * M
-
-        # =========================
-        # Step 1: candidates (threads)
-        # =========================
-        step1_slices = _guess_slices_step_1(M, P, n_jobs, tasks_per_worker=tpw)
-        if verbose:
-            print(
-                f"[Step 1/3] Selecting candidates for {M} queries "
-                f"(n_jobs={n_jobs}, tasks={len(step1_slices)})"
-            )
-
-        def _cands_chunk(s: int, e: int):
-            out = []
-            if binner is None:
-                idx_full = np.arange(self.grid.n_models, dtype=np.int64)
-                for m in range(s, e):
-                    out.append((m, idx_full, None))
-                return out
-            for m in range(s, e):
-                _, idx, lev = _fit_batch_cands_worker(
-                    (
-                        m,
-                        X_native[m],
-                        SIG_native[m],
-                        binner,
-                        self.grid.n_models,
-                    )
-                )
-                out.append((m, idx, lev))
-            return out
-
-        if n_jobs == 1:
-            for s, e in step1_slices:
-                if verbose:
-                    print(f"  - candidates slice {s}:{e}")
-                for m, idx, lev in _cands_chunk(s, e):
-                    cands[m] = idx
-                    levels[m] = lev
+        if stats_for is not None:
+            if stats_bins is None or len(stats_for) != len(stats_bins):
+                raise ValueError("stats_bins must be provided and match stats_for length")
+            # Resolve stats target indices once
+            stats_j = []
+            stats_key = []
+            for tname in stats_for:
+                if isinstance(tname, str):
+                    j = self.grid.target_names.index(tname)
+                    key = tname
+                else:
+                    j = int(tname)
+                    key = self.grid.target_names[j]
+                stats_j.append(j)
+                stats_key.append(key)
         else:
-            with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
-                futs = [ex.submit(_cands_chunk, s, e) for (s, e) in step1_slices]
-                for fut in as_completed(futs):
-                    for m, idx, lev in fut.result():
-                        cands[m] = idx
-                        levels[m] = lev
+            stats_j, stats_key = [], []
 
-        # =========================
-        # Step 2: posterior over models (threads or processes)
-        # =========================
-        costs = np.array(
-            [(0 if cands[m] is None else max(1, len(cands[m]))) * P for m in range(M)]
-        )
-        slices_step2 = _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=tpw)
-        if verbose:
-            print(
-                f"[Step 2/3] Evaluating posteriors "
-                f"(backend={backend}, n_jobs={n_jobs}, tasks={len(slices_step2)})"
-            )
+        # Backend selection
+        if backend not in ("thread", "process"):
+            raise ValueError("backend must be 'thread' or 'process'")
 
-        # If processes requested, ensure picklable prior/likelihood
         if backend == "process":
             try:
-                import pickle
-
-                pickle.dumps((self.likelihood, self.prior))
+                import pickle as _p
+                _p.dumps((self.likelihood, self.prior))
             except Exception as e:
                 if verbose:
                     print(
@@ -1835,187 +1908,175 @@ class GridFitter:
                     )
                 backend = "thread"
 
-        grid_dict = {
-            "observables": self.grid.observables,
-            "targets": self.grid.targets,
-            "weights": self.grid.weights,
-            "_obs_mu": getattr(self.grid, "_obs_mu", None),
-            "_obs_sd": getattr(self.grid, "_obs_sd", None),
-        }
-        is_obs_dep_prior = isinstance(self.prior, ObservableDependentPrior)
+        # Organise tasks per worker and slices
+        tpw = 8 if (tasks_per_worker is None) else max(1, int(tasks_per_worker))
+        slices = _guess_slices_step_1(M, P, max(1, int(n_jobs)), tasks_per_worker=tpw)
+        
+        if verbose:
+            print(
+                f"Starting streaming batch fit: M={M}, P={P}, "
+                f"backend={backend}, n_jobs={n_jobs}, tasks={len(slices)}"
+            )
+            if posterior_keep_mass is not None:
+                print(
+                    f"  - truncation: keep_mass={posterior_keep_mass}, "
+                    f"min={posterior_keep_min_candidates}, max={posterior_keep_max_candidates}, "
+                    f"ties={posterior_keep_ties}"
+                )
+            if stats_for is not None:
+                print(f"  - stats_for={stats_key} (return_posts_for_stats={return_posts_for_stats})")
 
-        def _post_chunk_thread(s: int, e: int):
+        # TODO: implement pre-flight memory-check
+        if max_memory_gb is not None:
+            avail = available_memory_bytes()
+            limit = min(avail, int(max_memory_gb * (1024**3)))
+            # Extremely conservative: assume worst-case if collecting everything (list mode).
+            # This is a guardrail, not an exact estimator.
+            if return_mode == "list":
+                # At minimum we store per-object dict overhead; can be large. No good static estimate.
+                # So we only warn; user can still proceed by setting max_memory_gb=None.
+                if verbose:
+                    print(
+                        "[fit_batch] NOTE: return_mode='list' may require large memory. "
+                        "Use return_mode='iter' for minimal peak memory."
+                    )
+
+        # Candidate selection helper
+        def _select_candidates_one(m: int) -> Tuple[np.ndarray, Optional[int]]:
+            if binner is None:
+                return np.arange(self.grid.n_models, dtype=np.int64), None
+            y_sub = X_native[m, binner.dims]
+            s_sub = SIG_native[m, binner.dims]
+            idx, lev = binner.candidates(y_native=y_sub, sigmas_native=s_sub)
+            if idx.size == 0:
+                idx = np.arange(self.grid.n_models, dtype=np.int64)
+                lev = lev
+            return idx, lev
+
+        # Slice worker
+        def _slice_worker(s: int, e: int) -> List[Dict[str, Any]]:
             out = []
             for m in range(s, e):
-                w = self.posterior_over_models(
+                cand_idx, lev = _select_candidates_one(m)
+
+                w_full = self.posterior_over_models(
                     x_native=X_native[m],
                     sigma_native=SIG_native[m],
-                    candidate_idx=cands[m],
+                    candidate_idx=cand_idx,
                 )
-                out.append((m, w))
-            return out
 
-        def _post_chunk_proc(s: int, e: int):
-            out = []
-            for m in range(s, e):
-                _, w = _fit_batch_post_worker(
-                    (
-                        m,
-                        X_native[m],
-                        SIG_native[m],
-                        cands[m],
-                        grid_dict,
-                        self.use_standardised,
-                        self.likelihood,
-                        self.prior,
-                        is_obs_dep_prior,
+                # truncation
+                if posterior_keep_mass is not None:
+                    cand_kept, w_kept, tmeta = _truncate_posterior_mass(
+                        cand_idx,
+                        w_full,
+                        keep_mass=posterior_keep_mass,
+                        min_candidates=posterior_keep_min_candidates,
+                        max_candidates=(
+                            None if posterior_keep_max_candidates is None
+                            else posterior_keep_max_candidates
+                        ),
+                        keep_ties=posterior_keep_ties,
                     )
-                )
-                out.append((m, w))
-            return out
-
-        if n_jobs == 1:
-            for s, e in slices_step2:
-                if verbose:
-                    print(f"  - posteriors slice {s}:{e}")
-                for m, w in _post_chunk_thread(s, e):
-                    posts[m] = w
-        else:
-            Executor = (
-                ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
-            )
-            with Executor(max_workers=max(1, int(n_jobs))) as ex:
-                if backend == "thread":
-                    futs = [
-                        ex.submit(_post_chunk_thread, s, e) for (s, e) in slices_step2
-                    ]
                 else:
-                    futs = [
-                        ex.submit(_post_chunk_proc, s, e) for (s, e) in slices_step2
-                    ]
-                for fut in as_completed(futs):
-                    for m, w in fut.result():
-                        posts[m] = w
+                    cand_kept = cand_idx
+                    # ensure normalized
+                    ssum = np.sum(w_full)
+                    if not np.isfinite(ssum) or ssum <= 0:
+                        w_kept = np.full_like(w_full, 1.0 / max(1, w_full.size), dtype=float)
+                    else:
+                        w_kept = w_full / ssum
+                    tmeta = {
+                        "n_before": w_full.size,
+                        "n_after": w_kept.size,
+                        "keep_mass": 1.0,
+                        "mass_kept": 1.0,
+                        "mass_dropped": 0.0,
+                        "cut_weight": np.nan,
+                        "ess_before": 1.0 / np.sum(np.square(w_kept)) if w_kept.size else 0.0,
+                        "ess_after": 1.0 / np.sum(np.square(w_kept)) if w_kept.size else 0.0,
+                    }
 
-        # =========================
-        # Step 3: per-target stats (threads)
-        # =========================
-        slices = slices_step2  # reuse balanced slices
-        stats = {}
-        posts_target = {}
-
-        if stats_for is not None:
-            if stats_bins is None or len(stats_for) != len(stats_bins):
-                raise ValueError(
-                    "stats_bins must be provided and match stats_for length"
-                )
-
-            if verbose:
-                tnames = [
-                    t if isinstance(t, str) else self.grid.target_names[int(t)]
-                    for t in stats_for
-                ]
-                print(
-                    f"[Step 3/3] Computing stats for targets: {tnames} "
-                    f"(n_jobs={n_jobs}, tasks={len(slices)})"
-                )
-
-            for tname, bins in zip(stats_for, stats_bins):
-                if isinstance(tname, str):
-                    j = self.grid.target_names.index(tname)
-                    key = tname
-                else:
-                    j = int(tname)
-                    key = self.grid.target_names[j]
-
-                K = len(bins) - 1
-                centers = 0.5 * (bins[:-1] + bins[1:])
-                mean = np.empty(M)
-                std = np.empty(M)
-                vmap = np.empty(M)
-                lo68 = np.empty(M)
-                hi68 = np.empty(M)
-                q16 = np.empty(M)
-                q50 = np.empty(M)
-                q84 = np.empty(M)
-                nmodes = np.empty(M, int)
-                posts_k = np.zeros((M, K), dtype=float)
-
-                def _stats_chunk_thread(s: int, e: int):
-                    out = []
-                    for m in range(s, e):
-                        y = self.grid.targets[cands[m], j]
-                        hist, _ = np.histogram(
-                            y, bins=bins, weights=posts[m], density=False
-                        )
+                # compute stats on truncated posterior
+                stats_out = None
+                posts_target_out = None
+                if stats_for is not None:
+                    stats_out = {}
+                    if return_posts_for_stats:
+                        posts_target_out = {}
+                    for key, j, bins in zip(stats_key, stats_j, stats_bins):
+                        bins = np.asarray(bins, dtype=float)
+                        centers = 0.5 * (bins[:-1] + bins[1:])
+                        y = self.grid.targets[cand_kept, j]
+                        hist, _ = np.histogram(y, bins=bins, weights=w_kept, density=False)
+                        s_hist = float(hist.sum())
                         post = (
-                            hist / hist.sum()
-                            if hist.sum() > 0
-                            else np.full_like(hist, 1.0 / hist.size)
+                            hist / s_hist
+                            if s_hist > 0 and np.isfinite(s_hist)
+                            else np.full_like(hist, 1.0 / max(1, hist.size), dtype=float)
                         )
                         st = hist_stats(centers, post, find_multimodal=find_multimodal)
-                        out.append((m, post, st))
-                    return out
 
-                if n_jobs == 1:
-                    for s, e in slices:
-                        if verbose:
-                            print(f"  - stats[{key}] slice {s}:{e}")
-                        for m, post, st in _stats_chunk_thread(s, e):
-                            posts_k[m] = post
-                            mean[m], std[m], vmap[m] = st["mean"], st["std"], st["map"]
-                            lo68[m], hi68[m] = st["lo68"], st["hi68"]
-                            q16[m], q50[m], q84[m] = st["q"]
-                            nmodes[m] = (
+                        stats_out[key] = {
+                            "centers": centers,
+                            "mean": st["mean"],
+                            "std": st["std"],
+                            "map": st["map"],
+                            "q16": st["q"][0],
+                            "q50": st["q"][1],
+                            "q84": st["q"][2],
+                            "lo68": st["lo68"],
+                            "hi68": st["hi68"],
+                            "nmodes": (
                                 len(st.get("modes", [st["map"]]))
                                 if find_multimodal
                                 else 1
-                            )
-                else:
-                    with ThreadPoolExecutor(max_workers=max(1, int(n_jobs))) as ex:
-                        futs = [
-                            ex.submit(_stats_chunk_thread, s, e) for (s, e) in slices
-                        ]
-                        for fut in as_completed(futs):
-                            for m, post, st in fut.result():
-                                posts_k[m] = post
-                                mean[m], std[m], vmap[m] = (
-                                    st["mean"],
-                                    st["std"],
-                                    st["map"],
-                                )
-                                lo68[m], hi68[m] = st["lo68"], st["hi68"]
-                                q16[m], q50[m], q84[m] = st["q"]
-                                nmodes[m] = (
-                                    len(st.get("modes", [st["map"]]))
-                                    if find_multimodal
-                                    else 1
-                                )
+                            ),
+                        }
+                        if return_posts_for_stats:
+                            posts_target_out[key] = post
 
-                stats[key] = {
-                    "centers": centers,
-                    "mean": mean,
-                    "std": std,
-                    "map": vmap,
-                    "q16": q16,
-                    "q50": q50,
-                    "q84": q84,
-                    "lo68": lo68,
-                    "hi68": hi68,
-                    "nmodes": nmodes,
+                r = {
+                    "m": int(m),
+                    "level": lev,
+                    "candidates": cand_kept,
+                    "post_models": w_kept,
+                    "truncation": tmeta,
                 }
-                if return_posts_for_stats:
-                    posts_target[key] = posts_k
+                if stats_out is not None:
+                    r["stats"] = stats_out
+                if posts_target_out is not None:
+                    r["posts_target"] = posts_target_out
+                out.append(r)
+            return out
 
-        out = {"post_models": posts, "candidates": cands, "levels": levels}
-        if stats:
-            out["stats"] = stats
-        if return_posts_for_stats and posts_target:
-            out["posts_target"] = posts_target
-        if verbose:
-            print("fit_batch complete.")
-        return out
+        def _iter_results() -> Iterator[Dict[str, Any]]:
+            if n_jobs == 1:
+                for (s, e) in slices:
+                    if verbose:
+                        print(f"  - slice {s}:{e}")
+                    for r in _slice_worker(s, e):
+                        yield r
+                if verbose:
+                    print("fit_batch complete.")
+                return
 
+            Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+            with Executor(max_workers=max(1, int(n_jobs))) as ex:
+                futs = [ex.submit(_slice_worker, s, e) for (s, e) in slices]
+                for fut in as_completed(futs):
+                    batch = fut.result()
+                    for r in batch:
+                        yield r
+            if verbose:
+                print("fit_batch complete.")
+
+        if return_mode == "iter":
+            return _iter_results()
+        elif return_mode == "list":
+            return list(_iter_results())
+        else:
+            raise ValueError("return_mode must be 'iter' or 'list'")
 
     def corner_for_targets(
         self,
@@ -2107,8 +2168,10 @@ class GridFitter:
                 lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
-                min_v = mid - kappa_sigma_edges * (mid - lo)
-                max_v = mid + kappa_sigma_edges * (hi - mid)
+                min_v = max(mid - kappa_sigma_edges * (mid - lo),
+                            Y[:, i].min())
+                max_v = min(mid + kappa_sigma_edges * (hi - mid),
+                            Y[:, i].max())
                 if min_v == max_v:
                     min_v = Y[:, i].min() * 0.9
                     max_v = Y[:, i].max() * 1.1
@@ -2151,9 +2214,16 @@ class GridFitter:
                 #               cmap="hot_r")
                 frac = compute_fraction_from_map(H, xedges=xedges, yedges=yedges)
                 ax.contourf(
-                    xb, yb, frac.T, cmap="Spectral", levels=[0.01, 0.05, 0.32, 0.5, 1]
+                    xb, yb, frac.T, cmap="Greys", levels=[0.01, 0.05, 0.32, 0.5, 1]
                 )
 
+                ax.scatter(best_y[j], best_y[i],
+                           ec="fuchsia", fc="none")
+                ax.scatter(mean_y[j], mean_y[i],
+                           ec="lime", fc="none")
+                if true_target_vals is not None:
+                    ax.scatter(true_target_vals[j],
+                               true_target_vals[i], ec="r", fc="none")
                 if i == D - 1:
                     ax.set_xlabel(names[j])
                 if j == 0:
@@ -2165,9 +2235,11 @@ class GridFitter:
         for i in range(D):
             for j in range(i + 1, D):
                 axes[i, j].axis("off")
-        axes[0, 0].set_title(f"No. of\ncandidate models: {w.size}", fontsize="small")
         if suptitle:
             fig.suptitle(suptitle)
+        else:
+            fig.suptitle(f"No. of\ncandidate models: {w.size}", fontsize="small")
+
         fig.tight_layout()
 
         # Return summary
