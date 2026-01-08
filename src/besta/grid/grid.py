@@ -1903,6 +1903,10 @@ class GridFitter:
                     stats_out = {}
                     if return_pdf_for_stats:
                         posts_target_out = {}
+                    
+                    cov = np.cov(self.grid.targets[cand_kept].T,
+                                 aweights=w_kept)
+                    stats_out["cov"] = cov
                     for key, j, bins in zip(stats_key, stats_j, stats_bins):
                         bins = np.asarray(bins, dtype=float)
                         y = self.grid.targets[cand_kept, j]
@@ -1923,6 +1927,7 @@ class GridFitter:
                                 else 1
                             ),
                         }
+
                         if return_pdf_for_stats:
                             posts_target_out[key] = post
                 # Results summary
@@ -2283,6 +2288,10 @@ class GridFitHDF5Writer:
         self.ds_candidates = None
         self.ds_post_models = None
         self._stats_handles: Dict[Tuple[str, str], h5py.Dataset] = {}
+        self.ds_cov = None
+        self._cov_dim = 0
+        self._cov_keys: Tuple[str, ...] = ()
+
 
         self._prepare(configuration=configuration or {})
 
@@ -2342,7 +2351,10 @@ class GridFitHDF5Writer:
         stats = r.get("stats", None)
         if stats is not None:
             for key, st in stats.items():
-                self._write_stats_scalars(m, key, st)
+                if key == "cov":
+                    self._write_stat_cov(m, st)
+                else:
+                    self._write_stats_scalars(m, key, st)
 
         # stats (posterior over bins)
         if self.return_pdf_for_stats:
@@ -2492,6 +2504,27 @@ class GridFitHDF5Writer:
                     dpt[...] = np.nan
                     self._stats_handles[(key, "posts_target")] = dpt
 
+        # --------------------------
+        # /stats/cov : per-object covariance
+        # --------------------------
+        self._cov_keys = tuple(str(s.key) for s in self._stats_specs)
+        self._cov_dim = len(self._cov_keys)
+
+        gcov = gs.create_group("cov")
+        gcov.create_dataset("keys", data=np.array(self._cov_keys, dtype="S"))
+
+        # Covariance per object: (M, D, D)
+        # Chunk across objects; full matrix per chunk row is typically fine.
+        self.ds_cov = gcov.create_dataset(
+            "cov",
+            shape=(self.M, self._cov_dim, self._cov_dim),
+            dtype=np.float32,
+            compression=self.compression,
+            compression_opts=self.compression_opts,
+            chunks=(min(self.M, 64), self._cov_dim, self._cov_dim),
+        )
+        self.ds_cov[...] = np.nan
+
         # Make sure initial metadata is on disk
         self.flush()
 
@@ -2534,3 +2567,42 @@ class GridFitHDF5Writer:
                 f"posts_target shape mismatch for '{key}': got {arr.shape}, expected ({dpt.shape[1]},)"
             )
         dpt[m, :] = arr
+
+    def _write_stat_cov(self, m: int, st: Any) -> None:
+        """
+        Write the covariance matrix for object m.
+
+        Expected input formats
+        ----------------------
+        st can be:
+          1) a dict with key "cov" holding an array-like (D, D), OR
+          2) directly an array-like (D, D)
+
+        Where D == len(self._stats_specs) and matches /stats/cov/keys ordering.
+
+        If the covariance dataset is not present (e.g. no stats_specs),
+        this is a no-op.
+        """
+        if self.ds_cov is None:
+            return
+
+        # Accept dict or raw array
+        if isinstance(st, dict) and ("cov" in st):
+            cov = st["cov"]
+        else:
+            cov = st
+
+        arr = np.asarray(cov, dtype=np.float32)
+
+        D = int(self._cov_dim)
+        if arr.ndim != 2 or arr.shape != (D, D):
+            raise ValueError(
+                f"cov shape mismatch: got {arr.shape}, expected ({D}, {D}). "
+                f"Target order: {self._cov_keys}"
+            )
+
+        # Optional: enforce symmetry softly (avoid surprises)
+        # Comment out if you want to store exactly what you compute.
+        arr = 0.5 * (arr + arr.T)
+
+        self.ds_cov[m, :, :] = arr
