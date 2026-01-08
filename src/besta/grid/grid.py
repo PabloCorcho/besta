@@ -1881,8 +1881,14 @@ class GridFitter:
                     if return_pdf_for_stats:
                         posts_target_out = {}
                     
-                    cov = np.cov(self.grid.targets[cand_kept].T,
-                                 aweights=w_kept)
+                    Y_cov = self.grid.targets[cand_kept][:, stats_j]
+                    if Y_cov.ndim == 1:
+                        Y_cov = Y_cov[:, None]
+                    cov = np.cov(Y_cov.T, aweights=w_kept)
+                    if np.ndim(cov) == 0:
+                        cov = np.array([[float(cov)]])
+                    elif np.ndim(cov) == 1:
+                        cov = np.diag(cov)
                     stats_out["cov"] = cov
                     for key, j, bins in zip(stats_key, stats_j, stats_bins):
                         bins = np.asarray(bins, dtype=float)
@@ -2481,26 +2487,26 @@ class GridFitHDF5Writer:
                     dpt[...] = np.nan
                     self._stats_handles[(key, "posts_target")] = dpt
 
-        # --------------------------
-        # /stats/cov : per-object covariance
-        # --------------------------
-        self._cov_keys = tuple(str(s.key) for s in self._stats_specs)
-        self._cov_dim = len(self._cov_keys)
+            # --------------------------
+            # /stats/cov : per-object covariance
+            # --------------------------
+            self._cov_keys = tuple(str(s.key) for s in self._stats_specs)
+            self._cov_dim = len(self._cov_keys)
 
-        gcov = gs.create_group("cov")
-        gcov.create_dataset("keys", data=np.array(self._cov_keys, dtype="S"))
+            gcov = gs.create_group("cov")
+            gcov.create_dataset("keys", data=np.array(self._cov_keys, dtype="S"))
 
-        # Covariance per object: (M, D, D)
-        # Chunk across objects; full matrix per chunk row is typically fine.
-        self.ds_cov = gcov.create_dataset(
-            "cov",
-            shape=(self.M, self._cov_dim, self._cov_dim),
-            dtype=np.float32,
-            compression=self.compression,
-            compression_opts=self.compression_opts,
-            chunks=(min(self.M, 64), self._cov_dim, self._cov_dim),
-        )
-        self.ds_cov[...] = np.nan
+            # Covariance per object: (M, D, D)
+            # Chunk across objects; full matrix per chunk row is typically fine.
+            self.ds_cov = gcov.create_dataset(
+                "cov",
+                shape=(self.M, self._cov_dim, self._cov_dim),
+                dtype=np.float32,
+                compression=self.compression,
+                compression_opts=self.compression_opts,
+                chunks=(min(self.M, 64), self._cov_dim, self._cov_dim),
+            )
+            self.ds_cov[...] = np.nan
 
         # Make sure initial metadata is on disk
         self.flush()
