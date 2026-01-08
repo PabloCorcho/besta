@@ -65,31 +65,6 @@ def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
         s += size
     return out
 
-def _make_cost_balanced_slices(costs, n_jobs, tasks_per_worker=6):
-    """
-    Partition queries into ~n_jobs*tasks_per_worker slices with roughly equal total cost.
-    costs: 1D array-like of cost per query (e.g., len(cands[m]) * P)
-    """
-    M = len(costs)
-    T = max(1, n_jobs * tasks_per_worker)
-    total = np.sum(costs) if M else 0.0
-    target = total / T if T > 0 else total
-
-    slices = []
-    s = 0
-    acc = 0.0
-    for m in range(M):
-        acc += float(costs[m])
-        # cut when we exceed ~target (but ensure at least one element)
-        if acc >= target and m + 1 - s > 0:
-            slices.append((s, m + 1))
-            s = m + 1
-            acc = 0.0
-    if s < M:
-        slices.append((s, M))
-    # If we ended up with fewer than T slices, that’s fine. Executor will still load balance.
-    return slices
-
 def _truncate_posterior_mass(
     cand_idx: np.ndarray,
     w: np.ndarray,
@@ -659,6 +634,7 @@ class ModelGrid:
         return out
 
     # ------------ I/O ------------
+    @staticmethod
     def _std_to_state(std) -> Dict[str, Any]:
         """Serialisable state for LinearStandardiser."""
         if std is None:
@@ -669,6 +645,7 @@ class ModelGrid:
             "sd": None if getattr(std, "sd", None) is None else np.asarray(std.sd),
         }
 
+    @staticmethod
     def _state_to_std(state: Mapping[str, Any], std) -> None:
         """Restore LinearStandardiser from state into an existing instance."""
         if not state:
@@ -702,8 +679,8 @@ class ModelGrid:
             "weights": None if self.weights is None else np.asarray(self.weights),
             "meta": dict(self.meta or {}),
             "standardisers": {
-                "observables": _std_to_state(self.observable_standardiser),
-                "targets": _std_to_state(self.target_standardiser),
+                "observables": self._std_to_state(self.observable_standardiser),
+                "targets": self._std_to_state(self.target_standardiser),
             },
             # Explicitly exclude runtime-only/cache/callables:
             "check_boundaries_key": self.meta.get("check_boundaries_key", None),
