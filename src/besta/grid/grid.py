@@ -1591,7 +1591,6 @@ class GridFitter:
         use_kde_for_stats: bool = False,
         return_pdf_for_stats: bool = False,
         verbose: bool = True,
-        # TODO: remove
         max_memory_gb: Optional[float] = 16.0,
         memcheck_sample: int = 256,
         safety_margin: float = 1.2,
@@ -1758,7 +1757,7 @@ class GridFitter:
                 print("stats_bins not provided, creating bins based on grid")
                 stats_bins = [np.linspace(self.grid.targets[:, j].min(),
                                           self.grid.targets[:, j].max(),
-                                          100) for j in stats_j]
+                                          200) for j in stats_j]
         else:
             stats_j, stats_key = [], []
 
@@ -1792,30 +1791,88 @@ class GridFitter:
                 print(
                     f"  - truncation: keep_mass={posterior_keep_mass}, "
                     f"\n - min candidates={posterior_keep_min_candidates}"
-                    f"\n - max={posterior_keep_max_candidates}"
+                    f"\n -f max={posterior_keep_max_candidates}"
                     f"\n - ties={posterior_keep_ties}"
                 )
             if stats_for is not None:
                 print(f"OTF statistics")
                 print(f"  - stats_for={stats_key} (return_pdf_for_stats={return_pdf_for_stats})")
-            if output_hdf5_path is not None:
-                print("Data output")
-                print(f"  - HDF5 directory: {output_hdf5_path}:{output_hdf5_group}")
+        if output_hdf5_path is not None:
+            print("Data output")
+            print(f"  - HDF5 directory: {output_hdf5_path}:{output_hdf5_group}")
 
-        # TODO: implement pre-flight memory-check
-        if max_memory_gb is not None:
-            avail = available_memory_bytes()
-            limit = min(avail, int(max_memory_gb * (1024**3)))
-            # Extremely conservative: assume worst-case if collecting everything (list mode).
-            # This is a guardrail, not an exact estimator.
-            if return_mode == "list":
-                # At minimum we store per-object dict overhead; can be large. No good static estimate.
-                # So we only warn; user can still proceed by setting max_memory_gb=None.
-                if verbose:
-                    print(
-                        "[fit_batch] NOTE: return_mode='list' may require large memory. "
-                        "Use return_mode='iter' for minimal peak memory."
-                    )
+        # if max_memory_gb is not None:
+        #     avail = available_memory_bytes()
+        #     limit = min(avail, int(max_memory_gb * (1024**3)))
+        #     if limit <= 0:
+        #         raise MemoryError("[fit_batch] max_memory_gb yields a non-positive limit.")
+
+        #     cand_est = self.grid.n_models
+        #     if binner is not None and memcheck_sample != 0:
+        #         sample_n = min(M, max(1, int(memcheck_sample)))
+        #         if sample_n == M:
+        #             sample_idx = range(M)
+        #         else:
+        #             sample_idx = np.linspace(0, M - 1, sample_n, dtype=int)
+        #         sizes = []
+        #         for m in sample_idx:
+        #             idx, _ = binner.candidates(
+        #                 y_native=X_native[m, binner.dims],
+        #                 sigmas_native=SIG_native[m, binner.dims],
+        #             )
+        #             try:
+        #                 size = int(idx.size)
+        #             except AttributeError:
+        #                 size = len(idx)
+        #             sizes.append(size if size > 0 else self.grid.n_models)
+        #         if sizes:
+        #             cand_est = int(np.max(sizes))
+
+        #     kept_est = cand_est
+        #     if posterior_keep_max_candidates is not None:
+        #         kept_est = min(kept_est, int(posterior_keep_max_candidates))
+
+        #     float_size = np.dtype(float).itemsize
+        #     idx_size = np.dtype(self.grid.grid_int).itemsize
+        #     per_query = kept_est * (idx_size + float_size)
+
+        #     if stats_for is not None:
+        #         nstats = len(stats_j)
+        #         per_query += (nstats * nstats) * float_size
+        #         if return_pdf_for_stats:
+        #             pdf_bins = 0
+        #             for bins in stats_bins:
+        #                 pdf_bins += max(0, int(np.asarray(bins).size) - 1)
+        #             per_query += pdf_bins * float_size
+
+        #     max_slice = max((e - s) for (s, e) in slices) if slices else M
+        #     inflight = max(1, int(n_jobs)) if n_jobs != 1 else 1
+        #     store_all = (return_mode == "list") and (not output_hdf5_write_only)
+        #     if store_all:
+        #         est = per_query * M + per_query * max_slice * inflight
+        #     else:
+        #         est = per_query * max_slice * inflight
+
+        #     est = int(est * float(safety_margin))
+        #     if est > limit:
+        #         raise MemoryError(
+        #             "[fit_batch] Estimated peak additional memory "
+        #             f"{est / (1024**3):.2f} GB exceeds limit "
+        #             f"{limit / (1024**3):.2f} GB "
+        #             f"(available {avail / (1024**3):.2f} GB). "
+        #             "Reduce candidates, use return_mode='iter', enable HDF5 "
+        #             "write-only output, or increase max_memory_gb."
+        #         )
+        #     if verbose:
+        #         print(
+        #             f"[fit_batch] Estimated peak additional memory: "
+        #             f"{est / (1024**3):.2f} GB "
+        #             f"(limit {limit / (1024**3):.2f} GB, "
+        #             f"safety_margin={safety_margin})."
+        #         )
+
+        if dry_run:
+            return iter(()) if return_mode == "iter" else []
 
         # Candidate selection helper
         def _select_candidates_helper(m: int) -> Tuple[np.ndarray, Optional[int]]:
@@ -1834,7 +1891,6 @@ class GridFitter:
             out = []
             for m in range(s, e):
                 cand_idx, lev = _select_candidates_helper(m)
-
                 w_full = self.posterior_over_models(
                     x_native=X_native[m],
                     sigma_native=SIG_native[m],
