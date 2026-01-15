@@ -24,6 +24,7 @@ from astropy.table import Table, Column
 from astropy.io import fits
 import h5py
 from scipy.spatial import cKDTree
+from scipy.stats import gaussian_kde
 
 from besta.grid.prob import (
     Prior,
@@ -1587,6 +1588,7 @@ class GridFitter:
         stats_for: Optional[Sequence[int | str]] = None,
         stats_bins: Optional[Sequence[np.ndarray]] = None,
         find_multimodal: bool = False,
+        use_kde_for_stats: bool = False,
         return_pdf_for_stats: bool = False,
         verbose: bool = True,
         # TODO: remove
@@ -1893,8 +1895,21 @@ class GridFitter:
                     for key, j, bins in zip(stats_key, stats_j, stats_bins):
                         bins = np.asarray(bins, dtype=float)
                         y = self.grid.targets[cand_kept, j]
-                        post, _ = np.histogram(y, bins=bins,
-                                               weights=w_kept, density=True)
+                        if use_kde_for_stats:
+                            try:
+                                kde = gaussian_kde(y, weights=w_kept)
+                            except np.linalg.LinAlgError:
+                                # Fallback to histogram if KDE fails
+                                print("KDE failed, falling back to histogram for stats")
+                                kde = None
+                            if kde is None:
+                                post, _ = np.histogram(y, bins=bins,
+                                                   weights=w_kept, density=True)
+                            else:
+                                post = kde.evaluate(0.5 * (bins[:-1] + bins[1:]))
+                        else:
+                            post, _ = np.histogram(y, bins=bins,
+                                                   weights=w_kept, density=True)
                         st = pdf_stats(bins, post, find_multimodal=find_multimodal)
 
                         stats_out[key] = {
