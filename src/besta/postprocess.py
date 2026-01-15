@@ -1395,16 +1395,15 @@ def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
     stats : dict
         Keys: mean, std, map, q, lo68, hi68, modes (optional).
     """
-    w = np.asarray(pdf, float)
-    w = w / np.sum(w) if np.sum(w) > 0 else np.ones_like(w) / w.size
     # Ensure normalization
-    pdf /= np.sum(pdf * np.diff(edges))
+    norm = np.sum(pdf * np.diff(edges))
+    pdf /= norm if norm > 0 else 1.0
     centers = 0.5 * (edges[:-1] + edges[1:])
     # Trapecium integrals
     mean = np.sum(pdf * centers * np.diff(edges))
     var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
     std = var ** 0.5
-    k_map = np.argmax(w)
+    k_map = np.argmax(pdf * np.diff(edges))
     v_map = centers[k_map]
 
     cdf = np.cumsum(pdf * np.diff(edges))
