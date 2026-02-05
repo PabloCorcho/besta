@@ -21,6 +21,7 @@ from cosmosis.datablock import SectionOptions, option_section
 from pst.utils import flux_conserving_interpolation
 from pst.observables import Filter
 from pst import SSP, dust, sed
+from pst.galaxy import GalaxySED
 
 from besta import spectrum
 from besta import kinematics
@@ -331,11 +332,50 @@ class BaseModule(ClassModule):
         print("-> Configuration done")
 
     def prepare_galaxy(self, options):
-        ssp_model = options.get("ssp_model")
+        """TODO"""
+        
+        # Stellar emissions
+        ssp_model = self.config.get("ssp_model")
         if ssp_model is None:
             self.prepare_ssp_model(options)
-        
+            ssp_model = self.config["ssp_model"]
 
+        sfh_model = self.config.get("sfh_model")
+        if sfh_model is None:
+            self.prepare_sfh_model(options)
+            sfh_model = self.config["sfh_model"].model
+
+        ## Create stellar emission model
+        print("Setting up stellar emission component")
+        stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
+        
+        # Dust extinction and emission
+        if options.get_bool("DustExtinction", False):
+            att_name = options.get_string(
+                "DustAttenuationModel", "DustScreenAttenuation")
+            ext_law = options.get_string("ExtinctionLaw", "ccm89")
+            dust_curve = dust.ExtinctionLibCurve(law=ext_law)
+            if att_name == "DustScreenAttenuation":
+                dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
+            
+            dust_extinction = getattr(dust, att_name)
+
+            if options.get_bool("DustEmission", False):
+                dust_sed = dust.Casey2012DustComponent()
+
+                if options.get_bool("DustCalorimetric", True):
+                    dust_emission = dust.CalorimetricDustComponent(
+                        attenuation=dust_attenuation,
+                        dust_sed_component=dust_sed
+                    )
+        print("Setting up galaxy model")
+        galaxy = GalaxySED(stellar_model=stars,
+                           dust_attenuation_model=dust_attenuation,
+                           dust_model=dust_emission)
+        params = galaxy.build_param_index(include_fixed=True, prefix="")
+        for p in params:
+            print(p)
+        self.config["galaxy"] = galaxy
 
     def log_like(self, data, model, cov, weights=None):
         """Compute the likelihood between an input data set and a model.
