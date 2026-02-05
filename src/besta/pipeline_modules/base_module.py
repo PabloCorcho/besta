@@ -20,7 +20,7 @@ from cosmosis.datablock import SectionOptions, option_section
 
 from pst.utils import flux_conserving_interpolation
 from pst.observables import Filter
-from pst import SSP, dust
+from pst import SSP, dust, sed
 
 from besta import spectrum
 from besta import kinematics
@@ -329,6 +329,13 @@ class BaseModule(ClassModule):
         sfh_model = sfh_model(*sfh_args, **self.config)
         self.config["sfh_model"] = sfh_model
         print("-> Configuration done")
+
+    def prepare_galaxy(self, options):
+        ssp_model = options.get("ssp_model")
+        if ssp_model is None:
+            self.prepare_ssp_model(options)
+        
+
 
     def log_like(self, data, model, cov, weights=None):
         """Compute the likelihood between an input data set and a model.
