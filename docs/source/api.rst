@@ -1,7 +1,10 @@
 .. _api:
 
 API
-====
+===
+
+MC-based inference
+^^^^^^^^^^^^^^^^^^
 
 
 Pipeline Modules
@@ -37,14 +40,6 @@ Pipeline Manager
    :undoc-members:
    :show-inheritance:
 
-Postprocessing
-**************
-
-.. automodule:: besta.postprocess
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 
 Star formation histories
 ************************
@@ -54,3 +49,52 @@ Star formation histories
    :undoc-members:
    :show-inheritance:
 
+Model grid-based inference
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Basics
+******
+
+.. autoclass:: besta.grid.grid.ModelGrid
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Candidate selection
+*******************
+
+.. automodule:: besta.grid.binning
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: besta.grid.prob
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: besta.grid.transforms
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Model fitting
+*************
+
+.. autoclass:: besta.grid.grid.GridFitter
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: besta.grid.grid.GridFitHDF5Writer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Postprocessing
+^^^^^^^^^^^^^^
+
+.. automodule:: besta.postprocess
+   :members:
+   :undoc-members:
+   :show-inheritance:
