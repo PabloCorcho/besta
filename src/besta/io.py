@@ -574,8 +574,8 @@ class Reader(object):
         last_sample = np.searchsorted(cum_weights, pct / 100)
         print(f"Selecting solutions from {last_sample}")
         all_solutions = []
-        slice = slice(-last_sample, 0)
-        solutions = tab[sort][slice]
+        sample_slice = slice(-last_sample, 0)
+        solutions = tab[sort][sample_slice]
         if as_datablock:
             all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
         else:
