@@ -185,7 +185,7 @@ def expand_env_vars(arg_spec=0):
     return decorator
 
 @expand_env_vars()
-def make_ini_file(filename, config):
+def make_ini_file(filename, config, ignore_sec="Values"):
     """Create a .ini file from an input configuration.
 
     Parameters
@@ -200,7 +200,7 @@ def make_ini_file(filename, config):
         f.write(f"; File generated automatically by BESTA\n")
         for section in config.keys():
             # Ignore the Values section
-            if section == "Values":
+            if section == ignore_sec:
                 continue
             f.write(f"[{section}]\n")
             for key, value in config[section].items():
@@ -219,7 +219,7 @@ def make_ini_file(filename, config):
         f.write(r"; \(ﾟ▽ﾟ)/")
 
 
-def make_values_file(config, overwrite=True):
+def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
 
     Parameters
@@ -228,7 +228,6 @@ def make_values_file(config, overwrite=True):
         Configuration parameters
     """
     values_filename = os.path.expandvars(config["pipeline"]["values"])
-    values_section = f"Values"
 
     if os.path.isfile(values_filename):
         print(f"File containing the .ini priors already exists at {values_filename}")
@@ -236,17 +235,9 @@ def make_values_file(config, overwrite=True):
             return
         else:
             print("Overwritting file")
-    if values_section in config:
-        print(f"Creating values file: {values_filename}")
-        with open(values_filename, "w") as f:
-            f.write(f"; File generated automatically by BESTA\n")
-            f.write("[parameters]\n")
-            for name, lims in config[values_section].items():
-                if type(lims) is str:
-                    f.write(f"{name} = {lims}\n")
-                else:
-                    f.write(f"{name} = {lims[0]} {(lims[0] + lims[1]) / 2} {lims[1]}\n")
-            f.write(r"; \(ﾟ▽ﾟ)/")
+    if values_sec in config:
+        print(f"Writting values file to: {values_filename}")
+        make_ini_file(values_filename, config[values_sec], ignore_sec=None)
 
 @expand_env_vars()
 def read_results_file(path):
@@ -444,6 +435,17 @@ class Reader(object):
             self.ini = self.read_ini_file_from_results(self.results_file)
 
         self.ini_values = self.read_ini_values_file(self.ini["pipeline"]["values"])
+        self.ini_values_free = {
+            (sect, key): val
+            for sect, params in self.ini_values.items()
+            for key, val in params.items() if not isinstance(val, (int, float))
+        }
+        self.ini_values_fixed = {
+            (sect, key): val
+            for sect, params in self.ini_values.items()
+            for key, val in params.items() if (sect, key) not in self.ini_values_free
+        }
+
         self.config = {}
 
     def load_results(self):
@@ -478,14 +480,14 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        maxlike_pos = np.nanargmax(self.results_table[good_sample][log_prob].value)
+        good_sample = np.isfinite(self.results_table[log_prob])
+        tab = self.results_table[good_sample]
+        maxlike_pos = np.nanargmax(tab[log_prob].value)
         solution = {}
-        for k, v in self.results_table.items():
-            if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[good_sample][maxlike_pos]
         if as_datablock:
-            solution = self.solution_to_datablock(solution, **kwargs)
+            return self.solution_to_datablock(tab[maxlike_pos], **kwargs)
+        for (sect, name) in self.ini_values_free.keys():
+            solution[f"{sect}--{name}"] = tab[f"{sect}--{name}"][maxlike_pos]
         return solution
 
     def get_top_frac_solutions(self, frac=1, log_prob="post", as_datablock=False,
@@ -517,15 +519,15 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        post_sort = np.argsort(self.results_table[log_prob][good_sample])
         assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
+        good_sample = self.results_table[log_prob] != 0
+        tab = self.results_table[good_sample]
+        post_sort = np.argsort(tab[log_prob])
         # Select the top frac per cent
         first_row = max(1, np.ceil(post_sort.size / 100 * frac))
-        solutions = self.results_table[post_sort][-first_row:]
+        solutions = tab[post_sort][-first_row:]
         if as_datablock:
-            all_solutions = [self.solution_to_datablock(
-                dict(zip(solutions.keys(), sol[:]))) for sol in solutions]
+            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
         else:
             all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
         return all_solutions
@@ -560,12 +562,10 @@ class Reader(object):
         :func:`solution_to_datablock`
         """
         good_sample = self.results_table[log_prob] != 0
-        maxlike_pos = np.argmax(self.results_table[log_prob][good_sample])
+        tab = self.results_table[good_sample]
+        maxlike_pos = np.argmax(tab[log_prob])
         # Normalize the weights
-        weights = (
-            self.results_table[log_prob][good_sample]
-            - self.results_table[log_prob][good_sample][maxlike_pos]
-        )
+        weights = tab[log_prob] - tab[log_prob][maxlike_pos]
         weights = np.exp(weights)
         weights /= np.nansum(weights)
         # From the highest to the lowest weight
@@ -574,50 +574,32 @@ class Reader(object):
         last_sample = np.searchsorted(cum_weights, pct / 100)
         print(f"Selecting solutions from {last_sample}")
         all_solutions = []
-        for i in range(-last_sample, 0):
-            solution = {"weights": weights[sort][i]}
-            for k, v in self.results_table.items():
-                if "parameters" in k:
-                    solution[k.replace("parameters--", "")] = v[good_sample][sort][i]
-            if as_datablock:
-                solution = self.solution_to_datablock(solution, **kwargs)
-            all_solutions.append(solution)
+        slice = slice(-last_sample, 0)
+        solutions = tab[sort][slice]
+        if as_datablock:
+            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
+        else:
+            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
         return all_solutions
 
-    def solution_to_datablock(self, solution, section="parameters"):
+    def solution_to_datablock(self, solution: dict):
         """Convert a solution into a DataBlock.
 
         Parameters
         ----------
-        solution : dict
-            A dictionary containing the parameter values.
-        section : str, optional
-            Name of the DataBlock section where to store the solution. Default
-            is ``parameters``.
+        solution : dict-like
+            A dictionary-like containing the parameter values.
 
         Returns
         -------
         datablock : DataBlock
             The DataBlock containing the input solution.
         """
-        keys = list(solution.keys())
-        values = list(solution.values())
-        strip_keys = []
-        for k in keys:
-            if section in k:
-                strip_keys.append(k.replace(f"{section}--", ""))
-            else:
-                strip_keys.append(k)
-        solution = {k: v for k, v in zip(strip_keys, values)}
-
-        for parameter in self.ini_values["parameters"].keys():
-            if parameter not in solution:
-                print(f"Parameter {parameter} was set constant, adding default value")
-                solution[parameter] = self.ini_values["parameters"][parameter]
-
         datablock = cosmosis.DataBlock()
-        for k, v in solution.items():
-            datablock[section, k] = v
+        for (sect, name) in self.ini_values_free.keys():
+            datablock[sect, name] = solution[f'{sect}--{name}']
+        for (sect, name), v in self.ini_values_fixed.items():
+            datablock[sect, name] = v
         return datablock
 
     @classmethod
@@ -667,7 +649,18 @@ class Reader(object):
                 str_value = str_value.replace("e", "")
                 str_value = str_value.replace("-", "")
                 if not str_value.isnumeric():
-                    ini_info[module][name] = components[1].strip(" ")
+                    val = components[1].strip(" ")
+                    # Check for boolean
+                    if "True" in val:
+                        ini_info[module][name] = True
+                    elif "T" == val:
+                        ini_info[module][name] = True
+                    elif "False" in val:
+                        ini_info[module][name] = False
+                    elif "F" == val:
+                        ini_info[module][name] = False
+                    else:
+                        ini_info[module][name] = val                    
                 else:
                     numbers = [n for n in components[1].split(" ") if len(n) > 0]
                     if len(numbers) == 1:
