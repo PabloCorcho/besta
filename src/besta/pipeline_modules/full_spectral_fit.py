@@ -42,15 +42,15 @@ class FullSpectralFitModule(SpectraFitModule):
         # Kinematics
         velscale = self.config["velscale"]
         # Kinematics
-        sigma_pixel = block["parameters", "los_sigma"] / velscale
-        veloffset_pixel = block["parameters", "los_vel"] / velscale
+        sigma_pixel = block["kinematics", "los_sigma"] / velscale
+        veloffset_pixel = block["kinematics", "los_vel"] / velscale
         # Build the kernel. TOO SLOW? Initialise only once?
         kernel_model = kinematics.GaussHermite(
             4,
             mean=veloffset_pixel,
             stddev=sigma_pixel,
-            h3=block["parameters", "los_h3"],
-            h4=block["parameters", "los_h4"],
+            h3=block["kinematics", "los_h3"],
+            h4=block["kinematics", "los_h4"],
         )
         kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
                                       None) + 1
@@ -73,7 +73,7 @@ class FullSpectralFitModule(SpectraFitModule):
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["parameters", "av"]
+            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "av"]
         ).value
 
         weights = self.config["weights"] * mask
