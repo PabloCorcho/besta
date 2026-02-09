@@ -24,23 +24,39 @@ class GalaxySpectraModule(SpectraFitModule):
         self.prepare_galaxy(options)
         self.prepare_legendre_polynomials(options)
 
+        # Set parameters fixed in this module
+        self.config["galaxy"].redshift.fixed = True
+
     @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
-        # Stellar population synthesis
-        sed = self.config["galaxy"].emission_spectrum(to_obs_frame=False)
-        # Kinematics
+        if parse:
+            # This updates the SFH parameters
+            self.config["sfh_model"].parse_datablock(block)
+
+        # Update parameters for each remaining component
+        keys = block.keys()
+        values = [block[s, k] for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
+        keys = [".".join((s, k)) for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
+        parameters = dict(zip(keys, values))
+
+        galaxy = self.config["galaxy"]
+        galaxy.update_parameters(parameters, strict=False)
+        # Synthesis
+        flux_model = 1e10 * galaxy.emission_spectrum(
+            to_obs_frame=False).to_value("1e-16 erg / (s Angstrom)") / self.config["dl_sq"]
+
+        # Kinematics #TODO: this should be done by PST stars.kinematics
         velscale = self.config["velscale"]
-        # Kinematics
-        sigma_pixel = block["parameters", "los_sigma"] / velscale
-        veloffset_pixel = block["parameters", "los_vel"] / velscale
-        # Build the kernel. TOO SLOW? Initialise only once?
+        sigma_pixel = block["kinematics", "los_sigma"] / velscale
+        veloffset_pixel = block["kinematics", "los_vel"] / velscale
+
         kernel_model = kinematics.GaussHermite(
             4,
             mean=veloffset_pixel,
             stddev=sigma_pixel,
-            h3=block["parameters", "los_h3"],
-            h4=block["parameters", "los_h4"],
+            h3=block["kinematics", "los_h3"],
+            h4=block["kinematics", "los_h4"],
         )
         kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
                                       None) + 1
@@ -60,17 +76,11 @@ class GalaxySpectraModule(SpectraFitModule):
         flux_model = flux_model[pixels]
         mask = mask[pixels]
 
-        # Apply dust extinction
-        dust_model = self.config["extinction_law"]
-        flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["parameters", "av"]
-        ).value
-
         weights = self.config["weights"] * mask
         normalization = np.nanmedian(
             self.config["flux"][weights > 0] / flux_model[weights > 0]
         )
-        block["parameters", "stellar_mass"] = np.log10(normalization) + 10
+        block["extra", "stellar_mass"] = np.log10(normalization) + 10
         return flux_model * normalization, weights
 
     def execute(self, block):
@@ -78,12 +88,12 @@ class GalaxySpectraModule(SpectraFitModule):
         This is the function that is executed many times by the sampler. The
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
-        """
+        """        
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
             print("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["parameters", "stellar_mass"] = 0.0
+            block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
         cov = self.config["cov"]
