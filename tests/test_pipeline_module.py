@@ -5,7 +5,6 @@ import numpy as np
 
 from cosmosis import DataBlock
 
-from besta.pipeline_modules.kin_dust import KinDustModule
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.sfh import ExponentialSFH
 from pst.SSP import PopStar
@@ -37,34 +36,6 @@ class TestPipelineModule(unittest.TestCase):
         print("Removing test spectra")
         os.remove("./test_spectra_exp_sfh.dat") 
 
-    def test_kin_dust(self):
-        print("#" * 23 + "\nTesting KinDust module\n" + "#" * 23)
-        kin_configuration = {
-            "KinDust": {
-                "file": KinDustModule.get_path(),
-                "redshift": 0.0,
-                "inputSpectrum": "./test_spectra_exp_sfh.dat",
-                "SSPModel": "PopStar",
-                "SSPModelArgs": "cha",
-                "SSPDir": "None",
-                "wlRange": [3700.0, 8000.0],
-                "wlUnits": "nm",
-                "velscale": 200.0,
-                "ExtinctionLaw": "ccm89",
-            }
-        }
-
-        block = DataBlock()
-        block['parameters', 'av'] = 0
-        block['parameters', 'los_vel'] = 0
-        block['parameters', 'los_sigma'] = 100.
-        block['parameters', 'los_h3'] = 0
-        block['parameters', 'los_h4'] = 0
-
-        kindust_module = KinDustModule(kin_configuration)
-        kindust_module.execute(block)
-        print("Module successfully executed")
-
     def test_full_spectral_fit(self):
         print("#" * 30 + "\nTesting FullSpectralFit module\n" + "#" * 30)
 
@@ -83,14 +54,14 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['parameters', 'av'] = 0
-        block['parameters', 'los_vel'] = 0
-        block['parameters', 'los_sigma'] = 100.
-        block['parameters', 'los_h3'] = 0
-        block['parameters', 'los_h4'] = 0
-        block['parameters', 'logtau'] = 1
-        block['parameters', 'alpha_powerlaw'] = 1
-        block['parameters', 'ism_metallicity_today'] = 0.02
+        block['dust.extinction', 'av'] = 0
+        block['kinematics', 'los_vel'] = 0
+        block['kinematics', 'los_sigma'] = 100.
+        block['kinematics', 'los_h3'] = 0
+        block['kinematics', 'los_h4'] = 0
+        block['stars.sfh', 'logtau'] = 1
+        block['stars.sfh', 'alpha_powerlaw'] = 1
+        block['stars.sfh', 'ism_metallicity_today'] = 0.02
 
         module = FullSpectralFitModule(config)
         self.assertFalse(module.execute(block))

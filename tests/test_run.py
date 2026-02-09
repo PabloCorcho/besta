@@ -33,8 +33,18 @@ class TestPipelineManagerFit(unittest.TestCase):
             [ssp.wavelength, np.random.normal(sed, sed * 0.01), sed * 0.01]).T)
     
         # Create values file
-        text = "[parameters]\nav = 0 0 1\nalpha_powerlaw = 0 1 10\nism_metallicity_today = 0.005 0.01 0.08\nlogtau = -1 0.5 1.7"
-        text += "\nlos_vel = -500 0 500\nlos_sigma = 50 100 500\nlos_h3 = 0\nlos_h4 = 0"
+        text = """[dust.extinction]
+        av = 0 0 1
+        [stars.sfh]
+        alpha_powerlaw = 0 1 10
+        ism_metallicity_today = 0.005 0.01 0.08
+        logtau = -1 0.5 1.7
+        [kinematics]
+        los_vel = -500 0 500
+        los_sigma = 50 100 500
+        los_h3 = 0
+        los_h4 = 0
+        """
         with open("values.ini", "w") as file:
             file.write(text)
 
@@ -43,10 +53,10 @@ class TestPipelineManagerFit(unittest.TestCase):
         print("Removing files")
         if os.path.exists("./test_spectra_exp_sfh.dat"):
             os.remove("./test_spectra_exp_sfh.dat")
-        if os.path.exists("./values.ini"):
-            os.remove("./values.ini")
-        if os.path.exists("./FullSpectralFit_auto.ini"):
-            os.remove("./FullSpectralFit_auto.ini")
+        # if os.path.exists("./values.ini"):
+        #     os.remove("./values.ini")
+        # if os.path.exists("./FullSpectralFit_auto.ini"):
+        #     os.remove("./FullSpectralFit_auto.ini")
         if os.path.exists("./full_fit_exponential_sfh.txt"):
             os.remove("./full_fit_exponential_sfh.txt")
         if os.path.exists("./full_fit_exponential_sfh.maxlike.txt"):

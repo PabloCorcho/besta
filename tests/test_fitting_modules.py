@@ -5,7 +5,6 @@ import pytest
 from cosmosis import DataBlock
 
 from besta.pipeline_modules.base_module import SpectraFitModule
-from besta.pipeline_modules.kin_dust import KinDustModule
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 import importlib
 
@@ -57,45 +56,27 @@ def test_prepare_observed_spectra_weights_guard(tmp_path):
         Dummy(opts)
 
 
-def test_kindust_make_observable_shapes(tmp_path):
-    spec = make_dummy_spectrum(tmp_path)
-    block = DataBlock()
-    for p in ["av", "los_vel", "los_sigma", "los_h3", "los_h4"]:
-        block["parameters", p] = 0.0 if p != "los_sigma" else 100.0
-    opts = {
-        "KinDust": {
-            "inputSpectrum": spec,
-            "SSPModel": "PopStar",
-            "SSPModelArgs": "cha",
-            "SSPDir": "None",
-            "wlUnits": "Angstrom",
-            "fluxUnits": "1e-16 erg / (s cm2 Angstrom)",
-            "wlRange": [4010, 4990],
-            "velscale": 200.0,
-            "ExtinctionLaw": "ccm89",
-        }
-    }
-    mod = KinDustModule(opts)
-    flux_model, weights = mod.make_observable(block)
-    assert flux_model.shape == mod.config["flux"].shape
-    assert weights.shape == mod.config["flux"].shape
-
-
 def test_full_spectral_fit_make_observable(tmp_path):
     spec = make_dummy_spectrum(tmp_path)
     block = DataBlock()
-    params = {
-        "av": 0.0,
+    all_params = {
+        "dust.extinction": {"av": 0.0},
+        "kinematics":  {
         "los_vel": 0.0,
         "los_sigma": 100.0,
         "los_h3": 0.0,
         "los_h4": 0.0,
+        },
+        "stars.sfh": {
         "logtau": 0.5,
         "alpha_powerlaw": 1.0,
         "ism_metallicity_today": 0.02,
+        }
     }
-    for k, v in params.items():
-        block["parameters", k] = v
+    for sect, params in all_params.items():
+        for k, v in params.items():
+            block[sect, k] = v
+
     opts = {
         "FullSpectralFit": {
             "inputSpectrum": spec,
@@ -114,8 +95,3 @@ def test_full_spectral_fit_make_observable(tmp_path):
     flux_model, weights = mod.make_observable(block)
     assert flux_model.shape == mod.config["flux"].shape
     assert weights.shape == mod.config["flux"].shape
-
-
-def test_sfh_spectra_module_removed():
-    with pytest.raises(AttributeError):
-        importlib.reload(importlib.import_module("besta.pipeline_modules")).SFHSpectraModule

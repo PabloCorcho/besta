@@ -49,8 +49,8 @@ def test_legendre_decorator_applies_coeffs():
             return np.ones_like(wl)
 
     blk = DataBlock()
-    blk["parameters", "legendre_1"] = 1.0
-    blk["parameters", "legendre_2"] = 0.5
+    blk["legendre", "legendre_1"] = 1.0
+    blk["legendre", "legendre_2"] = 0.5
     out = Dummy().make_observable(blk)
     # Output should not be all ones after applying polynomials
     assert not np.allclose(out, 1.0)
@@ -85,8 +85,9 @@ def test_reader_selection_helpers():
 
 def test_reader_solution_to_datablock_fills_missing():
     reader = io.Reader.__new__(io.Reader)
-    reader.ini_values = {"parameters": {"foo": 1.23}}
-    db = reader.solution_to_datablock({"bar": 5.0})
+    reader.ini_values_fixed = {("parameters", "foo"): 1.23}
+    reader.ini_values_free = {("parameters", "bar"): (1, 10)}
+    db = reader.solution_to_datablock({"parameters--bar": 5.0})
     assert db["parameters", "foo"] == 1.23
     assert db["parameters", "bar"] == 5.0
 
