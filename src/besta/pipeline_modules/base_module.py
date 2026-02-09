@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from besta.visualization import draw_dict_in_axes
 
 import numpy as np
+from scipy.stats import norm
 from sklearn.decomposition import NMF
 from astropy import units as u
 
@@ -56,7 +57,6 @@ class BaseModule(ClassModule):
     @abstractmethod
     def execute(self, block: DataBlock, config: dict):
         """Execute the pipeline."""
-        return super().execute(block, config)
 
     @abstractmethod
     def plot_solution(self, *args, **kwargs):
@@ -384,30 +384,99 @@ class BaseModule(ClassModule):
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
 
-    def log_like(self, data, model, cov, weights=None):
-        """Compute the likelihood between an input data set and a model.
+    def log_like(self, data, model, cov, weights=None, is_upper=None, is_lower=None, include_norm=True):
+        """Compute log-likelihood between data and model.
 
         Parameters
         ----------
         data : np.ndarray
-            Input data array
+            For detections: measured values.
+            For limits: the limit value (upper or lower).
         model : np.ndarray
-            Input model
+            Model prediction for each datum.
         cov : np.ndarray
-            Covariance matrix.
+            Per-datum variance (diagonal). Must match shape of data/model.
+        weights : np.ndarray, optional
+            Per-datum weights. If provided, returns weighted mean log-likelihood
+            (same behavior as your original method).
+        is_upper : np.ndarray[bool], optional
+            Mask for upper limits (x < data).
+        is_lower : np.ndarray[bool], optional
+            Mask for lower limits (x > data).
+        include_norm : bool, optional
+            If True, include Gaussian normalization terms for detections:
+            -0.5*log(2*pi*var). Defaults to False to match your original chi2-only form.
 
         Returns
         -------
-        loglike : np.ndarray
-            The log-likelihood associated to the model given the data.
+        loglike : float
+            Total (or weighted-mean) log-likelihood.
         """
-        chi2 = (model - data)**2 / cov
-        if weights is not None:
-            loglike = -0.5 * np.sum(chi2 * weights) / np.sum(weights)
-        else:
-            loglike = -0.5 * np.sum(chi2)
+        if data.shape != model.shape or data.shape != cov.shape:
+            raise ValueError("data, model, cov must have the same shape (cov is per-datum variance).")
+        if np.any(cov <= 0):
+            raise ValueError("All cov entries must be > 0 (variance).")
 
-        return loglike
+        if is_upper is None:
+            is_upper = np.zeros_like(data, dtype=bool)
+        else:
+            is_upper = np.asarray(is_upper, dtype=bool)
+
+        if is_lower is None:
+            is_lower = np.zeros_like(data, dtype=bool)
+        else:
+            is_lower = np.asarray(is_lower, dtype=bool)
+
+        if is_upper.shape != data.shape or is_lower.shape != data.shape:
+            raise ValueError("is_upper and is_lower must have the same shape as data/model.")
+        if np.any(is_upper & is_lower):
+            raise ValueError("A datum cannot be both an upper and a lower limit.")
+
+        if weights is None:
+            weights = np.ones_like(data, dtype=float)
+            normalize = False
+        else:
+            weights = np.asarray(weights, dtype=float)
+            if weights.shape != data.shape:
+                raise ValueError("weights must have the same shape as data/model.")
+            if np.any(weights < 0):
+                raise ValueError("weights must be non-negative.")
+            normalize = True
+
+        sigma = np.sqrt(cov)
+
+        # Per-datum log-likelihoods
+        logp = np.empty_like(data, dtype=float)
+
+        det = ~(is_upper | is_lower)
+
+        # Detections: uase a Gaussian logpdf
+        if np.any(det):
+            if include_norm:
+                logp[det] = norm.logpdf(data[det], loc=model[det], scale=sigma[det])
+            else:
+                z = (data[det] - model[det]) / sigma[det]
+                logp[det] = -0.5 * z**2
+
+        # Upper limits: P(x < L)
+        if np.any(is_upper):
+            z_u = (data[is_upper] - model[is_upper]) / sigma[is_upper]
+            logp[is_upper] = norm.logcdf(z_u)
+
+        # Lower limits: P(x > L) = 1 - P(x < L)
+        if np.any(is_lower):
+            z_l = (data[is_lower] - model[is_lower]) / sigma[is_lower]
+            logp[is_lower] = norm.logsf(z_l)  # 1 - logcdf
+
+        # Weighted aggregation
+        if normalize:
+            wsum = np.sum(weights)
+            if wsum <= 0:
+                raise ValueError("Sum of weights must be > 0.")
+            return np.sum(logp * weights) / wsum
+
+        return np.sum(logp * weights)
+
 
 
 class SpectraFitModule(BaseModule):
