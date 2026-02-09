@@ -6,8 +6,9 @@ import numpy as np
 from astropy import units as u
 
 from cosmosis import DataBlock
-import pst
-
+from pst import cem
+from pst.model import Parameter
+from pst.utils import check_unit
 from besta.config import cosmology
 
 
@@ -70,10 +71,9 @@ class SFHBase(ABC):
     free_params = {}
 
     def __init__(self, *args, **kwargs):
-        self.sect_name = kwargs.get("sect_name", "parameters")
+        self.sect_name = kwargs.get("sect_name", "stars.sfh")
         self.redshift = kwargs.get("redshift", 0.0)
         self.today = kwargs.get("today", cosmology.age(self.redshift))
-        # Optional transforms to enforce physicality; defaults preserve legacy behaviour
         self.use_transforms = kwargs.get("use_transforms", False)
 
     # --- Transform hooks ---
@@ -95,7 +95,7 @@ class SFHBase(ABC):
         """
         print("Making ini file: ", ini_file)
         with open(ini_file, "w", encoding="utf-8") as file:
-            file.write("[parameters]\n")
+            file.write(f"[{self.sect_name}]\n")
             for key, val in self.free_params.items():
                 if len(val) > 1:
                     file.write(f"{key} = {val[0]} {val[1]} {val[2]}\n")
@@ -110,7 +110,9 @@ class SFHBase(ABC):
         free_params : dict
             Dictionary containing the SFH model free parameters.
         """
-        db = DataBlock.from_dict({"parameters": free_params})
+        #TODO: fetch from self.model.parameters_recursive once val ranges
+        # are handled
+        db = DataBlock.from_dict({self.sect_name: free_params})
         return self.parse_datablock(db)
 
     @abstractmethod
@@ -178,7 +180,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         super().__init__(*args, **kwargs)
         print("[SFH] Initialising FixedTimeSFH model")
         # From the begining of the Universe to the present date
-        self.lookback_time = pst.utils.check_unit(
+        self.lookback_time = check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
         )
 
@@ -203,7 +205,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             self.free_params[k] = [logm_min, self.today._to_value("Gyr") / lbt, 0.0]
 
         # Initialise PST
-        self.model = pst.models.TabularCEM_ZPowerLaw(
+        self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
             today=self.today,
@@ -252,184 +254,6 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return np.asarray(latent, dtype=float)
 
 
-class FixedCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
-    """A SFH model with fixed time bins.
-
-    Description
-    -----------
-    The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to ... #TODO
-
-    Attributes
-    ----------
-    lookback_time : astropy.units.Quantity
-        Lookback time bin edges.
-
-    """
-
-    def __init__(self, lookback_time_bins, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FixedCosmicTimeSFH model")
-        # From the begining of the Universe to the present date
-        self.lookback_time = pst.utils.check_unit(
-            np.sort(lookback_time_bins)[::-1], u.Gyr
-        )
-
-        # Lookbacktime [T_univ, t1, ... tn, 0]
-        self.lookback_time = np.insert(
-            self.lookback_time,
-            (0, self.lookback_time.size),
-            (self.today.to(self.lookback_time.unit), 0 << self.lookback_time.unit),
-        )
-
-        self.time = self.today - self.lookback_time
-        # Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]
-        self.bin_masses = np.zeros(self.time.size - 2)
-
-        if (self.time < 0).any():
-            print("[SFH] Warning: lookback time bin larger the age of the Universe")
-
-        print("[SFH] Setting up free parameters")
-        self.sfh_bin_keys = []
-        for lbt in self.lookback_time[1:-1].to_value("Gyr"):
-            # Initialise parameters assuming a constant star formation history
-            k = f"coeff_at_{lbt:.3f}"
-            self.sfh_bin_keys.append(k)
-            self.free_params[k] = [0.0, 0.5, 1.0]
-
-        # Initialise PST
-        self.model = pst.models.TabularCEM_ZPowerLaw(
-            times=self.time,
-            masses=np.ones(self.time.size) << u.Msun,
-            today=self.today,
-            mass_today=1 << u.Msun,
-            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
-            << u.dimensionless_unscaled,
-            alpha_powerlaw=kwargs.get("alpha", 0.0),
-        )
-
-    def update_mass(self, i, coeff):
-        """Update a bin of the stellar mass fraction formed."""
-        self.bin_masses[i] = coeff * (1 - np.sum(self.bin_masses[:i]))
-
-    def parse_datablock(self, datablock: DataBlock):
-        coefficients = self.get_sfh_parameters_array(datablock)
-        if self.use_transforms:
-            coefficients = _sigmoid(coefficients)
-        # The first coefficient correspond to the mass fraction between
-        # the origin of the universe and the first input time (largest lookback time)
-        self.bin_masses[0] = coefficients[0]
-        # Update the rest of the elements
-        _ = [
-            self.update_mass(i, coefficients[i]) for i in range(1, self.bin_masses.size)
-        ]
-        # Mass formation history. The last bin uses the remanining fraction)
-        cumulative = np.insert(
-            np.cumsum(self.bin_masses), (0, self.bin_masses.size), (0, 1)
-        )
-        # Update the mass of the tabular model
-        self.model.table_mass = cumulative << u.Msun
-        self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
-        self.model.ism_metallicity_today = (
-            datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
-        )
-        return 1, None
-
-    def to_physical(self, latent):
-        """Apply sigmoid to keep coefficients within (0,1) when transforms enabled."""
-        if self.use_transforms:
-            return _sigmoid(latent)
-        return np.asarray(latent, dtype=float)
-
-    def to_latent(self, physical):
-        """Inverse of sigmoid for the coefficient branch."""
-        if self.use_transforms:
-            return _logit(physical)
-        return np.asarray(physical, dtype=float)
-
-
-class FlexibleCosmicTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
-    """A SFH model with fixed time bins.
-
-    Description
-    -----------
-    The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to ... #TODO
-
-    Attributes
-    ----------
-    lookback_time : astropy.units.Quantity
-        Lookback time bin edges.
-
-    """
-
-    def __init__(self, n_times, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        print("[SFH] Initialising FlexibleCosmicTimeSFH model")
-        # From the begining of the Universe to the present date
-        self.lookback_time = (
-            np.geomspace(5e-2, self.today.to_value("Gyr"), n_times + 1)[::-1] << u.Gyr
-        )
-        # Lookbacktime [T_univ, t1, ... tn, 0]
-        self.lookback_time = np.insert(
-            self.lookback_time, self.lookback_time.size, 0 << self.lookback_time.unit
-        )
-        print("Automatic choice of lookback times: ", self.lookback_time)
-        self.time = self.today - self.lookback_time
-        # Massed fraction formed on each bin [0, t1], [t1, t2], ..., [tn, today]
-        self.bin_masses = np.zeros(self.time.size - 2)
-
-        if (self.time < 0).any():
-            print("[SFH] Warning: lookback time bin larger the age of the Universe")
-
-        print("[SFH] Setting up free parameters")
-        self.sfh_bin_keys = []
-        for i, lbt in enumerate(self.lookback_time[1:-1].to_value("Gyr")):
-            # Initialise parameters assuming a constant star formation history
-            print("Lookback time: ", lbt, " --> coeff :", i + 1)
-            k = f"coeff_{i + 1}"
-            self.sfh_bin_keys.append(k)
-            self.free_params[k] = [0.0, 0.5, 1.0]
-
-        # Initialise PST
-        self.model = pst.models.TabularCEM_ZPowerLaw(
-            times=self.time,
-            masses=np.ones(self.time.size) << u.Msun,
-            today=self.today,
-            mass_today=1 << u.Msun,
-            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
-            << u.dimensionless_unscaled,
-            alpha_powerlaw=kwargs.get("alpha", 0.0),
-        )
-
-    def update_mass(self, i, coeff):
-        """Update a bin of the stellar mass fraction formed."""
-        self.bin_masses[i] = coeff * (1 - np.sum(self.bin_masses[:i]))
-
-    def parse_datablock(self, datablock: DataBlock):
-        coefficients = self.get_sfh_parameters_array(datablock)
-        if self.use_transforms:
-            coefficients = _sigmoid(coefficients)
-        # The first coefficient correspond to the mass fraction between
-        # the origin of the universe and the first input time (largest lookback time)
-        self.bin_masses[0] = coefficients[0]
-        # Update the rest of the elements
-        _ = [
-            self.update_mass(i, coefficients[i]) for i in range(1, self.bin_masses.size)
-        ]
-        # Mass formation history. The last bin uses the remanining fraction)
-        cumulative = np.insert(
-            np.cumsum(self.bin_masses), (0, self.bin_masses.size), (0, 1)
-        )
-        # Update the mass of the tabular model
-        self.model.table_mass = cumulative << u.Msun
-        self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
-        self.model.ism_metallicity_today = (
-            datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
-        )
-        return 1, None
-
-
 class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
 
@@ -448,58 +272,55 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     def __init__(self, lookback_time, *args, **kwargs):
         super().__init__(*args, **kwargs)
         print("[SFH] Initialising FixedGrid-sSFR-SFH model")
-        self.lookback_time = pst.utils.check_unit(np.sort(lookback_time)[::-1], u.Gyr)
+        self.lookback_time = check_unit(np.sort(lookback_time)[::-1], u.Gyr)
 
-        self.lookback_time = np.insert(
-            self.lookback_time,
-            (0, self.lookback_time.size),
-            (self.today.to(self.lookback_time.unit), 0 << self.lookback_time.unit),
+        # Initialise the PST model
+        self.model = cem.CC25TabularCEM(
+            today=self.today,
+            mass_today= 1 << u.Msun,
+            tau_ssfr=self.lookback_time,
+            ssfr=np.ones(self.lookback_time.size) << 1 / u.Gyr,
+            ism_metallicity_today = 0.02 << u.dimensionless_unscaled,
+            alpha_powerlaw = 1.0 << u.dimensionless_unscaled
         )
+        self.model.tau_ssfr.fixed = True
+        self.model.today.fixed = True
+        self.model.mass_today.fixed = True
 
-        self.time = self.today - self.lookback_time
         self.sfh_bin_keys = []
-        for lbt in self.lookback_time[1:-1].to_value("yr"):
+        self.max_ssfr_logyr = np.zeros(self.lookback_time.size)
+        for ith, lbt in enumerate(self.lookback_time.to_value("yr")):
+            # This is the name of the value sampled by CosmoSIS
             k = f"logssfr_over_{np.log10(lbt):.2f}_logyr"
             self.sfh_bin_keys.append(k)
-            max_logssfr = np.min((np.log10(1 / lbt), -8.0))
+            # Maximum value of the sSFR
+            max_logssfr = np.log10(1 / lbt)
+            self.max_ssfr_logyr[ith] = max_logssfr
             self.free_params[k] = [
                 -14.0,
                 np.log10(1 / self.today.to_value("yr")),
                 max_logssfr,
             ]
 
-        self.model = pst.models.TabularCEM_ZPowerLaw(
-            times=self.time,
-            masses=np.ones(self.time.size) << u.Msun,
-            today=self.today,
-            mass_today=1 << u.Msun,
-            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
-            << u.dimensionless_unscaled,
-            alpha_powerlaw=kwargs.get("alpha", 0.0),
-        )
-
     def parse_datablock(self, datablock: DataBlock):
-        lt_yr = self.lookback_time[1:-1].to_value("yr")
         ssfr_over_last = self.get_sfh_parameters_array(datablock)
-        if self.use_transforms:
-            # Same as FixedTimeSFH
-            # Map unconstrained latents to positive fractions that sum to 1
-            increments = _softmax(ssfr_over_last)
-            mass_frac = np.concatenate(
-                ([0.0], np.cumsum(increments).clip(0, 1), [1.0]))
-        else:
-            mass_frac = 1 - lt_yr * 10**ssfr_over_last
-            mass_frac = np.insert(mass_frac, [0, mass_frac.size], [0.0, 1.0])
 
-        if (mass_frac[1:] - mass_frac[:-1] < 0).any():
-            delta_m = mass_frac[1:] - mass_frac[:-1]
-            return 0, 1 + np.abs(delta_m[delta_m < 0].sum())
-        # Update the mass of the tabular model
-        self.model.table_mass = mass_frac << u.Msun
-        self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
-        self.model.ism_metallicity_today = (
-            datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
-        )
+        if self.use_transforms:
+            # Map unconstrained latents to positive fractions that sum to 1
+            # directly update the table of masses
+            increments = _softmax(ssfr_over_last)
+            mass = np.concatenate(
+                ([0.0], np.cumsum(increments).clip(0, 1), [1.0])
+                ) * self.model.mass_today
+            self.model.masses = Parameter(mass, u.Msun, fixed=True)
+        else:
+            if np.any(ssfr_over_last > self.max_ssfr_logyr):
+                return 0, 10**np.max(ssfr_over_last - self.max_ssfr_logyr)
+            self.model.ssfr = 10**(ssfr_over_last) << 1 / u.yr
+        # Update the chemical evolution parameters
+        self.model.alpha_powerlaw.set(datablock[self.sect_name, "alpha_powerlaw"])
+        self.model.ism_metallicity_today.set(
+            datablock[self.sect_name, "ism_metallicity_today"])
         return 1, None
 
     def to_physical(self, latent):
@@ -558,13 +379,9 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     def __init__(self, mass_fraction, *args, **kwargs):
         super().__init__(*args, **kwargs)
         print("[SFH] Initialising FixedMassFracSFH model")
-        self.mass_fractions = np.sort(mass_fraction)
-        self.mass_fractions = np.insert(
-            self.mass_fractions, [0, self.mass_fractions.size], [0, 1]
-        )
-
+        mass_fraction = np.sort(mass_fraction)
         self.sfh_bin_keys = []
-        for frc in self.mass_fractions[1:-1]:
+        for frc in mass_fraction:
             k = f"t_at_frac_{frc:.4f}"
             self.sfh_bin_keys.append(k)
             self.free_params[k] = [
@@ -573,9 +390,9 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                 self.today.to_value("Gyr"),
             ]
 
-        self.model = pst.models.TabularCEM_ZPowerLaw(
-            times=np.ones(self.mass_fractions.size) << u.Gyr,
-            masses=self.mass_fractions << u.Msun,
+        self.model = cem.TabularMassFracCEM(
+            mass_frac=mass_fraction,
+            times=np.ones(mass_fraction.size),
             today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
@@ -583,7 +400,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             alpha_powerlaw=kwargs.get("alpha", 0.0),
         )
 
-    def parse_datablock(self, datablock: DataBlock, section_name="parameters"):
+    def parse_datablock(self, datablock: DataBlock):
         times = self.get_sfh_parameters_array(datablock)
         if self.use_transforms:
             # Enforce strictly increasing times within [0, today]
@@ -593,12 +410,12 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         delta_t = times[1:] - times[:-1]
         if (delta_t <= 0).any():
             return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
-        times = np.insert(times, (0, times.size), (0, self.today.to_value("Gyr")))
+        
         # Update the mass of the tabular model
-        self.model.table_t = times * u.Gyr
-        self.model.alpha_powerlaw = datablock[section_name, "alpha_powerlaw"]
+        self.model.times = times << u.Gyr
+        self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
         self.model.ism_metallicity_today = (
-            datablock[section_name, "ism_metallicity_today"] << u.dimensionless_unscaled
+            datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
         )
         return 1, None
 
@@ -619,91 +436,6 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             deltas = np.diff(np.insert(times, 0, 0))
             return np.log(deltas)
         return np.asarray(physical, dtype=float)
-
-
-# class FixedMassFracLinSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
-#     """A SFH model with fixed mass fraction bins.
-
-#     Description
-#     -----------
-#     The SFH of a galaxy is modelled as a stepwise function where the free
-#     parameters correspond to the time at which a given fraction of the total stellar mass was
-#     formed.
-
-#     Attributes
-#     ----------
-#     mass_fractions : np.ndarray
-#         SFH mass fractions.
-#     lookback_time : astropy.units.Quantity
-#         Lookback time bin edges.
-
-#     """
-
-#     def __init__(self, mass_fraction, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         print("[SFH] Initialising FixedMassFracSFH model")
-#         # Convert from mass fraction formed in the last t to mass fraction
-#         # at time (today - t)
-#         self.mass_fractions = 1 - np.sort(mass_fraction)[::-1]
-#         self.mass_fractions = np.insert(
-#             self.mass_fractions, [0, self.mass_fractions.size], [0, 1]
-#         )
-
-#         self.bin_times_frac = np.zeros(self.mass_fractions.size - 2)
-#         for m in self.mass_fractions[1:-1]:
-#             # Initialise parameters assuming a constant star formation history
-#             k = f"coeff_at_{m:.3f}"
-#             self.sfh_bin_keys.append(k)
-#             self.free_params[k] = [0.0, 0.5, 1.0]
-
-#         self.model = pst.models.TabularCEM_ZPowerLaw(
-#             times=np.ones(self.mass_fractions.size) << u.Gyr,
-#             masses=self.mass_fractions << u.Msun,
-#             mass_today=1 << u.Msun,
-#             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
-#             << u.dimensionless_unscaled,
-#             alpha_powerlaw=kwargs.get("alpha", 0.0),
-#         )
-
-#     def update_time_fraction(self, i, coeff):
-#         """Update a bin of the stellar mass fraction formed."""
-#         self.bin_times_frac[i] = coeff * (1 - np.sum(self.bin_times_frac[:i]))
-
-#     def parse_datablock(self, datablock: DataBlock):
-#         coefficients = self.get_sfh_parameters_array(datablock)
-#         # The first coefficient correspond to the mass fraction between
-#         # the origin of the universe and the first input time (largest lookback time)
-#         self.bin_times_frac[0] = coefficients[0]
-#         # Update the rest of the elements
-#         _ = [
-#             self.update_time_fraction(i, coefficients[i])
-#             for i in range(1, self.bin_times_frac.size)
-#         ]
-#         # Update the mass of the tabular model
-#         t_frac = np.isert(
-#             np.cumsum(self.bin_times_frac), (0, self.bin_times_frac.size), (0, 1)
-#         )
-#         self.model.table_t = t_frac * self.today
-#         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
-#         self.model.ism_metallicity_today = (
-#             datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
-#         )
-#         return 1, None
-
-#     def parse_datablock(self, datablock: DataBlock):
-#         times = self.get_sfh_parameters_array(datablock)
-#         dt = times[1:] - times[:-1]
-#         if (dt < 0).any():
-#             return 0, 1 + np.abs(dt[dt < 0].sum())
-#         times = np.insert(times, (0, times.size), (0, self.today.to_value("Gyr")))
-#         # Update the mass of the tabular model
-#         self.model.table_t = times * u.Gyr
-#         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
-#         self.model.ism_metallicity_today = (
-#             datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
-#         )
-#         return 1, None
-
 
 # Analytical star formation histories
 
@@ -734,7 +466,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
-        self.model = pst.models.TabularCEM_ZPowerLaw(
+        self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time,
             today=self.today,
             mass_today=1 << u.Msun,
@@ -777,7 +509,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
-        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+        self.model = cem.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1 << u.Msun,
             tau=1 << u.Gyr,
@@ -787,7 +519,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
-        self.model = pst.models.ExponentialDelayedZPowerLawCEM(
+        self.model = cem.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             tau=10 ** datablock[self.sect_name, "logtau"],
@@ -827,7 +559,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
             "quenching_time", [0, self.today / 2, self.today]
         )
 
-        self.model = pst.models.ExponentialDelayedQuenchedCEM(
+        self.model = cem.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1 << u.Msun,
             tau=1 << u.Gyr,
@@ -838,7 +570,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
-        self.model = pst.models.ExponentialDelayedQuenchedCEM(
+        self.model = cem.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             tau=10 ** datablock[self.sect_name, "logtau"],
@@ -875,7 +607,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         print("[SFH] Initialising LogNormalSFH model")
-        self.model = pst.models.LogNormalZPowerLawCEM(
+        self.model = cem.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
@@ -886,7 +618,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
-        self.model = pst.models.LogNormalZPowerLawCEM(
+        self.model = cem.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             alpha_powerlaw=datablock[self.sect_name, "alpha_powerlaw"],
@@ -932,7 +664,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
             [0.3, self.today.to_value("Gyr"), 2 * self.today.to_value("Gyr")],
         )
 
-        self.model = pst.models.LogNormalQuenchedCEM(
+        self.model = cem.LogNormalQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             t0=1.0 << u.Gyr,
@@ -944,7 +676,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
-        self.model = pst.models.LogNormalQuenchedCEM(
+        self.model = cem.LogNormalQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
             alpha_powerlaw=datablock[self.sect_name, "alpha_powerlaw"],
