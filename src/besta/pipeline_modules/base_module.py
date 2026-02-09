@@ -357,8 +357,8 @@ class BaseModule(ClassModule):
             dust_curve = dust.ExtinctionLibCurve(law=ext_law)
             if att_name == "DustScreenAttenuation":
                 dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
-            
-            dust_extinction = getattr(dust, att_name)
+            else:
+                dust_attenuation = None
 
             if options.get_bool("DustEmission", False):
                 dust_sed = dust.Casey2012DustComponent()
@@ -368,13 +368,20 @@ class BaseModule(ClassModule):
                         attenuation=dust_attenuation,
                         dust_sed_component=dust_sed
                     )
+            else:
+                dust_emission = None
         print("Setting up galaxy model")
         galaxy = GalaxySED(stellar_model=stars,
                            dust_attenuation_model=dust_attenuation,
-                           dust_model=dust_emission)
-        params = galaxy.build_param_index(include_fixed=True, prefix="")
-        for p in params:
-            print(p)
+                           dust_model=dust_emission,
+                           target_wavelength=self.config["ssp_wl"] << u.AA,
+                           redshift=self.config.get("redshift", 0.0),
+                           cosmology=cosmology)
+
+        params = galaxy.build_param_index(include_fixed=False, prefix="")
+        sections = [s.rsplit(".", 1) for s in params]
+        self.config["galaxy-params"] = params
+        self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
 
     def log_like(self, data, model, cov, weights=None):
@@ -622,8 +629,13 @@ class SpectraFitModule(BaseModule):
         weights *= self.config["weights"]
 
         # Grab the solution values (visualuzation purpose only)
-        param_keys = [k[1] for k in solution.keys("parameters") if k[0] == "parameters"]
-        param_val = [solution["parameters", k] for k in param_keys]
+        sol_keys = solution.keys()
+        sol_sections = {}
+        for (sec, name) in sol_keys:
+            if sec not in sol_sections:
+                sol_sections[sec] = {name: solution[sec, name]}
+            else:
+                sol_sections[sec].update({name: solution[sec, name]})
 
         fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
                                 constrained_layout=True,
@@ -641,20 +653,20 @@ class SpectraFitModule(BaseModule):
                         self.config.get("telluric_mask", 0)),
                      " - Emission lines": np.sum(
                         self.config.get("emission_lines_mask", 0))}
-        model_params = dict(zip(param_keys, param_val))
-        model_params["use_transforms"] = self.config.get(
-            "use_transforms", False)
-        if model_params["use_transforms"]:
+        
+        sol_sections["settings"] = {"use_transforms": self.config.get("use_transforms", False)}
+
+        if sol_sections["settings"]["use_transforms"]:
             sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
             sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
 
             for key, value in zip(self.config["sfh_model"].sfh_bin_keys,
                                   sfh_params_phys):
-                model_params[key] = value
+                sol_sections[self.config["sfh_model"].sect_name][key] = value
 
-        sections = [("Model parameters", model_params),
-                    ("Masking", mask_info)]
-        text = draw_dict_in_axes(ax, sections, section_spacing=1,
+        sections = [(k, v) for k, v in sol_sections.items()]
+        sections = sections + [("Masking", mask_info)]
+        _ = draw_dict_in_axes(ax, sections, section_spacing=1,
                           title_style="underline")
         ax.axis("off")
         # Plot input spectra and best-fit model
