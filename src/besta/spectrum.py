@@ -78,7 +78,7 @@ def legendre_decorator(make_observable_mthd):
         if "legendre_pol" in args[0].config:
             legendre_pol = args[0].config["legendre_pol"]
             # Get the coefficients from the input DataBlock
-            coeffs = np.array([1.0] + [args[1]["parameters", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
+            coeffs = np.array([1.0] + [args[1]["legendre", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
             output = make_observable_mthd(*args, **kwargs)
             if isinstance(output, tuple):
                 return output[0] * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0), output[1]
