@@ -1,13 +1,89 @@
 """Module dedicated to read and manipulate the output products of BESTA."""
 import os
 import functools
+import re
+import configparser
+
 import numpy as np
+
 import psutil
 import cosmosis
+from cosmosis import Inifile
 from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
+
+
+_NUM_RE = re.compile(r"""
+    ^[+-]?
+    (?:
+        (?:\d+(?:\.\d*)?) | (?:\.\d+)
+    )
+    (?:[eE][+-]?\d+)?$
+""", re.VERBOSE)
+
+def _split_tokens(s: str) -> list[str]:
+    # split on whitespace and/or commas
+    s = s.replace(",", " ")
+    return [t for t in s.split() if t]
+
+def _parse_scalar(token: str):
+    low = token.lower()
+    if low in {"true", "yes", "on"}:
+        return True
+    if low in {"false", "no", "off"}:
+        return False
+    if low in {"none", "null"}:
+        return "none"
+
+    if _NUM_RE.match(token):
+        # choose int vs float
+        if any(c in token for c in ".eE"):
+            return float(token)
+        return int(token)
+
+    # keep as string (unquote if it looks quoted)
+    if (len(token) >= 2) and ((token[0] == token[-1] == "'") or (token[0] == token[-1] == '"')):
+        return token[1:-1]
+    return token
+
+def _parse_value(value: str):
+    if value == "":
+        return ""
+
+    tokens = _split_tokens(value)
+    # If it's a single token, return a scalar
+    if len(tokens) == 1:
+        return _parse_scalar(tokens[0])
+
+    # Multi-token: try numeric array first; otherwise keep as list of scalars
+    scalars = [_parse_scalar(t) for t in tokens]
+    if all(isinstance(x, (int, float)) for x in scalars):
+        dtype = float if any(isinstance(x, float) for x in scalars) else int
+        return np.array(scalars, dtype=dtype)
+    return scalars
+
+def _ini_file_to_dict(path):
+    ini = Inifile(path)
+    ini_dict = {}
+    values = [ini.items(s) for s in ini.sections()]
+    for sec, params in zip(ini.sections(), values):
+        ini_dict[sec] = {}
+        for k, v in params:
+            ini_dict[sec][k] = _parse_value(v)
+    return ini_dict
+
+def _ini_string_to_dict(text):
+    ini = Inifile(None)
+    ini.read_string(text)
+    ini_dict = {}
+    values = [ini.items(s) for s in ini.sections()]
+    for sec, params in zip(ini.sections(), values):
+        ini_dict[sec] = {}
+        for k, v in params:
+            ini_dict[sec][k] = _parse_value(v)
+    return ini_dict
 
 def convert_bytes(size_bytes, to_unit):
     to_unit = to_unit.upper()
@@ -427,14 +503,17 @@ class Reader(object):
         self._results_file = value
 
     def __init__(self, ini_file=None, results_file=None):
+
         if ini_file is not None:
             self.ini_file = ini_file
             self.ini = self.read_ini_file(self.ini_file)
         elif results_file is not None:
             self.results_file = results_file
             self.ini = self.read_ini_file_from_results(self.results_file)
+        else:
+            raise ValueError("Must provide either ini or results file")
 
-        self.ini_values = self.read_ini_values_file(self.ini["pipeline"]["values"])
+        self.ini_values = self.read_ini_file(self.ini["pipeline"]["values"])
         self.ini_values_free = {
             (sect, key): val
             for sect, params in self.ini_values.items()
@@ -520,7 +599,7 @@ class Reader(object):
         :func:`solution_to_datablock`
         """
         assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
-        good_sample = self.results_table[log_prob] != 0
+        good_sample = np.isfinite(self.results_table[log_prob])
         tab = self.results_table[good_sample]
         post_sort = np.argsort(tab[log_prob])
         # Select the top frac per cent
@@ -561,26 +640,44 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        tab = self.results_table[good_sample]
-        maxlike_pos = np.argmax(tab[log_prob])
-        # Normalize the weights
-        weights = tab[log_prob] - tab[log_prob][maxlike_pos]
-        weights = np.exp(weights)
-        weights /= np.nansum(weights)
-        # From the highest to the lowest weight
-        sort = np.argsort(weights)
-        cum_weights = np.cumsum(weights[sort][::-1])
-        last_sample = np.searchsorted(cum_weights, pct / 100)
-        print(f"Selecting solutions from {last_sample}")
-        all_solutions = []
-        sample_slice = slice(-last_sample, 0)
-        solutions = tab[sort][sample_slice]
-        if as_datablock:
-            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
+        if not (0 < pct <= 100):
+            raise ValueError("pct must be in (0, 100].")
+
+        lp = np.asarray(self.results_table[log_prob])
+        good = np.isfinite(lp)
+        tab = self.results_table[good]
+        if len(tab) == 0:
+            return []
+
+        lp = np.asarray(tab[log_prob], dtype=float)
+        # normalized weights
+        lp_shift = lp - np.max(lp)
+        w = np.exp(lp_shift)
+        w_sum = np.sum(w)
+        if not np.isfinite(w_sum) or w_sum <= 0:
+            # fallback: pick the max only
+            idx_sorted = np.array([np.argmax(lp)])
+            selected = tab[idx_sorted]
         else:
-            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
-        return all_solutions
+            w /= w_sum
+
+            # Sort by decreasing weight
+            idx_sorted = np.argsort(w)[::-1]
+            w_sorted = w[idx_sorted]
+            cum = np.cumsum(w_sorted)
+
+            target = pct / 100.0
+            # first index where cum >= target, inclusive
+            k = int(np.searchsorted(cum, target, side="left")) + 1
+            selected = tab[idx_sorted[:k]]
+
+        if as_datablock:
+            return [self.solution_to_datablock(dict(row), **kwargs) if not isinstance(row, dict)
+                    else self.solution_to_datablock(row, **kwargs)
+                    for row in selected]
+
+        colnames = list(selected.colnames)
+        return [{name: row[name] for name in colnames} for row in selected]
 
     def solution_to_datablock(self, solution: dict):
         """Convert a solution into a DataBlock.
@@ -618,9 +715,7 @@ class Reader(object):
             Dictionary containing the information from the ini file.
         """
         print("Reading ini file: ", path)
-        
-        with open(path, "r") as f:
-            return cls._parse_ini_lines(f.readlines())
+        return _ini_file_to_dict(path)
 
     @classmethod
     @expand_env_vars(1)
@@ -629,107 +724,8 @@ class Reader(object):
             file_lines = file.readlines()
             line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
                 "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
-            return cls._parse_ini_lines(file_lines[line_start + 1:line_end])
-
-    @staticmethod
-    def _parse_ini_lines(lines):
-        ini_info = {}
-        for line in lines:
-            line = line.strip("## ").replace("\n", "")
-            if (len(line) == 0) or (line[0] == ";"):
-                continue
-            if line[0] == "[":
-                module = line.strip("[]")
-                ini_info[module] = {}
-            else:
-                components = line.split("=")
-                name = components[0].strip(" ")
-                str_value = components[1].replace(" ", "")
-                str_value = str_value.replace(".", "")
-                str_value = str_value.replace("e", "")
-                str_value = str_value.replace("-", "")
-                if not str_value.isnumeric():
-                    val = components[1].strip(" ")
-                    # Check for boolean
-                    if "True" in val:
-                        ini_info[module][name] = True
-                    elif "T" == val:
-                        ini_info[module][name] = True
-                    elif "False" in val:
-                        ini_info[module][name] = False
-                    elif "F" == val:
-                        ini_info[module][name] = False
-                    else:
-                        ini_info[module][name] = val                    
-                else:
-                    numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                    if len(numbers) == 1:
-                        if ("." in components[1]) or ("e" in components[1]):
-                            # Float number
-                            ini_info[module][name] = float(numbers[0])
-                        else:
-                            # int number
-                            ini_info[module][name] = int(numbers[0])
-                    else:
-                        if ("." in components[1]) or ("e" in components[1]):
-                            # Float number
-                            ini_info[module][name] = np.array(numbers, dtype=float)
-                        else:
-                            # int number
-                            ini_info[module][name] = np.array(numbers, dtype=int)
-        return ini_info
-
-    @staticmethod
-    @expand_env_vars()
-    def read_ini_values_file(path):
-        """Read the cosmosis configuration .ini file.
-
-        Parameters
-        ----------
-        path : str
-            Path to the file.
-
-        Returns
-        -------
-        ini_values : dict
-            Dictionary containing the ini_values information.
-        """
-        print("Reading ini values file: ", path)
-        ini_info = {}
-        with open(path, "r") as f:
-            for line in f.readlines():
-                line = line.replace("\n", "")
-                if (len(line) == 0) or (line[0] == ";"):
-                    continue
-                if line[0] == "[":
-                    module = line.strip("[]")
-                    ini_info[module] = {}
-                else:
-                    components = line.split("=")
-                    name = components[0].strip(" ")
-                    str_value = components[1].replace(" ", "")
-                    str_value = str_value.replace(".", "")
-                    str_value = str_value.replace("e", "")
-                    str_value = str_value.replace("-", "")
-                    if not str_value.isnumeric():
-                        ini_info[module][name] = components[1].strip(" ")
-                    else:
-                        numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                        if len(numbers) == 1:
-                            if ("." in components[1]) or ("e" in components[1]):
-                                # Float number
-                                ini_info[module][name] = float(numbers[0])
-                            else:
-                                # int number
-                                ini_info[module][name] = int(numbers[0])
-                        else:
-                            if ("." in components[1]) or ("e" in components[1]):
-                                # Float number
-                                ini_info[module][name] = np.array(numbers, dtype=float)
-                            else:
-                                # int number
-                                ini_info[module][name] = np.array(numbers, dtype=int)
-        return ini_info
+            content = "".join([l.replace("## ", "") for l in file_lines[line_start + 1:line_end]])
+            return _ini_string_to_dict(content)
 
     @classmethod
     def from_ini_file(cls, path_to_ini):
