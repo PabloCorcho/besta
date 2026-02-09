@@ -123,7 +123,7 @@ def compute_fraction_from_map(distribution, xedges=None, yedges=None):
 def compute_pdf_from_results(
     table,
     output_filename=None,
-    parameter_prefix="parameters",
+    parameter_prefix="--",
     posterior_key="post",
     parameter_keys=None,
     pdf_1d=True,
@@ -164,6 +164,8 @@ def compute_pdf_from_results(
         parameter_keys = [key for key in list(table.keys()) if parameter_prefix in key]
         print("Number of keys found ", len(parameter_keys))
 
+    sections = [p.split("--")[0] for p in parameter_keys]
+
     assert len(parameter_keys) > 0, "No keys available"
 
     # Create the array of parameter values (theta, samples)
@@ -189,8 +191,8 @@ def compute_pdf_from_results(
     for axis, mean, maxpost, key in zip(
         range(len(parameter_keys)), mean_values, maxpost_values, parameter_keys
     ):
-        kname = key.replace(parameter_prefix + "--", "")
-        header[f"hierarch axis_{axis}"] = kname, "parameter"
+        sect, kname = key.split("--")
+        header[f"hierarch axis_{axis}"] = kname, f"{sect}"
         header[f"hierarch mean_{kname}"] = mean, "post-weighted mean"
         header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
 
@@ -228,7 +230,7 @@ def compute_pdf_from_results(
                 pdf_binedges[1:] - pdf_binedges[:-1]
             )
 
-            key_name = key.replace(parameter_prefix + "--", "")
+            sect, key_name = key.split("--")
             try:
                 kde = stats.gaussian_kde(value[mask], weights=posterior[mask])
                 kde_pdf = kde(pdf_bins)
@@ -341,8 +343,8 @@ def compute_pdf_from_results(
             hdr["A1_END"] = bins_2[-1]
             hdr["A1_DELTA"] = bins_2[1] - bins_2[0]
 
-            k1 = key_1.replace(parameter_prefix + "--", "")
-            k2 = key_2.replace(parameter_prefix + "--", "")
+            sect, k1 = key_1.split("--")
+            sect, k2 = key_2.split("--")
             output_hdul.append(fits.ImageHDU(data=pdf, header=hdr, name=f"{k1}_{k2}"))
 
             if plot:
@@ -381,7 +383,7 @@ def compute_pdf_from_results(
 
 
 def make_plot_chains(chain_results, truth_values=None, output="."):
-    parameters = [par for par in chain_results.keys() if "parameters" in par]
+    parameters = [par for par in chain_results.keys() if "--" in par]
     if truth_values is None:
         truth_values = [np.nan] * len(parameters)
     all_figs = []
@@ -399,7 +401,7 @@ def make_plot_chains(chain_results, truth_values=None, output="."):
 
 
 def compute_chain_percentiles(chain_results, pct=[0.5, 0.16, 0.50, 0.84, 0.95]):
-    parameters = [par for par in chain_results.keys() if "parameters" in par]
+    parameters = [par for par in chain_results.keys() if "--" in par]
     pct_resutls = {}
     for par in parameters:
         sort_pos = np.argsort(chain_results[par])
