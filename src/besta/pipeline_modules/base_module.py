@@ -651,7 +651,7 @@ class SpectraFitModule(BaseModule):
             dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
 
         self.config["flux"] = flux
-        self.config["cov"] = cov
+        self.config["var"] = cov
         self.config["redshift"] = redshift
         self.config["wlUnits"] = wl_units
         self.config["fluxUnits"] = flux_units
@@ -745,7 +745,7 @@ class SpectraFitModule(BaseModule):
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
         snr = np.nanpercentile(
-            self.config["flux"] / np.sqrt(self.config["cov"]),
+            self.config["flux"] / np.sqrt(self.config["var"]),
             (16, 50, 84)
         )
         ax.annotate(f"SNR (16, 50, 84 percentiles): "
@@ -754,8 +754,8 @@ class SpectraFitModule(BaseModule):
                     fontsize=8)
         ax.fill_between(
             self.config["wavelength"].value,
-            self.config["flux"] - self.config["cov"] ** 0.5,
-            self.config["flux"] + self.config["cov"] ** 0.5,
+            self.config["flux"] - self.config["var"] ** 0.5,
+            self.config["flux"] + self.config["var"] ** 0.5,
             color="k",
             alpha=0.5,
         )
@@ -802,14 +802,14 @@ class SpectraFitModule(BaseModule):
 
         # Plot chi2
         good_pixels = weights > 0
-        chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["cov"]
+        chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["var"]
         mean_chi2 = np.nanmean(chi2[good_pixels])
         median_chi2 = np.nanmedian(chi2[good_pixels])
         nmad_chi2 = 1.4826 * np.nanmedian(
             np.abs(chi2[good_pixels] - median_chi2))
         loglike = self.log_like(self.config["flux"][good_pixels],
                                 flux_model[good_pixels],
-                                self.config["cov"][good_pixels],
+                                self.config["var"][good_pixels],
                                 weights=weights[good_pixels])
         ax = axs[1, 0]
         ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)

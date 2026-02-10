@@ -96,7 +96,7 @@ class FullSpectralFitModule(SpectraFitModule):
             block["parameters", "stellar_mass"] = 0.0
             return 0
         # Obtain parameters from setup
-        cov = self.config["cov"]
+        cov = self.config["var"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
