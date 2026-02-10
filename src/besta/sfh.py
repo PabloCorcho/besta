@@ -407,10 +407,10 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             deltas = np.exp(times)  # positive
             times = np.cumsum(deltas)
             times = times / times[-1] * self.today.to_value("Gyr")
+        # Ensure monotonically increasing and always smaller than the age of the Universe
         delta_t = times[1:] - times[:-1]
-        if (delta_t <= 0).any():
+        if (delta_t <= 0).any() or times[-1] >= self.today.to_value("Gyr"):
             return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
-        
         # Update the mass of the tabular model
         self.model.times = times << u.Gyr
         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
