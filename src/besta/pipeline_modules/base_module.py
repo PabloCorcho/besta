@@ -14,13 +14,14 @@ import numpy as np
 from scipy.stats import norm
 from sklearn.decomposition import NMF
 from astropy import units as u
+from astropy.io import ascii
 
 from cosmosis import ClassModule
 from cosmosis import DataBlock
 from cosmosis.datablock import SectionOptions, option_section
 
 from pst.utils import flux_conserving_interpolation
-from pst.observables import Filter
+from pst.observables import Filter, FilterList
 from pst import SSP, dust, sed
 from pst.galaxy import GalaxySED
 
@@ -155,13 +156,13 @@ class BaseModule(ClassModule):
 
         ssp = getattr(SSP, ssp_name)(*ssp_args, path=ssp_dir)
 
+        # For photometric analyses stop here
+        #TODO: loose check
+        if not options.has_value("velscale"):
+            self.config["ssp_model"] = ssp
+            return
         # Parameters to format the templates to the input spectra
         velscale = options["velscale"]
-
-        if options.has_value("wlNormRange"):
-            wl_norm_range = options["wlNormRange"]
-        else:
-            wl_norm_range = None
 
         if options.has_value("SSP-NMF-N"):
             n_nmf = options.get_int("SSP-NMF-N")
@@ -246,12 +247,16 @@ class BaseModule(ClassModule):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda[ith], lsf_sigma_pixels)
 
-        if normalize and wl_norm_range is not None:
-            print("Normalizing SSP model SED within range ", wl_norm_range)
-            mlr = ssp.get_specific_mass_lum_ratio(wl_norm_range)
-            ssp.L_lambda = (
-                ssp.L_lambda.value * mlr.value[:, :, np.newaxis]
-            ) * ssp.L_lambda.unit
+        # if normalize:
+        #     if options.has_value("wlNormRange"):
+        #         wl_norm_range = options["wlNormRange"]
+        #     else:
+        #         wl_norm_range = None
+        #     print("Normalizing SSP model SED within range ", wl_norm_range)
+        #     mlr = ssp.get_specific_mass_lum_ratio(wl_norm_range)
+        #     ssp.L_lambda = (
+        #         ssp.L_lambda.value * mlr.value[:, :, np.newaxis]
+        #     ) * ssp.L_lambda.unit
 
         # Reshape the SSP model from (metal, age, wave) -> (metal * age, wave)
         ssp_sed = ssp.L_lambda.value.reshape(
@@ -270,7 +275,6 @@ class BaseModule(ClassModule):
             ssp_sed = pca.components_
 
         self.config["ssp_model"] = ssp
-        self.config["ssp_sed"] = ssp_sed
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
         # Grid parameters
         self.config["velscale"] = velscale
@@ -374,7 +378,7 @@ class BaseModule(ClassModule):
         galaxy = GalaxySED(stellar_model=stars,
                            dust_attenuation_model=dust_attenuation,
                            dust_model=dust_emission,
-                           target_wavelength=self.config["ssp_wl"] << u.AA,
+                           target_wavelength=self.config["ssp_model"].wavelength,
                            redshift=self.config.get("redshift", 0.0),
                            cosmology=cosmology)
 
@@ -844,7 +848,7 @@ class SpectraFitModule(BaseModule):
 class PhotometryFitModule(BaseModule):
     """Base class for photometry fitting modules in BESTA."""
     
-    def prepare_observed_photometry(self, options):
+    def prepare_observed_photometry(self, options: SectionOptions):
         """Prepare the Photometric Data.
 
         Parameters
@@ -855,25 +859,36 @@ class PhotometryFitModule(BaseModule):
         photometry_file = os.path.expandvars(options["inputPhotometry"])
 
         # Read the data
-        filter_names = np.loadtxt(photometry_file, usecols=0, dtype=str)
-        flux, flux_err = np.loadtxt(
-            photometry_file, usecols=(1, 2), unpack=True, dtype=float
-        )
-
-        nanomaggie = u.def_unit('nanomaggie', 3631e-9 * u.Jy)
-        if options.has_value("fluxUnits"):
-            print("Converting flux units to nanomaggies")
-            flux_units = u.Unit(options["fluxUnits"])
-            flux = (flux << flux_units).to(nanomaggie).value
-            flux_err = (flux_err << flux_units).to(nanomaggie).value
+        input_data = ascii.read(photometry_file)
+        filter_names = input_data[input_data.colnames[0]].value.astype(str)
+        flux = input_data[input_data.colnames[1]].value.astype(float)
+        flux_err = input_data[input_data.colnames[2]].value.astype(float)
+        # Handle upper and lower limits
+        if len(input_data.colnames) > 3:
+            measure_limits = input_data[input_data.colnames[3]].value.astype(str)
+            is_upper = measure_limits == "upper"
+            is_lower = measure_limits == "lower"
         else:
-            print("Assuming input flux units are in nanomaggies")
-            flux_units = nanomaggie
+            is_upper = None
+            is_lower = None
+
+        # Unit conversion
+
+        if options.has_value("fluxUnits"):
+            print("Converting input flux units to uJy")
+            flux_units = u.Unit(options["fluxUnits"])
+            flux = (flux << flux_units).to("uJy").value
+            flux_err = (flux_err << flux_units).to("uJy").value
+        else:
+            print("Assuming input flux units are in uJy")
+            flux_units = u.Unit("uJy")
 
         self.config["photometry_flux"] = flux
         self.config["photometry_flux_var"] = flux_err**2
-        self.config["photometry_flux_units"] = flux_units
-        # TODO: include redshift and flux conversion to luminosities
+        self.config["photometry_flux_unit"] = flux_units
+        self.config["photometry_upper_limit"] = is_upper
+        self.config["photometry_lower_limit"] = is_lower
+
         # Load the photometric filters
         photometric_filters = []
         for filter_name in filter_names:
@@ -883,21 +898,184 @@ class PhotometryFitModule(BaseModule):
             else:
                 filt = Filter.from_svo(filter_name)
             photometric_filters.append(filt)
+        # TODO: For now save both for backwards compatibility
+        # TODO: Superseed by FilterList
         self.config["filters"] = photometric_filters
+        self.config["filter_list"] = FilterList(photometric_filters)
 
-        if options.has_value("flux_to_lum"):
-            if options["flux_to_lum"] == True:
-                print("Converting input fluxes to absolute flux at 10 pc using"
-                      f"input redshift {options['redshift']}")
-                distance = cosmology.luminosity_distance(
-                    options["redshift"]).to_value("10 pc")
-                self.config["photometry_flux"] *= distance**2
-                self.config["photometry_flux_var"] *= distance**4
-
+        redshift = options.get_double("redshift", default=0.0)
+        self.config["redshift"] = redshift
         print("-> Configuration done.")
 
+    def prepare_galaxy(self, options):
+        """TODO"""
+        
+        # Stellar emissions
+        ssp_model = self.config.get("ssp_model")
+        if ssp_model is None:
+            self.prepare_ssp_model(options)
+            ssp_model = self.config["ssp_model"]
+
+        sfh_model = self.config.get("sfh_model")
+        if sfh_model is None:
+            self.prepare_sfh_model(options)
+            sfh_model = self.config["sfh_model"].model
+
+        filters = self.config.get("filter_list")
+        if filters is None:
+            self.prepare_observed_photometry(options)
+
+        ## Create stellar emission model
+        print("Setting up stellar emission component")
+        stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
+
+        # Dust extinction and emission
+        dust_attenuation = None
+        dust_emission = None
+        if options.get_bool("DustExtinction", False):
+            att_name = options.get_string(
+                "DustAttenuationModel", "DustScreenAttenuation")
+            ext_law = options.get_string("ExtinctionLaw", "ccm89")
+            dust_curve = dust.ExtinctionLibCurve(law=ext_law)
+            if att_name == "DustScreenAttenuation":
+                dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
+
+            if options.get_bool("DustEmission", False):
+                dust_sed = dust.Casey2012DustComponent()
+
+                if options.get_bool("DustCalorimetric", True):
+                    dust_emission = dust.CalorimetricDustComponent(
+                        attenuation=dust_attenuation,
+                        dust_sed_component=dust_sed
+                    )
+        # Setup target wavelength range
+        min_wl, max_wl = filters.wavelength_range()
+        z_obs = self.config.get("redshift", 0.0)
+        target_wl = np.arange(min_wl.to_value("AA") * (1 + z_obs),
+                              max_wl.to_value("AA") * (1 + z_obs),
+                              10) << u.AA
+        print("Target wavelength range: ",
+              f"{target_wl[0]:.1f} -- {target_wl[-1]:.1f}",
+              " (10 AA)")
+
+        print("Setting up galaxy model")
+        galaxy = GalaxySED(stellar_model=stars,
+                           dust_attenuation_model=dust_attenuation,
+                           dust_model=dust_emission,
+                           target_wavelength=target_wl,
+                           redshift=z_obs,
+                           cosmology=cosmology,
+                           filters=filters)
+
+        params = galaxy.build_param_index(include_fixed=False, prefix="")
+        sections = [s.rsplit(".", 1) for s in params]
+        self.config["galaxy-params"] = params
+        self.config["galaxy-sections"] = sections
+        self.config["galaxy"] = galaxy
+
     def plot_solution(self, solution: DataBlock, figname=None):
-        pass
+        """Plot the fit."""
+        flux_model = self.make_observable(solution, parse=True)
+        if isinstance(flux_model, tuple):
+            weights = flux_model[1]
+            flux_model = flux_model[0]
+        else:
+            weights = np.ones_like(flux_model)
+        # Include input weights
+        fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
+                                constrained_layout=True,
+                                width_ratios=[4, 1],
+                                height_ratios=[2, 1],
+                                figsize=(16, 9))
+        plt.suptitle(f"Module: {self.name}")
+
+        # Display the information
+        ax = axs[0, 1]
+        sol_keys = solution.keys()
+        sol_sections = {}
+        sol_sections["Settings"] = {
+            "No. bands": self.config["photometry_flux"].size,
+            "use_transforms": self.config.get("use_transforms", False)}
+
+        for (sec, name) in sol_keys:
+            if sec not in sol_sections:
+                sol_sections[sec] = {name: solution[sec, name]}
+            else:
+                sol_sections[sec].update({name: solution[sec, name]})
+
+        if sol_sections["Settings"]["use_transforms"]:
+            sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
+            sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
+
+            for key, value in zip(self.config["sfh_model"].sfh_bin_keys,
+                                  sfh_params_phys):
+                sol_sections[self.config["sfh_model"].sect_name][key] = value
+
+        sections = [(k, v) for k, v in sol_sections.items()]
+
+        _ = draw_dict_in_axes(ax, sections, section_spacing=1,
+                          title_style="underline")
+        ax.axis("off")
+        # Plot input photometry and model
+        eff_wl = self.config["filter_list"].effective_wavelength
+        ax = axs[0, 0]
+        snr = np.nanpercentile(
+            self.config["photometry_flux"] / np.sqrt(self.config["photometry_flux_var"]),
+            (16, 50, 84)
+        )
+        ax.annotate(f"SNR (16, 50, 84 percentiles): "
+                    f"{snr[0]:.1f}, {snr[1]:.1f}, {snr[2]:.1f}",
+                    xy=(0.02, 0.98), xycoords="axes fraction", va="top",
+                    fontsize=8)
+        
+        uplim = self.config["photometry_upper_limit"]
+        uplim = uplim if uplim is not None else False
+        lolim = self.config["photometry_lower_limit"]
+        lolim = lolim if lolim is not None else False
+
+        ax.errorbar(eff_wl.to_value("AA"), self.config["photometry_flux"],
+                    yerr=np.sqrt(self.config["photometry_flux_var"]),
+                    lolims=lolim, uplims=uplim,
+                    capsize=2, label="Observed",
+                    fmt="s", mec="k", mfc="none", ecolor="k"
+                    )
+
+        # Plot model
+        ax.scatter(eff_wl.to_value("AA"), flux_model, edgecolors="r",
+                   fc="none", lw=2, label="Model")
+        # Plot residuals
+        ax.set_ylabel(f"Flux density ({self.config['photometry_flux_unit']})")
+        ax.legend(bbox_to_anchor=(0.5, 1.01), loc="lower center",
+                  ncols=5, fontsize=8)
+
+        ax.set_ylim(self.config["photometry_flux"].min() * 0.8,
+                    self.config["photometry_flux"].max() * 1.2)
+
+        twax = ax.twinx()
+        for f in self.config["filter_list"].filters:
+            twax.plot(f.filter_wavelength, f.filter_resp, label=f.name)
+        twax.legend(fontsize=6, loc="lower right")
+        twax.set_ylabel("Filter response")
+        # Plot chi2
+        chi2 = (flux_model - self.config["photometry_flux"]) ** 2 / self.config["photometry_flux_var"]
+        ax = axs[1, 0]
+        ax.scatter(eff_wl.to_value("AA"), chi2, c="k")
+        ax.grid(visible=True)
+        ax.set_ylabel(r"$\chi^2$")
+        ax.set_yscale("symlog", linthresh=1.0)
+        ax.set_ylim(0, np.nanmax(chi2) * 2)
+        ax.set_xlabel("Wavelength (AA)")
+
+        ax = axs[1, 1]
+        ax.axis("off")
+
+        if figname is not None:
+            fig.savefig(figname, bbox_inches="tight",
+                    dpi=300)
+            print(f"Fit plot saved at: {figname}")
+
+        plt.close()
+        return fig
 
 class EquivalentWidthFitModule(BaseModule):
     """Base class for equivalent width fit modules in BESTA."""
