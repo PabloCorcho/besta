@@ -80,7 +80,7 @@ class FullSpectralFitModule(SpectraFitModule):
         normalization = np.nanmedian(
             self.config["flux"][weights > 0] / flux_model[weights > 0]
         )
-        block["parameters", "stellar_mass"] = np.log10(normalization) + 10
+        block["extra", "stellar_mass"] = np.log10(normalization) + 10
         return flux_model * normalization, weights
 
     def execute(self, block):
@@ -93,7 +93,7 @@ class FullSpectralFitModule(SpectraFitModule):
         if not valid:
             print("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["parameters", "stellar_mass"] = 0.0
+            block["extra", "stellar_mass"] = 0.0
             return 0
         # Obtain parameters from setup
         cov = self.config["var"]
