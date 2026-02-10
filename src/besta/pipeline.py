@@ -157,7 +157,7 @@ class MainPipeline(object):
                     figname = subpipe_config["output"].get(
                         "figurename",
                         subpipe_config["output"]["filename"].replace(".txt", "")
-                        + f"_{par_module}_best_fit_spectra.png",
+                        + f"_{par_module}_best_fit_solution.png",
                     )
                     pipeline_module.plot_solution(solution_datablock,
                                              figname=figname)
