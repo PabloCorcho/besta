@@ -7,7 +7,7 @@ from besta.sfh import ExponentialSFH
 from besta.pipeline import MainPipeline
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.io import Reader
-from besta.postprocess import compute_pdf_from_results
+from besta.postprocess import summarize_results
 from pst.SSP import PopStar
 
 class TestPipelineManagerFit(unittest.TestCase):
@@ -137,12 +137,7 @@ class TestPipelineManagerFit(unittest.TestCase):
         #                           atol=0.1),
         #                "Wrong exponential SFH tau")        
 
-        post_hdul = compute_pdf_from_results(results.results_table)
-
-        print("Percentiles av: ", post_hdul["PERCENTILES"].data["av_pct"])
-        print("Percentiles logtau: ", post_hdul["PERCENTILES"].data["logtau_pct"])
-        print("Percentiles ism_metallicity_today: ", post_hdul["PERCENTILES"].data["ism_metallicity_today_pct"])
-        print("Percentiles stellar_mass: ", post_hdul["PERCENTILES"].data["stellar_mass_pct"])
+        results = summarize_results(results.results_table)
 
 if __name__ == "__main__":
     unittest.main()

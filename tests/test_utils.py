@@ -5,7 +5,7 @@ from astropy.table import Table
 
 from cosmosis import DataBlock
 
-from besta import spectrum, postprocess, io
+from besta import spectrum, io
 from besta.pipeline import MainPipeline
 
 
@@ -54,22 +54,6 @@ def test_legendre_decorator_applies_coeffs():
     out = Dummy().make_observable(blk)
     # Output should not be all ones after applying polynomials
     assert not np.allclose(out, 1.0)
-
-
-def test_weighted_1d_cmf_raises_on_zero_weights():
-    with pytest.raises(ValueError):
-        postprocess.weighted_1d_cmf(np.array([1.0, 2.0]), np.array([0.0, 0.0]))
-
-
-def test_compute_pdf_handles_minimal_table(tmp_path):
-    tbl = Table()
-    tbl["parameters--x"] = [0.1, 0.2, 0.3]
-    tbl["post"] = [0.0, 1.0, 2.0]
-    outfile = tmp_path / "pdf.fits"
-    hdul = postprocess.compute_pdf_from_results(tbl, output_filename=str(outfile))
-    assert "PERCENTILES" in hdul
-    assert outfile.exists()
-
 
 def test_reader_selection_helpers():
     reader = io.Reader.__new__(io.Reader)
