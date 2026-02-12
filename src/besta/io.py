@@ -3,6 +3,9 @@ import os
 import functools
 import re
 import configparser
+import importlib.util
+import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -339,6 +342,20 @@ def read_results_file(path):
             table.add_column(matrix.T[ith], name=c.lower())
     return table
 
+def load_class_from_path(file_path, class_name):
+    file_path = Path(file_path)
+
+    # Create module spec
+    spec = importlib.util.spec_from_file_location(
+        file_path.stem,  # module name
+        file_path
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[file_path.stem] = module
+    spec.loader.exec_module(module)
+
+    return getattr(module, class_name)
 
 class Reader(object):
     r"""CosmoSIS run results reader.
@@ -436,7 +453,10 @@ class Reader(object):
     @property
     def modules(self) -> list:
         """List of modules used in the pipeline as specified in the ini file."""
-        return self.ini["pipeline"]["modules"].split(" ")
+        m = self.ini["pipeline"]["modules"]
+        if isinstance(m, str):
+            return [m]
+        return m
 
     @property
     def module_names(self) -> list:
@@ -458,16 +478,12 @@ class Reader(object):
         """
         if module_name not in self.modules:
             raise ValueError(f"Module {module_name} not found in the pipeline.")
-        module_options = self.ini[module_name]
-        # The module expects its options under a section with its name
-        module_class = module_name.split("_")[0] 
-        if "Module" not in module_class:
-            module_class += "Module"
-        options = {module_class.replace("Module", ""): module_options}
-        if not hasattr(pipeline_modules, module_class):
-            raise ValueError(
-                f"Module class {module_class} not found in besta.pipeline_modules.")
-        return getattr(pipeline_modules, module_class)(options)
+        module = load_class_from_path(self.ini[module_name]["file"], "module")
+        return module(self.ini, alias=module_name)
+        # if not hasattr(pipeline_modules, module_class):
+        #     raise ValueError(
+        #         f"Module class {module_class} not found in besta.pipeline_modules.")
+        # return getattr(pipeline_modules, module_class)(options)
 
     #TODO: deprecate
     @property
