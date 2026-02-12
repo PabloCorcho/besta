@@ -60,7 +60,7 @@ class BaseModule(ClassModule):
         """Create an observable from an input set of model parameters."""
 
     @abstractmethod
-    def execute(self, block: DataBlock, config: dict):
+    def execute(self, block: DataBlock, *args, **kwargs):
         """Execute the pipeline."""
 
     @abstractmethod
@@ -250,17 +250,6 @@ class BaseModule(ClassModule):
                 for ith in range(ssp.L_lambda.shape[0]):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda[ith], lsf_sigma_pixels)
-
-        # if normalize:
-        #     if options.has_value("wlNormRange"):
-        #         wl_norm_range = options["wlNormRange"]
-        #     else:
-        #         wl_norm_range = None
-        #     print("Normalizing SSP model SED within range ", wl_norm_range)
-        #     mlr = ssp.get_specific_mass_lum_ratio(wl_norm_range)
-        #     ssp.L_lambda = (
-        #         ssp.L_lambda.value * mlr.value[:, :, np.newaxis]
-        #     ) * ssp.L_lambda.unit
 
         # Reshape the SSP model from (metal, age, wave) -> (metal * age, wave)
         ssp_sed = ssp.L_lambda.value.reshape(
