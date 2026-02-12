@@ -73,7 +73,7 @@ class FullSpectralFitModule(SpectraFitModule):
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "av"]
+            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "a_v"]
         ).value
 
         weights = self.config["weights"] * mask
