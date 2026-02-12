@@ -1,13 +1,20 @@
+from astropy import units as u
 from besta.pipeline_modules.base_module import PhotometryFitModule
 import numpy as np
 
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 
+import warnings
+from astropy.units import UnitsWarning
+
+# Ignore only astropy units warnings
+warnings.simplefilter('ignore', category=UnitsWarning)
+
 class GalaxyPhotometryModule(PhotometryFitModule):
     name = "GalaxyPhotometry"
 
-    def __init__(self, options):
+    def __init__(self, options, **kwargs):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
@@ -16,7 +23,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
                 the sampler.
 
         """
-        super().__init__(options)
+        super().__init__(options, **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_photometry(options)
         self.prepare_galaxy(options)
@@ -24,7 +31,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         # Set parameters fixed in this module
         self.config["galaxy"].redshift.fixed = True
 
-    def make_observable(self, block, parse=False):
+    def make_observable(self, block, parse=False, include_spec=False):
         """Create the spectra model from the input parameters"""
         if parse:
             # This updates the SFH parameters
@@ -37,13 +44,25 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         parameters = dict(zip(keys, values))
 
         galaxy = self.config["galaxy"]
-        galaxy.update_parameters(parameters, strict=False)
+        galaxy.update_parameters(parameters, strict=False, validate=False)
         # Synthesis
-        flux_model = 1e10 * galaxy.emission_photometry(to_obs_frame=True).to_value("uJy")
+        flux_model = 1e10 * galaxy.emission_photometry(to_obs_frame=True).to_value(
+            self.config["photometry_flux_unit"])
         non_zero = flux_model > 0
-        normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
-        block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        if non_zero.any():
+            normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
+            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        else:
+            print("All fluxes are zero")
+            normalization = 0
+            block["extra", "stellar_mass"] = np.nan
 
+        # Mostly for visualization purposes
+        if include_spec:
+            full_spec = 1e10 * galaxy.emission_spectrum(to_obs_frame=True).to_value(
+                    self.config["photometry_flux_unit"],
+                    u.spectral_density(galaxy.target_wavelength))
+            return flux_model * normalization, full_spec * normalization
         return flux_model * normalization
 
     def execute(self, block):
@@ -54,13 +73,13 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         """
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            print("Invalid sample")
+            # print("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
         flux_model = self.make_observable(block)
-        print(flux_model)
+
         # Calculate likelihood-value of the fit
         like = self.log_like(self.config["photometry_flux"],
                              flux_model,
@@ -88,3 +107,5 @@ def execute(block, mod):
 
 def cleanup(mod):
     mod.cleanup()
+
+module = GalaxyPhotometryModule
