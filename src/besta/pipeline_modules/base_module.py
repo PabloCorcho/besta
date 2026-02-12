@@ -962,7 +962,7 @@ class PhotometryFitModule(BaseModule):
 
         # Setup target wavelength range
         min_wl, max_wl = filters.wavelength_range()
-        if options.get_bool("DustCalorimetric", True):
+        if dust_emission is not None:
             min_wl = np.min((
                 min_wl.to_value(u.AA),
                 stars.ssp.wavelength.min().to_value("AA"))) << u.AA            
