@@ -9,7 +9,7 @@ from besta import spectrum
 class FullSpectralFitModule(SpectraFitModule):
     name = "FullSpectralFit"
 
-    def __init__(self, options):
+    def __init__(self, options, **kwargs):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
@@ -18,7 +18,7 @@ class FullSpectralFitModule(SpectraFitModule):
                 the sampler.
 
         """
-        super().__init__(options)
+        super().__init__(options, **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
@@ -125,3 +125,5 @@ def execute(block, mod):
 
 def cleanup(mod):
     mod.cleanup()
+
+module = FullSpectralFitModule
