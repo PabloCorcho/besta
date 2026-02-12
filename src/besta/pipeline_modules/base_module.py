@@ -97,7 +97,6 @@ class BaseModule(ClassModule):
             for section, name in keys:
                 options[option_section, name] = options[section, name]
             options = SectionOptions(options)
-        print(isinstance(options, dict), type(options), options.__class__)
         return options
 
     def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
