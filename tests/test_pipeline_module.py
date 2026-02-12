@@ -108,7 +108,7 @@ class TestPipelineModule(unittest.TestCase):
         print("Module successfully executed")
 
     def test_galaxy_photometry(self):
-        print("#" * 30 + "\nTesting GalaxySpectra module\n" + "#" * 30)
+        print("#" * 30 + "\nTesting GalaxyPhotometry module\n" + "#" * 30)
         module = GalaxyPhotometryModule
         config = {"GalaxyPhotometry": {
                 "file": module.get_path(),
