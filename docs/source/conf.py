@@ -112,7 +112,12 @@ html_theme = 'sphinx_rtd_theme'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-html_logo = "besta_transparent.png"
+html_css_files = [
+    "custom.css",
+]
+
+# html_logo = "besta_transparent.png"
+html_logo = "_static/besta.png"
 html_theme_options = {
     'logo_only': True,
     'display_version': False,
