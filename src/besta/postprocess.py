@@ -1077,8 +1077,6 @@ def summarize_results(
     logpost_all = _as_float_array(table[posterior_key])
     # Finite mask across posterior and all selected parameters
     mask = np.isfinite(logpost_all)
-    # for k in keys:
-    #     mask &= np.isfinite(_as_float_array(table[k]))
 
     if not np.any(mask):
         raise ValueError("No finite samples after masking posterior/parameters.")
