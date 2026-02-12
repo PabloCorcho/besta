@@ -2,7 +2,6 @@
 import os
 import functools
 import re
-import configparser
 import importlib.util
 import sys
 from pathlib import Path
