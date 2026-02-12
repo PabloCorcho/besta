@@ -35,11 +35,15 @@ from besta.config import cosmology, memory
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
-    def __init__(self, options):
+    def __init__(self, options, *, alias=None):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
         """
+        if alias is None:
+            self.alias = self.name
+        else:
+            self.alias = alias
         options = self.parse_options(options)
         self.config = {}
         # Likelihood name
@@ -87,12 +91,13 @@ class BaseModule(ClassModule):
             options = DataBlock.from_dict(options)
             if options.has_section(option_section):
                 options._delete_section(option_section)
-            keys = options.keys(self.name)
+            keys = options.keys(self.alias)
             if not keys:
-                raise ValueError(f"No options found for module {self.name}")
+                raise ValueError(f"No options found for module alias {self.alias}")
             for section, name in keys:
                 options[option_section, name] = options[section, name]
             options = SectionOptions(options)
+        print(isinstance(options, dict), type(options), options.__class__)
         return options
 
     def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
@@ -335,60 +340,7 @@ class BaseModule(ClassModule):
         self.config["sfh_model"] = sfh_model
         print("-> Configuration done")
 
-    def prepare_galaxy(self, options):
-        """TODO"""
-        
-        # Stellar emissions
-        ssp_model = self.config.get("ssp_model")
-        if ssp_model is None:
-            self.prepare_ssp_model(options)
-            ssp_model = self.config["ssp_model"]
-
-        sfh_model = self.config.get("sfh_model")
-        if sfh_model is None:
-            self.prepare_sfh_model(options)
-            sfh_model = self.config["sfh_model"].model
-
-        ## Create stellar emission model
-        print("Setting up stellar emission component")
-        stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
-        
-        # Dust extinction and emission
-        if options.get_bool("DustExtinction", False):
-            att_name = options.get_string(
-                "DustAttenuationModel", "DustScreenAttenuation")
-            ext_law = options.get_string("ExtinctionLaw", "ccm89")
-            dust_curve = dust.ExtinctionLibCurve(law=ext_law)
-            if att_name == "DustScreenAttenuation":
-                dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
-            else:
-                dust_attenuation = None
-
-            if options.get_bool("DustEmission", False):
-                dust_sed = dust.Casey2012DustComponent()
-
-                if options.get_bool("DustCalorimetric", True):
-                    dust_emission = dust.CalorimetricDustComponent(
-                        attenuation=dust_attenuation,
-                        dust_sed_component=dust_sed
-                    )
-            else:
-                dust_emission = None
-        print("Setting up galaxy model")
-        galaxy = GalaxySED(stellar_model=stars,
-                           dust_attenuation_model=dust_attenuation,
-                           dust_model=dust_emission,
-                           target_wavelength=self.config["ssp_model"].wavelength,
-                           redshift=self.config.get("redshift", 0.0),
-                           cosmology=cosmology)
-
-        params = galaxy.build_param_index(include_fixed=False, prefix="")
-        sections = [s.rsplit(".", 1) for s in params]
-        self.config["galaxy-params"] = params
-        self.config["galaxy-sections"] = sections
-        self.config["galaxy"] = galaxy
-
-    def log_like(self, data, model, cov, weights=None, is_upper=None, is_lower=None, include_norm=True):
+    def log_like(self, data, model, var, weights=None, is_upper=None, is_lower=None, include_norm=True):
         """Compute log-likelihood between data and model.
 
         Parameters
@@ -398,27 +350,26 @@ class BaseModule(ClassModule):
             For limits: the limit value (upper or lower).
         model : np.ndarray
             Model prediction for each datum.
-        cov : np.ndarray
-            Per-datum variance (diagonal). Must match shape of data/model.
+        var : np.ndarray
+            Data variance. Must match shape of data/model.
         weights : np.ndarray, optional
-            Per-datum weights. If provided, returns weighted mean log-likelihood
-            (same behavior as your original method).
+            Data weights. If provided, returns weighted mean log-likelihood.
         is_upper : np.ndarray[bool], optional
             Mask for upper limits (x < data).
         is_lower : np.ndarray[bool], optional
             Mask for lower limits (x > data).
-        include_norm : bool, optional
+        include_norm : bool, optional, default=True
             If True, include Gaussian normalization terms for detections:
-            -0.5*log(2*pi*var). Defaults to False to match your original chi2-only form.
+            -0.5*log(2*pi*var).
 
         Returns
         -------
         loglike : float
             Total (or weighted-mean) log-likelihood.
         """
-        if data.shape != model.shape or data.shape != cov.shape:
-            raise ValueError("data, model, cov must have the same shape (cov is per-datum variance).")
-        if np.any(cov <= 0):
+        if data.shape != model.shape or data.shape != var.shape:
+            raise ValueError("data, model, var must have the same shape (cov is per-datum variance).")
+        if np.any(var <= 0):
             raise ValueError("All cov entries must be > 0 (variance).")
 
         if is_upper is None:
@@ -434,7 +385,7 @@ class BaseModule(ClassModule):
         if is_upper.shape != data.shape or is_lower.shape != data.shape:
             raise ValueError("is_upper and is_lower must have the same shape as data/model.")
         if np.any(is_upper & is_lower):
-            raise ValueError("A datum cannot be both an upper and a lower limit.")
+            raise ValueError("A data point cannot be both an upper and a lower limit.")
 
         if weights is None:
             weights = np.ones_like(data, dtype=float)
@@ -447,14 +398,12 @@ class BaseModule(ClassModule):
                 raise ValueError("weights must be non-negative.")
             normalize = True
 
-        sigma = np.sqrt(cov)
+        sigma = np.sqrt(var)
 
-        # Per-datum log-likelihoods
         logp = np.empty_like(data, dtype=float)
-
         det = ~(is_upper | is_lower)
 
-        # Detections: uase a Gaussian logpdf
+        # For detections: Gaussian logpdf
         if np.any(det):
             if include_norm:
                 logp[det] = norm.logpdf(data[det], loc=model[det], scale=sigma[det])
@@ -472,7 +421,7 @@ class BaseModule(ClassModule):
             z_l = (data[is_lower] - model[is_lower]) / sigma[is_lower]
             logp[is_lower] = norm.logsf(z_l)  # 1 - logcdf
 
-        # Weighted aggregation
+        # User-provided weighted mean
         if normalize:
             wsum = np.sum(weights)
             if wsum <= 0:
@@ -664,6 +613,62 @@ class SpectraFitModule(BaseModule):
             self.config["lsf"] = instrumental_lsf
 
         print("-> Configuration done.")
+
+    def prepare_galaxy(self, options):
+        """TODO"""
+        
+        # Stellar emissions
+        ssp_model = self.config.get("ssp_model")
+        if ssp_model is None:
+            self.prepare_ssp_model(options)
+            ssp_model = self.config["ssp_model"]
+
+        sfh_model = self.config.get("sfh_model")
+        if sfh_model is None:
+            self.prepare_sfh_model(options)
+            sfh_model = self.config["sfh_model"].model
+
+        ## Create stellar emission model
+        print("Setting up stellar emission component")
+        stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
+        
+        # Dust extinction and emission
+        dust_attenuation = None
+        dust_emission = None
+        if options.get_bool("DustAttenuation", False):
+            print("Setting up dust attenuation")
+            att_name = options.get_string(
+                "DustAttenuationModel", "DustScreenAttenuation")
+            ext_law = options.get_string("ExtinctionLaw", "ccm89")
+            dust_curve = dust.ExtinctionLibCurve(law=ext_law)
+            print("DurstAttenuationModel: ", att_name)
+            # TODO: implement interface for other models
+            if att_name == "DustScreenAttenuation":
+                dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
+
+            if options.get_bool("DustEmission", False):
+                print("Setting up dust emission model")
+                dust_sed = dust.Casey2012DustComponent()
+                if options.get_bool("DustCalorimetric", True):
+                    print("Setting energy balance approximation")
+                    dust_emission = dust.CalorimetricDustComponent(
+                        attenuation=dust_attenuation,
+                        dust_sed_component=dust_sed
+                    )
+
+        print("Setting up galaxy model")
+        galaxy = GalaxySED(stellar_model=stars,
+                           dust_attenuation_model=dust_attenuation,
+                           dust_model=dust_emission,
+                           target_wavelength=self.config["ssp_model"].wavelength,
+                           redshift=self.config.get("redshift", 0.0),
+                           cosmology=cosmology)
+
+        params = galaxy.build_param_index(include_fixed=False, prefix="")
+        sections = [s.rsplit(".", 1) for s in params]
+        self.config["galaxy-params"] = params
+        self.config["galaxy-sections"] = sections
+        self.config["galaxy"] = galaxy
 
     def prepare_legendre_polynomials(self, options):
         """Prepare the set of Legendre polynomials used during the fit.
@@ -879,6 +884,7 @@ class PhotometryFitModule(BaseModule):
             flux_units = u.Unit(options["fluxUnits"])
             flux = (flux << flux_units).to("uJy").value
             flux_err = (flux_err << flux_units).to("uJy").value
+            flux_units = u.Unit("uJy")
         else:
             print("Assuming input flux units are in uJy")
             flux_units = u.Unit("uJy")
@@ -905,6 +911,7 @@ class PhotometryFitModule(BaseModule):
 
         redshift = options.get_double("redshift", default=0.0)
         self.config["redshift"] = redshift
+        print("Source redshift: ", redshift)
         print("-> Configuration done.")
 
     def prepare_galaxy(self, options):
@@ -932,31 +939,49 @@ class PhotometryFitModule(BaseModule):
         # Dust extinction and emission
         dust_attenuation = None
         dust_emission = None
-        if options.get_bool("DustExtinction", False):
+        if options.get_bool("DustAttenuation", False):
+            print("Setting up dust attenuation")
             att_name = options.get_string(
                 "DustAttenuationModel", "DustScreenAttenuation")
             ext_law = options.get_string("ExtinctionLaw", "ccm89")
             dust_curve = dust.ExtinctionLibCurve(law=ext_law)
+            print("DurstAttenuationModel: ", att_name)
+            # TODO: implement interface for other models
             if att_name == "DustScreenAttenuation":
                 dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
 
             if options.get_bool("DustEmission", False):
+                print("Setting up dust emission model")
                 dust_sed = dust.Casey2012DustComponent()
-
                 if options.get_bool("DustCalorimetric", True):
+                    print("Setting energy balance approximation")
                     dust_emission = dust.CalorimetricDustComponent(
                         attenuation=dust_attenuation,
                         dust_sed_component=dust_sed
                     )
+
         # Setup target wavelength range
         min_wl, max_wl = filters.wavelength_range()
+        if options.get_bool("DustCalorimetric", True):
+            min_wl = np.min((
+                min_wl.to_value(u.AA),
+                stars.ssp.wavelength.min().to_value("AA"))) << u.AA            
+            max_wl = np.max((
+                max_wl.to_value(u.AA),
+                getattr(dust_emission.dust_sed_component, "ir_range", [None, 1 << u.AA])[1].to_value(u.AA)
+            )) << u.AA
+
         z_obs = self.config.get("redshift", 0.0)
-        target_wl = np.arange(min_wl.to_value("AA") * (1 + z_obs),
-                              max_wl.to_value("AA") * (1 + z_obs),
+
+        if options.get_bool("logwave", False):
+            target_wl = np.geomspace(min_wl.to_value("AA") / (1 + z_obs),
+                                     max_wl.to_value("AA"), 3000) << u.AA
+        else:
+            target_wl = np.arange(min_wl.to_value("AA") / (1 + z_obs),
+                              max_wl.to_value("AA"),
                               10) << u.AA
         print("Target wavelength range: ",
-              f"{target_wl[0]:.1f} -- {target_wl[-1]:.1f}",
-              " (10 AA)")
+              f"{target_wl[0]:.1f} -- {target_wl[-1]:.1f} ({target_wl.size} pix)")
 
         print("Setting up galaxy model")
         galaxy = GalaxySED(stellar_model=stars,
@@ -975,17 +1000,15 @@ class PhotometryFitModule(BaseModule):
 
     def plot_solution(self, solution: DataBlock, figname=None):
         """Plot the fit."""
-        flux_model = self.make_observable(solution, parse=True)
+        flux_model, full_spec = self.make_observable(solution, parse=True, include_spec=True)
         if isinstance(flux_model, tuple):
-            weights = flux_model[1]
             flux_model = flux_model[0]
-        else:
-            weights = np.ones_like(flux_model)
+
         # Include input weights
-        fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
+        fig, axs = plt.subplots(ncols=2, nrows=3, sharex="col", sharey="row",
                                 constrained_layout=True,
                                 width_ratios=[4, 1],
-                                height_ratios=[2, 1],
+                                height_ratios=[2, 1, 1],
                                 figsize=(16, 9))
         plt.suptitle(f"Module: {self.name}")
 
@@ -994,6 +1017,7 @@ class PhotometryFitModule(BaseModule):
         sol_keys = solution.keys()
         sol_sections = {}
         sol_sections["Settings"] = {
+            "Redshift": self.config["redshift"],
             "No. bands": self.config["photometry_flux"].size,
             "use_transforms": self.config.get("use_transforms", False)}
 
@@ -1043,22 +1067,41 @@ class PhotometryFitModule(BaseModule):
         # Plot model
         ax.scatter(eff_wl.to_value("AA"), flux_model, edgecolors="r",
                    fc="none", lw=2, label="Model")
+        ax.plot(self.config["galaxy"].target_wavelength.to_value("AA"),
+                full_spec, color="k", alpha=0.4)
         # Plot residuals
         ax.set_ylabel(f"Flux density ({self.config['photometry_flux_unit']})")
         ax.legend(bbox_to_anchor=(0.5, 1.01), loc="lower center",
                   ncols=5, fontsize=8)
 
-        ax.set_ylim(self.config["photometry_flux"].min() * 0.8,
-                    self.config["photometry_flux"].max() * 1.2)
+        ax.set_ylim(min(flux_model.min(), self.config["photometry_flux"].min()) * 0.8,
+                    max(flux_model.max(), self.config["photometry_flux"].max()) * 1.2)
+
+        # If wavelength range is too large, use log scale
+        wlmin, wlmax = self.config["galaxy"].target_wavelength[[0, -1]]
+        if wlmax / wlmin > 10:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
 
         twax = ax.twinx()
         for f in self.config["filter_list"].filters:
-            twax.plot(f.filter_wavelength, f.filter_resp, label=f.name)
+            twax.plot(f.filter_wavelength, f.filter_resp / f.filter_resp.max(), label=f.name)
         twax.legend(fontsize=6, loc="lower right")
         twax.set_ylabel("Filter response")
-        # Plot chi2
-        chi2 = (flux_model - self.config["photometry_flux"]) ** 2 / self.config["photometry_flux_var"]
+
+        min_wl, max_wl = self.config["filter_list"].wavelength_range()
+        ax.set_xlim(min_wl.to_value(u.AA) * 0.8, max_wl.to_value(u.AA) * 1.2)
+        # Flux density per wavelength unit
         ax = axs[1, 0]
+        flam = (full_spec * u.Unit("uJy")).to("1e-16 erg / (s cm**2 AA)", u.spectral_density(self.config["galaxy"].target_wavelength))
+        ax.plot(
+            self.config["galaxy"].target_wavelength.to_value("AA"),
+            flam,
+            color="k", alpha=0.4)
+        ax.set_ylabel("Flux density (1e-16 erg / (s cm**2 AA))")
+        # chi2 as function of wavelength
+        chi2 = (flux_model - self.config["photometry_flux"]) ** 2 / self.config["photometry_flux_var"]
+        ax = axs[2, 0]
         ax.scatter(eff_wl.to_value("AA"), chi2, c="k")
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
@@ -1067,6 +1110,8 @@ class PhotometryFitModule(BaseModule):
         ax.set_xlabel("Wavelength (AA)")
 
         ax = axs[1, 1]
+        ax.axis("off")
+        ax = axs[2, 1]
         ax.axis("off")
 
         if figname is not None:
