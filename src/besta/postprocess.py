@@ -14,8 +14,6 @@ Notes
 - This module assumes the posterior samples are stored in an Astropy Table
   with a log-posterior column (default: "post") and parameter columns
   named like "section--name" (default delimiter/prefix: "--").
-- No logging is implemented (future work). Functions accept `verbose` to
-  print progress if desired.
 """
 
 from __future__ import annotations
