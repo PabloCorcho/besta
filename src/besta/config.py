@@ -1,4 +1,14 @@
-"""This module performs the general configuration of parameters used in BESTA"""
+"""Global BESTA configuration loaded from YAML.
+
+The configuration file path is resolved from the ``besta_config`` environment
+variable, defaulting to ``besta-config.yml`` shipped with the package.
+
+This module exposes configured objects/dictionaries at import time:
+- ``cosmology``
+- ``kinematics``
+- ``extinction``
+- ``memory``
+"""
 import os
 import yaml
 

@@ -92,7 +92,7 @@ class BaseModule(ClassModule):
 
         Returns
         -------
-        options : :class:`DataBlock`
+        options : :class:`SectionOptions` or :class:`DataBlock`
         """
         if isinstance(options, dict):
             options = DataBlock.from_dict(options)
@@ -287,7 +287,7 @@ class BaseModule(ClassModule):
         return
 
     def prepare_extinction_law(self, options):
-        """Prepare an dust extinction model.
+        """Prepare a dust extinction model.
 
         options : :class:`DataBlock`
             Input options to initialise the model.
@@ -439,8 +439,6 @@ class SpectraFitModule(BaseModule):
         options : :class:`DataBlock`
         normalize : bool, optional
             If ``True``, normalizes the spectra using the given wavelength range.
-        luminosity : bool, optional
-            If ``True``, converts the input flux to luminosities.
         """
         _log("\n-> Configuring input observed spectra")
         filename = os.path.expandvars(options["inputSpectrum"])
@@ -610,7 +608,12 @@ class SpectraFitModule(BaseModule):
         _log("-> Configuration done.")
 
     def prepare_galaxy(self, options):
-        """TODO"""
+        """Build and configure a :class:`pst.galaxy.GalaxySED` model.
+
+        The method initializes stellar, attenuation, and optional dust emission
+        components using the already prepared configuration and stores the
+        resulting galaxy model and parameter index in ``self.config``.
+        """
         
         # Stellar emissions
         ssp_model = self.config.get("ssp_model")
@@ -910,7 +913,12 @@ class PhotometryFitModule(BaseModule):
         _log("-> Configuration done.")
 
     def prepare_galaxy(self, options):
-        """TODO"""
+        """Build and configure a :class:`pst.galaxy.GalaxySED` model for photometry.
+
+        The method initializes stellar, attenuation, and optional dust emission
+        components, prepares the target wavelength grid, and stores the galaxy
+        model and parameter index in ``self.config``.
+        """
         
         # Stellar emissions
         ssp_model = self.config.get("ssp_model")

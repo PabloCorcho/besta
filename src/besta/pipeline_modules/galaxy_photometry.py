@@ -21,10 +21,6 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
-        Returns:
-            config: parameters or objects that are passed to
-                the sampler.
-
         """
         super().__init__(options, **kwargs)
         options = self.parse_options(options)
@@ -35,7 +31,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         self.config["galaxy"].redshift.fixed = True
 
     def make_observable(self, block, parse=False, include_spec=False):
-        """Create the spectra model from the input parameters"""
+        """Create the photometric model from the input parameters."""
         if parse:
             # This updates the SFH parameters
             self.config["sfh_model"].parse_datablock(block)

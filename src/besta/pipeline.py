@@ -23,7 +23,7 @@ class MainPipeline(object):
     ----------
     pipelines_config : list
         List of dictionaries containing the configuration parameters for each
-            subpipeplie.
+            subpipeline.
     n_cores_list : list, optional, default=None
         List containing the number of cores to be used on each run. If None,
         every subpipeline will use one single core during runtime.
@@ -74,7 +74,7 @@ class MainPipeline(object):
             Dictionary containing the configuration parameters for setting up
             the subpipeline.
         n_cores : int
-            Number of cores to used during runtime.
+            Number of cores to use during runtime.
         ini_filename : str, optional, default=None
             If provided, this file is used to run cosmosis.
         ini_values_filename : str, optional, default=None

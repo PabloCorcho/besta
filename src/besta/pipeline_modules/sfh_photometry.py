@@ -19,10 +19,6 @@ class SFHPhotometryModule(PhotometryFitModule):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
-        Returns:
-            config: parameters or objects that are passed to
-                the sampler.
-
         """
         super().__init__(options)
         options = self.parse_options(options)

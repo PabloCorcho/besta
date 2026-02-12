@@ -152,7 +152,7 @@ class PieceWiseSFHMixin:
 
         Parameters
         ----------
-        databloc : DataBlock
+        datablock : DataBlock
             The datablock containing the values of each parameter of the SFH.
         """
         return np.array(
