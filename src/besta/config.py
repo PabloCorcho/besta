@@ -3,6 +3,9 @@ import os
 import yaml
 
 from astropy import cosmology as astropy_cosmology
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Get configuration file
 config_file_path = os.getenv(
@@ -30,7 +33,7 @@ if "cosmology" in config_file:
     if "args" in config_file["cosmology"]:
         cosmology = cosmology(**config_file["cosmology"]["args"])
 else:
-    print("Using default cosmology")
+    logger.info("Using default cosmology")
     cosmology = astropy_cosmology.FlatLambdaCDM(H0=70.0, Om0=0.28)
 
 # Kinematics

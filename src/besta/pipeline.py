@@ -12,7 +12,9 @@ from cosmosis import DataBlock
 
 from besta import io
 from besta import pipeline_modules
+from besta.logging import get_logger
 
+logger = get_logger(__name__)
 
 class MainPipeline(object):
     """BESTA Pipeline manager.
@@ -58,7 +60,7 @@ class MainPipeline(object):
             self.ini_values_files = ini_values_files
 
     def run_command(self, command):
-        print(f"Running command >> {command} <<")
+        logger.info(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 
     def execute_pipeline(
@@ -102,15 +104,15 @@ class MainPipeline(object):
             command = f"cosmosis {ini_filename}"
         return_code = self.run_command(command)
         if return_code == 0:
-            print("Successful run, return code: ", return_code)
+            logger.info("Successful run, return code: %s", return_code)
             return ini_filename
         else:
-            print("Unsuccessful run, return code: ", return_code)
+            logger.error("Unsuccessful run, return code: %s", return_code)
             return None
 
     def execute_all(self, plot_result=False):
         """Execute all sub-pipelines."""
-        print("Executing all pipelines")
+        logger.info("Executing all pipelines")
         prev_solution = None
         for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
             self.pipelines_config,
@@ -119,7 +121,7 @@ class MainPipeline(object):
             self.ini_values_files,
         ):
             if prev_solution is not None:
-                print("Updating configuration file with previus run results")
+                logger.info("Updating configuration file with previous run results")
                 # Update the input values
                 subpipe_config[subpipe_config["pipeline"]["modules"]].update(
                     (k, v)
@@ -135,16 +137,16 @@ class MainPipeline(object):
             )
 
             if ini_filename is None:
-                print("Pipeline execution failed, stopping.")
+                logger.error("Pipeline execution failed, stopping.")
                 return 1
 
             # Extract best solution
-            print("Extracting results from the run")
+            logger.info("Extracting results from the run")
             reader = io.Reader(ini_filename)
             reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
-            print("MaxLike solution: ", solution)
+            logger.info("MaxLike solution: %s", solution)
 
             if plot_result:
                 solution_datablock = reader.solution_to_datablock(
@@ -152,7 +154,7 @@ class MainPipeline(object):
                     
                 # Initialise the module to reconstruct the solution
                 for par_module in reader.modules:
-                    print("Plotting results for module: ", par_module)
+                    logger.info("Plotting results for module: %s", par_module)
                     pipeline_module = reader.get_module(par_module)
                     figname = subpipe_config["output"].get(
                         "figurename",

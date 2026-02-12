@@ -15,6 +15,9 @@ from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 _NUM_RE = re.compile(r"""
@@ -273,7 +276,7 @@ def make_ini_file(filename, config, ignore_sec="Values"):
     config : dict
         Dictionary containing the configuration parameters.
     """
-    print(f"Writing .ini file: {filename}")
+    logger.info("Writing .ini file: %s", filename)
     with open(filename, "w") as f:
         f.write(f"; File generated automatically by BESTA\n")
         for section in config.keys():
@@ -308,13 +311,15 @@ def make_values_file(config, overwrite=True, values_sec="values"):
     values_filename = os.path.expandvars(config["pipeline"]["values"])
 
     if os.path.isfile(values_filename):
-        print(f"File containing the .ini priors already exists at {values_filename}")
+        logger.warning(
+            "File containing the .ini priors already exists at %s", values_filename
+        )
         if not overwrite:
             return
         else:
-            print("Overwritting file")
+            logger.info("Overwriting file")
     if values_sec in config:
-        print(f"Writting values file to: {values_filename}")
+        logger.info("Writing values file to: %s", values_filename)
         make_ini_file(values_filename, config[values_sec], ignore_sec=None)
 
 @expand_env_vars()
@@ -729,7 +734,7 @@ class Reader(object):
         ini : dict
             Dictionary containing the information from the ini file.
         """
-        print("Reading ini file: ", path)
+        logger.info("Reading ini file: %s", path)
         return _ini_file_to_dict(path)
 
     @classmethod

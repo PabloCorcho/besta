@@ -30,6 +30,13 @@ from besta import kinematics
 from besta import sfh
 from besta import io
 from besta.config import cosmology, memory
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def _log(*args):
+    logger.info(" ".join(str(arg) for arg in args))
 
 
 class BaseModule(ClassModule):
@@ -53,7 +60,7 @@ class BaseModule(ClassModule):
                 self.like_name += "_like"
         else:
             self.like_name = self.name + "_like"
-            print("Setting module likelihood name to default: ", self.like_name)
+            _log("Setting module likelihood name to default: ", self.like_name)
 
     @abstractmethod
     def make_observable(self, *args, **kwargs):
@@ -114,10 +121,10 @@ class BaseModule(ClassModule):
             during convolution. The buffer is applied to both sides of the
             SSP spectra.
         """
-        print("\n-> Configuring SSP model")
+        _log("\n-> Configuring SSP model")
 
         if options.has_value("SSPModelFromPickle"):
-            print("\n-> Loading preconfigured SSP model from pickle")
+            _log("\n-> Loading preconfigured SSP model from pickle")
             if not os.path.isfile(
                 os.path.expandvars(options["SSPModelFromPickle"])):
                 raise FileNotFoundError(
@@ -139,7 +146,7 @@ class BaseModule(ClassModule):
             extra_offset_pixel = int(velocity_buffer / velscale)
             self.config["velscale"] = velscale
             self.config["extra_pixels"] = extra_offset_pixel
-            print("-> Configuration done.")
+            _log("-> Configuration done.")
             return
 
         ssp_name = options["SSPModel"]
@@ -154,7 +161,7 @@ class BaseModule(ClassModule):
         if options.has_value("SSPModelArgs"):
             ssp_args = options.get_string("SSPModelArgs")
             ssp_args = ssp_args.split(",")
-            print("SSP Model extra arguments: ", ssp_args)
+            _log("SSP Model extra arguments: ", ssp_args)
         else:
             ssp_args = []
 
@@ -176,7 +183,7 @@ class BaseModule(ClassModule):
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
         extra_offset_pixel = int(velocity_buffer / velscale)
-        print(
+        _log(
             "Log-binning SSP spectra to velocity scale: ",
             velscale,
             " km/s",
@@ -199,16 +206,16 @@ class BaseModule(ClassModule):
 
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
-        print("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
+        _log("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
 
         # Convolve with instrumental LSF
         if "lsf" in self.config:
-            print("Convolving SSP model with instrumental LSF")
+            _log("Convolving SSP model with instrumental LSF")
             inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
                                  self.config["lsf"])
 
             if options.has_value("SSPLSF"):
-                print("Including SSP resolution")
+                _log("Including SSP resolution")
                 ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(
                     os.path.expandvars(options["SSPLSF"]),
                     unpack=True, usecols=(0, 1))
@@ -225,7 +232,7 @@ class BaseModule(ClassModule):
             effective_lsf = np.sqrt(effective_lsf_disp)
             # Convert to pixels
             lsf_sigma_pixels = effective_lsf / np.diff(np.exp(lnlam_bin_edges))
-            print("Starting convolution of SSP models with wavelength-dependent",
+            _log("Starting convolution of SSP models with wavelength-dependent",
                   f"LSF [min sigma={lsf_sigma_pixels.min():.2},"
                   f" max sigma={lsf_sigma_pixels.max():.2} pix]")
             try:
@@ -234,13 +241,13 @@ class BaseModule(ClassModule):
                  ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
                 dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
                 safety_margin=memory["ram_safety_margin"])
-                print("Convolving full SSP model at once")
+                _log("Convolving full SSP model at once")
                 ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda, lsf_sigma_pixels)
             except MemoryError:
                 # Do a loop along metallicity axis to prevent memory overflows
-                print("Insufficient RAM memory for full SSP SED convolution")
-                print("Looping along metallicity axis")
+                _log("Insufficient RAM memory for full SSP SED convolution")
+                _log("Looping along metallicity axis")
                 io.check_array_memory(
                 (ssp.L_lambda.shape[1], ssp.L_lambda.shape[2],
                  ssp.L_lambda.shape[2]),
@@ -257,7 +264,7 @@ class BaseModule(ClassModule):
         )
         # Apply Non-negative Matrix Factorisation for reducing dimensionality
         if n_nmf is not None:
-            print(
+            _log(
                 "Reducing SSP model dimensionality with Non-negative Matrix Factorisation",
                 "\nNo. of components: ",
                 n_nmf,
@@ -273,10 +280,10 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
-            print("Saving photometry grid to ", options["SaveSSPModel"])
+            _log("Saving photometry grid to ", options["SaveSSPModel"])
             with open(os.path.expandvars(options["SaveSSPModel"]), 'wb') as file:
                 pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
-        print("-> Configuration done.")
+        _log("-> Configuration done.")
         return
 
     def prepare_extinction_law(self, options):
@@ -285,15 +292,15 @@ class BaseModule(ClassModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        print("\n -> Configuring Dust extinction model")
+        _log("\n -> Configuring Dust extinction model")
         if not options.has_value("ExtinctionLaw"):
             self.config["extinction_law"] = None
             return
         ext_law = options.get_string("ExtinctionLaw")
-        print("Extinction law: ", ext_law)
+        _log("Extinction law: ", ext_law)
         # TODO: add more extinction laws
         self.config["extinction_law"] = dust.DustScreen(ext_law)
-        print("-> Configuration is done.")
+        _log("-> Configuration is done.")
 
     def prepare_sfh_model(self, options):
         """Prepare the SFH model.
@@ -303,7 +310,7 @@ class BaseModule(ClassModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        print("\n-> Configuring SFH model")
+        _log("\n-> Configuring SFH model")
         sfh_model_name = options["SFHModel"]
         sfh_args = []
         key = "SFHArgs1"
@@ -321,12 +328,12 @@ class BaseModule(ClassModule):
         if options.has_value("use_transforms"):
             self.config["use_transforms"] = bool(options["use_transforms"])
         if self.config["use_transforms"]:
-            print("Enabling parameter transforms inside SFH model")
-        print("SFH model name: ", sfh_model_name)
+            _log("Enabling parameter transforms inside SFH model")
+        _log("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **self.config)
         self.config["sfh_model"] = sfh_model
-        print("-> Configuration done")
+        _log("-> Configuration done")
 
     def log_like(self, data, model, var, weights=None, is_upper=None, is_lower=None, include_norm=True):
         """Compute log-likelihood between data and model.
@@ -435,32 +442,32 @@ class SpectraFitModule(BaseModule):
         luminosity : bool, optional
             If ``True``, converts the input flux to luminosities.
         """
-        print("\n-> Configuring input observed spectra")
+        _log("\n-> Configuring input observed spectra")
         filename = os.path.expandvars(options["inputSpectrum"])
         # Read wavelength and spectra
-        print("Loading observed spectra from input file: ", filename)
+        _log("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
-        print("Wavelength coverage: ", wavelength[[0, -1]])
-        print("Size: ", wavelength.size)
+        _log("Wavelength coverage: ", wavelength[[0, -1]])
+        _log("Size: ", wavelength.size)
 
         # Convert units if needed
         if options.has_value("wlUnits"):
-            print("Converting wavelength units to Angstrom")
+            _log("Converting wavelength units to Angstrom")
             wl_units = u.Unit(options["wlUnits"])
             wavelength = (wavelength << wl_units).to("Angstrom").value
         else:
-            print("Assuming input wavelength units are in Angstrom")
+            _log("Assuming input wavelength units are in Angstrom")
             wl_units = u.angstrom
 
         if options.has_value("fluxUnits"):
-            print("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
+            _log("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
             flux_units = u.Unit(options["fluxUnits"])
             flux = (flux << flux_units).to(
                 "1e-16 erg / (s cm2 Angstrom)").value
             error = (error << flux_units).to(
                 "1e-16 erg / (s cm2 Angstrom)").value
         else:
-            print("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
+            _log("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
             flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
 
         # Wavelength range to include in the fit
@@ -479,7 +486,7 @@ class SpectraFitModule(BaseModule):
         if options.has_value("redshift"):
             redshift = options["redshift"]
         else:
-            print("No input redshift value provided (defaulting to 0)")
+            _log("No input redshift value provided (defaulting to 0)")
             redshift = 0.0
         # Load mask
         if options.has_value("mask"):
@@ -504,12 +511,12 @@ class SpectraFitModule(BaseModule):
         if options.has_value("mask_telluric") and options["mask_telluric"]:
             telluric_pad = options.get_double("telluric_pad", default=0.0)
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
-            print(f"Masking telluric regions with pad={telluric_pad} Angstrom")
+            _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
             weights, tell_mask = spectrum.mask_telluric_regions(
                 wavelength, flux, error, weights,
                 pad=telluric_pad,
                 return_mask=True)
-            print("Number of masked pixels: ", np.count_nonzero(tell_mask))
+            _log("Number of masked pixels: ", np.count_nonzero(tell_mask))
             self.config["telluric_mask"] = tell_mask
 
         # Optional masking of emission lines
@@ -520,13 +527,13 @@ class SpectraFitModule(BaseModule):
                 # line_list=emission_line_list,
                 # half_width=line_half_width,
                 return_mask=True)
-            print("Number of masked pixels: ", np.count_nonzero(line_mask))
+            _log("Number of masked pixels: ", np.count_nonzero(line_mask))
             self.config["emission_lines_mask"] = line_mask
 
         # Apply redshift
-        print(f"Setting wavelength array to restframe (redshift: {redshift})")
+        _log(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
-        print("Constraining fit to wavelength range: ", wl_range)
+        _log("Constraining fit to wavelength range: ", wl_range)
         good_idx = np.where(
             (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
         if len(good_idx) == 0:
@@ -543,13 +550,13 @@ class SpectraFitModule(BaseModule):
         if np.nansum(weights) <= 0:
             raise ValueError("All input weights are zero; cannot perform fit.")
 
-        print("Number of selected pixels within wavelength range: ", good_idx.size)
+        _log("Number of selected pixels within wavelength range: ", good_idx.size)
         if options.has_value("velscale"):
             velscale = options["velscale"]
         else:
             # Set velscale to None
             velscale = None
-        print("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
+        _log("Log-binning spectra to velocity scale: ", velscale, " (km/s)")
         # Update the value of velscale
         if velscale is not None:
             dlnlam = velscale / spectrum.constants.c.to("km/s").value
@@ -567,10 +574,10 @@ class SpectraFitModule(BaseModule):
         else:
             ln_wave = np.log(wavelength)
 
-        print("Number of pixels after interpolation: ", wavelength.size)
+        _log("Number of pixels after interpolation: ", wavelength.size)
         # Normalize spectra
         if normalize:
-            print("Spectra normalized using wavelength range: ", wl_norm_range)
+            _log("Spectra normalized using wavelength range: ", wl_norm_range)
             norm_idx = np.where(
                 (wavelength >= wl_norm_range[0]) & (wavelength <= wl_norm_range[1])
             )[0]
@@ -600,7 +607,7 @@ class SpectraFitModule(BaseModule):
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
 
-        print("-> Configuration done.")
+        _log("-> Configuration done.")
 
     def prepare_galaxy(self, options):
         """TODO"""
@@ -617,34 +624,34 @@ class SpectraFitModule(BaseModule):
             sfh_model = self.config["sfh_model"].model
 
         ## Create stellar emission model
-        print("Setting up stellar emission component")
+        _log("Setting up stellar emission component")
         stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
         
         # Dust extinction and emission
         dust_attenuation = None
         dust_emission = None
         if options.get_bool("DustAttenuation", False):
-            print("Setting up dust attenuation")
+            _log("Setting up dust attenuation")
             att_name = options.get_string(
                 "DustAttenuationModel", "DustScreenAttenuation")
             ext_law = options.get_string("ExtinctionLaw", "ccm89")
             dust_curve = dust.ExtinctionLibCurve(law=ext_law)
-            print("DurstAttenuationModel: ", att_name)
+            _log("DurstAttenuationModel: ", att_name)
             # TODO: implement interface for other models
             if att_name == "DustScreenAttenuation":
                 dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
 
             if options.get_bool("DustEmission", False):
-                print("Setting up dust emission model")
+                _log("Setting up dust emission model")
                 dust_sed = dust.Casey2012DustComponent()
                 if options.get_bool("DustCalorimetric", True):
-                    print("Setting energy balance approximation")
+                    _log("Setting energy balance approximation")
                     dust_emission = dust.CalorimetricDustComponent(
                         attenuation=dust_attenuation,
                         dust_sed_component=dust_sed
                     )
 
-        print("Setting up galaxy model")
+        _log("Setting up galaxy model")
         galaxy = GalaxySED(stellar_model=stars,
                            dust_attenuation_model=dust_attenuation,
                            dust_model=dust_emission,
@@ -666,7 +673,7 @@ class SpectraFitModule(BaseModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        print("\n-> Configuring multiplicative polynomial")
+        _log("\n-> Configuring multiplicative polynomial")
         if options.has_value("legendre_deg"):
             kwargs = {}
             if options.has_value("legendre_bounds"):
@@ -675,13 +682,13 @@ class SpectraFitModule(BaseModule):
                 kwargs["scale"] = options["legendre_scale"]
             if options.has_value("legendre_clip_first_zero"):
                 kwargs["clip_first_zero"] = options["legendre_clip_first_zero"]
-            print(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
+            _log(f"Using Legendre polynomials up to degree {options['legendre_deg']}",
                   "\nAdditional arguments: ", kwargs)
             self.config["legendre_pol"] = spectrum.get_legendre_polynomial_array(
                 self.config["wavelength"], options["legendre_deg"], **kwargs)
         else:
-            print(f"Not using multiplicative Legendre polynomials")
-        print("-> Configuration done")
+            _log(f"Not using multiplicative Legendre polynomials")
+        _log("-> Configuration done")
 
     def plot_solution(self, solution: DataBlock, figname=None):
         """Plot the fit."""
@@ -832,7 +839,7 @@ class SpectraFitModule(BaseModule):
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight",
                     dpi=300)
-            print(f"Fit plot saved at: {figname}")
+            _log(f"Fit plot saved at: {figname}")
 
         plt.close()
         return fig
@@ -848,7 +855,7 @@ class PhotometryFitModule(BaseModule):
         ----------
         options : :class:`DataBlock`
         """
-        print("\n-> Configuring photometric data")
+        _log("\n-> Configuring photometric data")
         photometry_file = os.path.expandvars(options["inputPhotometry"])
 
         # Read the data
@@ -868,13 +875,13 @@ class PhotometryFitModule(BaseModule):
         # Unit conversion
 
         if options.has_value("fluxUnits"):
-            print("Converting input flux units to uJy")
+            _log("Converting input flux units to uJy")
             flux_units = u.Unit(options["fluxUnits"])
             flux = (flux << flux_units).to("uJy").value
             flux_err = (flux_err << flux_units).to("uJy").value
             flux_units = u.Unit("uJy")
         else:
-            print("Assuming input flux units are in uJy")
+            _log("Assuming input flux units are in uJy")
             flux_units = u.Unit("uJy")
 
         self.config["photometry_flux"] = flux
@@ -886,7 +893,7 @@ class PhotometryFitModule(BaseModule):
         # Load the photometric filters
         photometric_filters = []
         for filter_name in filter_names:
-            print(f"Loading photometric filter: {filter_name}")
+            _log(f"Loading photometric filter: {filter_name}")
             if os.path.exists(os.path.expandvars(filter_name)):
                 filt = Filter.from_text_file(os.path.expandvars(filter_name))
             else:
@@ -899,8 +906,8 @@ class PhotometryFitModule(BaseModule):
 
         redshift = options.get_double("redshift", default=0.0)
         self.config["redshift"] = redshift
-        print("Source redshift: ", redshift)
-        print("-> Configuration done.")
+        _log("Source redshift: ", redshift)
+        _log("-> Configuration done.")
 
     def prepare_galaxy(self, options):
         """TODO"""
@@ -921,28 +928,28 @@ class PhotometryFitModule(BaseModule):
             self.prepare_observed_photometry(options)
 
         ## Create stellar emission model
-        print("Setting up stellar emission component")
+        _log("Setting up stellar emission component")
         stars = sed.StellarComponent(ssp=ssp_model, sfh=sfh_model)
 
         # Dust extinction and emission
         dust_attenuation = None
         dust_emission = None
         if options.get_bool("DustAttenuation", False):
-            print("Setting up dust attenuation")
+            _log("Setting up dust attenuation")
             att_name = options.get_string(
                 "DustAttenuationModel", "DustScreenAttenuation")
             ext_law = options.get_string("ExtinctionLaw", "ccm89")
             dust_curve = dust.ExtinctionLibCurve(law=ext_law)
-            print("DurstAttenuationModel: ", att_name)
+            _log("DurstAttenuationModel: ", att_name)
             # TODO: implement interface for other models
             if att_name == "DustScreenAttenuation":
                 dust_attenuation = dust.DustScreenAttenuation(curve=dust_curve)
 
             if options.get_bool("DustEmission", False):
-                print("Setting up dust emission model")
+                _log("Setting up dust emission model")
                 dust_sed = dust.Casey2012DustComponent()
                 if options.get_bool("DustCalorimetric", True):
-                    print("Setting energy balance approximation")
+                    _log("Setting energy balance approximation")
                     dust_emission = dust.CalorimetricDustComponent(
                         attenuation=dust_attenuation,
                         dust_sed_component=dust_sed
@@ -968,10 +975,10 @@ class PhotometryFitModule(BaseModule):
             target_wl = np.arange(min_wl.to_value("AA") / (1 + z_obs),
                               max_wl.to_value("AA"),
                               10) << u.AA
-        print("Target wavelength range: ",
+        _log("Target wavelength range: ",
               f"{target_wl[0]:.1f} -- {target_wl[-1]:.1f} ({target_wl.size} pix)")
 
-        print("Setting up galaxy model")
+        _log("Setting up galaxy model")
         galaxy = GalaxySED(stellar_model=stars,
                            dust_attenuation_model=dust_attenuation,
                            dust_model=dust_emission,
@@ -1105,7 +1112,7 @@ class PhotometryFitModule(BaseModule):
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight",
                     dpi=300)
-            print(f"Fit plot saved at: {figname}")
+            _log(f"Fit plot saved at: {figname}")
 
         plt.close()
         return fig

@@ -14,6 +14,9 @@ from scipy import ndimage
 from scipy.special import legendre
 from astropy import constants
 from astropy import units as u
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
                                   clip_first_zero=True):
@@ -58,7 +61,7 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
 
     if isinstance(norm_wl, u.Quantity):
         norm_wl = norm_wl.decompose().value
-    print("Pol order == ", np.arange(min_order, min_order + order + 1))
+    logger.debug("Pol order == %s", np.arange(min_order, min_order + order + 1))
     poly_set = []
     for deg in [0, *np.arange(min_order, min_order + order)]:
         pol = legendre(deg)

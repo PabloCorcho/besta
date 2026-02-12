@@ -7,6 +7,9 @@ from cosmosis.datablock import SectionOptions
 
 import warnings
 from astropy.units import UnitsWarning
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Ignore only astropy units warnings
 warnings.simplefilter('ignore', category=UnitsWarning)
@@ -53,7 +56,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
             normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
             block["extra", "stellar_mass"] = np.log10(normalization) + 10
         else:
-            print("All fluxes are zero")
+            logger.warning("All fluxes are zero")
             normalization = 0
             block["extra", "stellar_mass"] = np.nan
 

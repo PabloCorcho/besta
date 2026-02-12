@@ -5,6 +5,9 @@ from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import kinematics
 from besta import spectrum
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 class GalaxySpectraModule(SpectraFitModule):
     name = "GalaxySpectra"
@@ -91,7 +94,7 @@ class GalaxySpectraModule(SpectraFitModule):
         """        
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            print("Invalid sample")
+            logger.warning("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
             block["extra", "stellar_mass"] = np.nan
             return 0

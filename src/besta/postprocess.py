@@ -29,6 +29,9 @@ from astropy.table import Table, Column
 from astropy import units as u
 from matplotlib import pyplot as plt
 from scipy import stats
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 # -----------------------------------------------------------------------------
 # Weighted statistics
@@ -1105,8 +1108,8 @@ def summarize_results(
         names.append(nm)
 
     if verbose:
-        print(f"Summarizing: {npar} parameters, {nsamp} samples (filtered).")
-        print(f"Max logpost = {max_lp:.6g}")
+        logger.info("Summarizing: %s parameters, %s samples (filtered).", npar, nsamp)
+        logger.info("Max logpost = %.6g", max_lp)
 
     # Percentiles per parameter + interpolate logpost at those quantiles (via weighted CDF)
     pct = np.asarray(percentiles, dtype=float)
