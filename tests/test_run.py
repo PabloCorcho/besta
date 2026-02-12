@@ -34,7 +34,7 @@ class TestPipelineManagerFit(unittest.TestCase):
     
         # Create values file
         text = """[dust.extinction]
-        av = 0 0 1
+        a_v = 0 0 1
         [stars.sfh]
         alpha_powerlaw = 0 1 10
         ism_metallicity_today = 0.005 0.01 0.08

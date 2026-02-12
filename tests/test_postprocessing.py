@@ -6,7 +6,6 @@ import tempfile
 import numpy as np
 from astropy.table import Table
 
-# New API (adjust import path if your module name differs)
 from besta.postprocess import (
     read_results_file,
     summarize_results,
@@ -14,9 +13,9 @@ from besta.postprocess import (
 )
 
 
-class TestPostprocessingNew(unittest.TestCase):
+class TestPostprocessing(unittest.TestCase):
     """
-    Unit tests for the refactored BESTA post-processing module.
+    Unit tests for the BESTA post-processing module.
 
     This test suite checks:
     - Reading CosmoSIS-style text results into an Astropy Table
