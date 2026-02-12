@@ -367,9 +367,9 @@ class BaseModule(ClassModule):
             Total (or weighted-mean) log-likelihood.
         """
         if data.shape != model.shape or data.shape != var.shape:
-            raise ValueError("data, model, var must have the same shape (cov is per-datum variance).")
+            raise ValueError("data, model, var must have the same shape (var is per-datum variance).")
         if np.any(var <= 0):
-            raise ValueError("All cov entries must be > 0 (variance).")
+            raise ValueError("All var entries must be > 0 (variance).")
 
         if is_upper is None:
             is_upper = np.zeros_like(data, dtype=bool)
