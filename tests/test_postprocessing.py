@@ -39,8 +39,8 @@ class TestPostprocessingNew(unittest.TestCase):
         if cls._synthetic_results_path is not None and os.path.isfile(cls._synthetic_results_path):
             try:
                 os.remove(cls._synthetic_results_path)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: Failed to remove synthetic results file: {e}")
 
     def _make_synthetic_results_file(self) -> str:
         """
