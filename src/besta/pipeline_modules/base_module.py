@@ -1262,10 +1262,10 @@ class GridFitMixin:
         print("-> Configuration done.")
 
 
-class MLEmulatorMixin:
+class EmulatorMixin:
     """Mixin class for modules using ML emulators in BESTA."""
 
-    def prepare_ml_emulator(self, options):
+    def prepare_emulator(self, options):
         """Prepare the ML emulator.
 
         Parameters
@@ -1292,4 +1292,6 @@ class MLEmulatorMixin:
         print("Reading ML emulator...")
         ml_emulator = joblib.load(emulator_file)
         self.config["ml_emulator"] = ml_emulator
+        print("-> Configuration done.")
+        self.config["emulator"] = ml_emulator
         print("-> Configuration done.")
