@@ -31,7 +31,7 @@ class TestFixedTimeSFH(unittest.TestCase):
         parameters['alpha_powerlaw'] = 1.0
         parameters['ism_metallicity_today'] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
@@ -46,105 +46,11 @@ class TestFixedTimeSFH(unittest.TestCase):
         parameters['alpha_powerlaw'] = 1.0
         parameters['ism_metallicity_today'] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, overflow_value = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
         self.assertGreater(overflow_value, 1.0)
-
-
-class TestFixedCosmicTimeSFH(unittest.TestCase):
-
-    def setUp(self):
-        # Example lookback time bins (in Gyr)
-        self.lookback_bins = np.array([1.0, 2.5, 5.0]) * u.Gyr
-        self.model = sfh.FixedCosmicTimeSFH(
-            self.lookback_bins, ism_metallicity_today=0.02)
-
-    def test_initialization(self):
-        # Check that number of keys matches number of inner bins
-        expected_keys = len(self.lookback_bins)
-        self.assertEqual(len(self.model.sfh_bin_keys), expected_keys)
-
-        # Check keys are in free_params and within expected bounds
-        for key in self.model.sfh_bin_keys:
-            self.assertIn(key, self.model.free_params)
-            bounds = self.model.free_params[key]
-            self.assertEqual(bounds, [0.0, 0.5, 1.0])
-
-    def test_parse_datablock_valid(self):
-        # Simulate coefficient values that sum to < 1 through recursive scheme
-        parameters = {key: 0.5 for key in self.model.sfh_bin_keys}
-        parameters['alpha_powerlaw'] = 1.0
-        parameters['ism_metallicity_today'] = 0.02
-        db = DataBlock.from_dict({"parameters": parameters})
-        status, _ = self.model.parse_datablock(db)
-        self.assertEqual(status, 1)
-        # Check mass table is updated
-        self.assertTrue(hasattr(self.model.model, "table_mass"))
-        self.assertEqual(len(self.model.model.table_mass), len(self.model.bin_masses) + 2)
-
-    def test_update_mass_recursive(self):
-        # Test how update_mass distributes values recursively
-        self.model.bin_masses = np.zeros_like(self.model.bin_masses)
-        self.model.update_mass(0, 0.5)
-        self.model.update_mass(1, 0.5)
-        self.model.update_mass(2, 0.5)
-
-        expected = [
-            0.5,
-            0.5 * (1 - 0.5),            # 0.25
-            0.5 * (1 - 0.5 - 0.25),     # 0.125
-        ]
-        np.testing.assert_allclose(self.model.bin_masses, expected, rtol=1e-6)
-
-
-class TestFlexibleCosmicTimeSFH(unittest.TestCase):
-
-    def setUp(self):
-        self.n_bins = 4  # Choose a small number of bins for simplicity
-        self.model = sfh.FlexibleCosmicTimeSFH(self.n_bins,
-                                               ism_metallicity_today=0.02)
-
-    def test_initialization(self):
-        # One bin per n_bins, so expect n_bins sfh_bin_keys
-        self.assertEqual(len(self.model.sfh_bin_keys), self.n_bins)
-
-        # Ensure all keys are correctly registered
-        for i in range(1, self.n_bins + 1):
-            key = f"coeff_{i}"
-            self.assertIn(key, self.model.free_params)
-            self.assertEqual(self.model.free_params[key], [0.0, 0.5, 1.0])
-
-        # Time should be monotonic
-        self.assertTrue(np.all(np.diff(self.model.time.to_value(u.Gyr)) >= 0))
-
-    def test_parse_datablock_valid(self):
-        # Valid parameters that add up to less than 1 recursively
-        parameters = {f"coeff_{i+1}": 0.5 for i in range(self.n_bins)}
-        parameters["alpha_powerlaw"] = 1.0
-        parameters["ism_metallicity_today"] = 0.02
-
-        db = DataBlock.from_dict({"parameters": parameters})
-        status, _ = self.model.parse_datablock(db)
-        self.assertEqual(status, 1)
-
-        self.assertTrue(hasattr(self.model.model, "table_mass"))
-        self.assertEqual(len(self.model.model.table_mass), len(self.model.time))
-
-    def test_update_mass_recursive(self):
-        # Test recursive accumulation of mass
-        self.model.bin_masses = np.zeros_like(self.model.bin_masses)
-        self.model.update_mass(0, 0.5)
-        self.model.update_mass(1, 0.5)
-        self.model.update_mass(2, 0.5)
-
-        expected = [
-            0.5,
-            0.5 * (1 - 0.5),            # 0.25
-            0.5 * (1 - 0.5 - 0.25),     # 0.125
-        ]
-        np.testing.assert_allclose(self.model.bin_masses[:3], expected, rtol=1e-6)
 
 
 class TestFixedTime_sSFR_SFH(unittest.TestCase):
@@ -174,13 +80,13 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         parameters["alpha_powerlaw"] = 1.0
         parameters["ism_metallicity_today"] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
         self.assertIsNone(info)
         self.assertTrue(hasattr(self.model.model, "table_mass"))
-        self.assertEqual(len(self.model.model.table_mass), len(self.model.lookback_time))
+        self.assertEqual(len(self.model.model.table_mass), len(self.model.lookback_time) + 2)
 
     def test_parse_datablock_monotonicity_error(self):
         # Use large sSFR to force decreasing cumulative mass (non-monotonic)
@@ -191,7 +97,7 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         parameters["alpha_powerlaw"] = 1.0
         parameters["ism_metallicity_today"] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, overflow_val = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
@@ -228,7 +134,7 @@ class TestFixedMassFracSFH(unittest.TestCase):
         parameters["alpha_powerlaw"] = 1.0
         parameters["ism_metallicity_today"] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
@@ -246,7 +152,7 @@ class TestFixedMassFracSFH(unittest.TestCase):
         parameters["alpha_powerlaw"] = 1.0
         parameters["ism_metallicity_today"] = 0.02
 
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, overflow = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
@@ -276,7 +182,7 @@ class TestExponentialSFH(unittest.TestCase):
             "alpha_powerlaw": 1.0,
             "ism_metallicity_today": 0.02,
         }
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
@@ -294,7 +200,7 @@ class TestExponentialSFH(unittest.TestCase):
             "alpha_powerlaw": 0.5,
             "ism_metallicity_today": 0.015,
         }
-        db = DataBlock.from_dict({"parameters": parameters})
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
         self.model.parse_datablock(db)
 
         mass = self.model.model.table_mass.to_value(u.Msun)
@@ -317,7 +223,7 @@ class TestTransforms(unittest.TestCase):
         params = {k: v for k, v in zip(model.sfh_bin_keys, latent)}
         params["alpha_powerlaw"] = 1.0
         params["ism_metallicity_today"] = 0.02
-        status, info = model.parse_datablock(DataBlock.from_dict({"parameters": params}))
+        status, info = model.parse_datablock(DataBlock.from_dict({model.sect_name: params}))
         self.assertEqual(status, 1)
         self.assertIsNone(info)
         self.assertAlmostEqual(model.model.table_mass.to_value(u.Msun)[-1], 1.0, places=6)
@@ -331,16 +237,6 @@ class TestTransforms(unittest.TestCase):
         inv = model.to_latent(physical_logssfr)
         np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(),
                                    rtol=1e-6, atol=1e-8)
-
-    def test_fixed_cosmic_time_sigmoid_roundtrip(self):
-        lookback_bins = np.array([1.0, 2.5, 5.0]) * u.Gyr
-        model = sfh.FixedCosmicTimeSFH(lookback_bins, ism_metallicity_today=0.02,
-                                       use_transforms=True)
-        latent = np.array([0.2, -0.1, 0.5])
-        physical = model.to_physical(latent)
-        self.assertTrue(np.all((physical > 0) & (physical < 1)))
-        inv = model.to_latent(physical)
-        np.testing.assert_allclose(inv, latent, rtol=1e-6)
 
     def test_fixed_mass_frac_time_roundtrip(self):
         mass_fractions = np.array([0.2, 0.5, 0.8])

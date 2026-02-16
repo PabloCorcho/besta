@@ -14,6 +14,9 @@ from scipy import ndimage
 from scipy.special import legendre
 from astropy import constants
 from astropy import units as u
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
                                   clip_first_zero=True):
@@ -58,7 +61,7 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
 
     if isinstance(norm_wl, u.Quantity):
         norm_wl = norm_wl.decompose().value
-    print("Pol order == ", np.arange(min_order, min_order + order + 1))
+    logger.debug("Pol order == %s", np.arange(min_order, min_order + order + 1))
     poly_set = []
     for deg in [0, *np.arange(min_order, min_order + order)]:
         pol = legendre(deg)
@@ -78,7 +81,7 @@ def legendre_decorator(make_observable_mthd):
         if "legendre_pol" in args[0].config:
             legendre_pol = args[0].config["legendre_pol"]
             # Get the coefficients from the input DataBlock
-            coeffs = np.array([1.0] + [args[1]["parameters", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
+            coeffs = np.array([1.0] + [args[1]["legendre", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
             output = make_observable_mthd(*args, **kwargs)
             if isinstance(output, tuple):
                 return output[0] * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0), output[1]

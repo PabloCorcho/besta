@@ -7,7 +7,7 @@ from besta.sfh import ExponentialSFH
 from besta.pipeline import MainPipeline
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.io import Reader
-from besta.postprocess import compute_pdf_from_results
+from besta.postprocess import summarize_results
 from pst.SSP import PopStar
 
 class TestPipelineManagerFit(unittest.TestCase):
@@ -33,8 +33,18 @@ class TestPipelineManagerFit(unittest.TestCase):
             [ssp.wavelength, np.random.normal(sed, sed * 0.01), sed * 0.01]).T)
     
         # Create values file
-        text = "[parameters]\nav = 0 0 1\nalpha_powerlaw = 0 1 10\nism_metallicity_today = 0.005 0.01 0.08\nlogtau = -1 0.5 1.7"
-        text += "\nlos_vel = -500 0 500\nlos_sigma = 50 100 500\nlos_h3 = 0\nlos_h4 = 0"
+        text = """[dust.extinction]
+        a_v = 0 0 1
+        [stars.sfh]
+        alpha_powerlaw = 0 1 10
+        ism_metallicity_today = 0.005 0.01 0.08
+        logtau = -1 0.5 1.7
+        [kinematics]
+        los_vel = -500 0 500
+        los_sigma = 50 100 500
+        los_h3 = 0
+        los_h4 = 0
+        """
         with open("values.ini", "w") as file:
             file.write(text)
 
@@ -43,10 +53,10 @@ class TestPipelineManagerFit(unittest.TestCase):
         print("Removing files")
         if os.path.exists("./test_spectra_exp_sfh.dat"):
             os.remove("./test_spectra_exp_sfh.dat")
-        if os.path.exists("./values.ini"):
-            os.remove("./values.ini")
-        if os.path.exists("./FullSpectralFit_auto.ini"):
-            os.remove("./FullSpectralFit_auto.ini")
+        # if os.path.exists("./values.ini"):
+        #     os.remove("./values.ini")
+        # if os.path.exists("./FullSpectralFit_auto.ini"):
+        #     os.remove("./FullSpectralFit_auto.ini")
         if os.path.exists("./full_fit_exponential_sfh.txt"):
             os.remove("./full_fit_exponential_sfh.txt")
         if os.path.exists("./full_fit_exponential_sfh.maxlike.txt"):
@@ -86,7 +96,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             "quiet": "F",
             "timing": "T",
             "debug": "T",
-            "extra_output": "parameters/stellar_mass"
+            "extra_output": "extra/stellar_mass"
         },
 
         "FullSpectralFit": {
@@ -127,12 +137,7 @@ class TestPipelineManagerFit(unittest.TestCase):
         #                           atol=0.1),
         #                "Wrong exponential SFH tau")        
 
-        post_hdul = compute_pdf_from_results(results.results_table)
-
-        print("Percentiles av: ", post_hdul["PERCENTILES"].data["av_pct"])
-        print("Percentiles logtau: ", post_hdul["PERCENTILES"].data["logtau_pct"])
-        print("Percentiles ism_metallicity_today: ", post_hdul["PERCENTILES"].data["ism_metallicity_today_pct"])
-        print("Percentiles stellar_mass: ", post_hdul["PERCENTILES"].data["stellar_mass_pct"])
+        results = summarize_results(results.results_table)
 
 if __name__ == "__main__":
     unittest.main()

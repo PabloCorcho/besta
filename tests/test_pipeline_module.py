@@ -5,8 +5,8 @@ import numpy as np
 
 from cosmosis import DataBlock
 
-from besta.pipeline_modules.kin_dust import KinDustModule
-from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
+from besta.pipeline_modules import FullSpectralFitModule, GalaxySpectraModule, GalaxyPhotometryModule
+
 from besta.sfh import ExponentialSFH
 from pst.SSP import PopStar
 
@@ -31,45 +31,21 @@ class TestPipelineModule(unittest.TestCase):
 
         np.savetxt("./test_spectra_exp_sfh.dat", np.array([ssp.wavelength.to_value("nm"),
                                                            sed, sed * 0.1]).T)
+        # Fake photometry
+        np.savetxt("./test_photo_exp_sfh.dat", np.array([
+            ["SLOAN_SDSS.r"], np.ones(1), np.ones(1)]).T, fmt="%s")
 
     @classmethod
     def tearDownClass(cls):
         print("Removing test spectra")
-        os.remove("./test_spectra_exp_sfh.dat") 
-
-    def test_kin_dust(self):
-        print("#" * 23 + "\nTesting KinDust module\n" + "#" * 23)
-        kin_configuration = {
-            "KinDust": {
-                "file": KinDustModule.get_path(),
-                "redshift": 0.0,
-                "inputSpectrum": "./test_spectra_exp_sfh.dat",
-                "SSPModel": "PopStar",
-                "SSPModelArgs": "cha",
-                "SSPDir": "None",
-                "wlRange": [3700.0, 8000.0],
-                "wlUnits": "nm",
-                "velscale": 200.0,
-                "ExtinctionLaw": "ccm89",
-            }
-        }
-
-        block = DataBlock()
-        block['parameters', 'av'] = 0
-        block['parameters', 'los_vel'] = 0
-        block['parameters', 'los_sigma'] = 100.
-        block['parameters', 'los_h3'] = 0
-        block['parameters', 'los_h4'] = 0
-
-        kindust_module = KinDustModule(kin_configuration)
-        kindust_module.execute(block)
-        print("Module successfully executed")
+        os.remove("./test_spectra_exp_sfh.dat")
+        os.remove("./test_photo_exp_sfh.dat")
 
     def test_full_spectral_fit(self):
         print("#" * 30 + "\nTesting FullSpectralFit module\n" + "#" * 30)
-
+        module = FullSpectralFitModule
         config = {"FullSpectralFit": {
-                "file": FullSpectralFitModule.get_path(),
+                "file": module.get_path(),
                 "redshift": 0.0,
                 "inputSpectrum": "./test_spectra_exp_sfh.dat",
                 "SSPModel": "PopStar",
@@ -83,17 +59,83 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['parameters', 'av'] = 0
-        block['parameters', 'los_vel'] = 0
-        block['parameters', 'los_sigma'] = 100.
-        block['parameters', 'los_h3'] = 0
-        block['parameters', 'los_h4'] = 0
-        block['parameters', 'logtau'] = 1
-        block['parameters', 'alpha_powerlaw'] = 1
-        block['parameters', 'ism_metallicity_today'] = 0.02
+        block['dust.extinction', 'a_v'] = 0
+        block['kinematics', 'los_vel'] = 0
+        block['kinematics', 'los_sigma'] = 100.
+        block['kinematics', 'los_h3'] = 0
+        block['kinematics', 'los_h4'] = 0
+        block['stars.sfh', 'logtau'] = 1
+        block['stars.sfh', 'alpha_powerlaw'] = 1
+        block['stars.sfh', 'ism_metallicity_today'] = 0.02
 
-        module = FullSpectralFitModule(config)
+        module = module(config)
         self.assertFalse(module.execute(block))
+        print("Module successfully executed")
+
+    def test_galaxy_spectra(self):
+        print("#" * 30 + "\nTesting GalaxySpectra module\n" + "#" * 30)
+        module = GalaxySpectraModule
+        config = {"GalaxySpectra": {
+                "file": module.get_path(),
+                "redshift": 0.0,
+                "inputSpectrum": "./test_spectra_exp_sfh.dat",
+                "SSPModel": "PopStar",
+                "SSPModelArgs": "cha",
+                "SSPDir": "None",
+                "wlRange": [3700.0, 6000.0],
+                "wlUnits": "nm",
+                "SFHModel": "ExponentialSFH",
+                "velscale": 200.0,
+                "DustAttenuation": True,
+                "ExtinctionLaw": "ccm89",
+            }}
+
+        block = DataBlock()
+        block['dust.extinction', 'a_v'] = 0
+        block['kinematics', 'los_vel'] = 0
+        block['kinematics', 'los_sigma'] = 100.
+        block['kinematics', 'los_h3'] = 0
+        block['kinematics', 'los_h4'] = 0
+        block['stars.sfh', 'logtau'] = 1
+        block['stars.sfh', 'alpha_powerlaw'] = 1
+        block['stars.sfh', 'ism_metallicity_today'] = 0.02
+
+        module = module(config)
+        self.assertFalse(module.execute(block))
+        flux_model, normalization = module.make_observable(block, parse=True)
+        self.assertTrue(np.isfinite(flux_model).all())
+        self.assertTrue(np.isfinite(normalization).all())
+        print("Module successfully executed")
+
+    def test_galaxy_photometry(self):
+        print("#" * 30 + "\nTesting GalaxyPhotometry module\n" + "#" * 30)
+        module = GalaxyPhotometryModule
+        config = {"GalaxyPhotometry": {
+                "file": module.get_path(),
+                "redshift": 0.0,
+                "inputPhotometry": "./test_photo_exp_sfh.dat",
+                "SSPModel": "PopStar",
+                "SSPModelArgs": "cha",
+                "SSPDir": "None",
+                "SFHModel": "ExponentialSFH",
+                "DustAttenuation": True,
+                "ExtinctionLaw": "ccm89",
+            }}
+
+        block = DataBlock()
+        block['dust.extinction', 'a_v'] = 0
+        block['kinematics', 'los_vel'] = 0
+        block['kinematics', 'los_sigma'] = 100.
+        block['kinematics', 'los_h3'] = 0
+        block['kinematics', 'los_h4'] = 0
+        block['stars.sfh', 'logtau'] = 1
+        block['stars.sfh', 'alpha_powerlaw'] = 1
+        block['stars.sfh', 'ism_metallicity_today'] = 0.02
+
+        module = module(config)
+        self.assertFalse(module.execute(block))
+        flux_model = module.make_observable(block, parse=True)
+        self.assertTrue(np.isfinite(flux_model).all())
         print("Module successfully executed")
 
 if __name__ == "__main__":

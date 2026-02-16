@@ -1,0 +1,213 @@
+/* ==========================================================
+   BESTA – Custom Sphinx RTD Theme
+   Inspired by BESTA galaxy + Gaussian logo
+   Deep navy + spiral blue accent
+   ========================================================== */
+
+/* ----------------------------
+   Global Background & Text
+-----------------------------*/
+
+body {
+    background-color: #0b1220;
+    color: #e6edf3;
+}
+
+/* Main content area */
+.wy-nav-content {
+    background: #24345a;
+}
+
+/* Content wrapper */
+.wy-nav-content-wrap {
+    background: #0f172a;
+}
+
+/* ----------------------------
+   Sidebar
+-----------------------------*/
+
+.wy-nav-side {
+    background: #0b1220;
+}
+
+.wy-side-nav-search {
+    background: #ffffff;
+    border-bottom: 1px solid #1f2a44;
+}
+
+.wy-side-nav-search input[type="text"] {
+    background: #0f172a;
+    color: #e6edf3;
+    border: 1px solid #1f2a44;
+}
+
+/* Sidebar links */
+.wy-menu-vertical a {
+    color: #cbd5e1;
+}
+
+.wy-menu-vertical a:hover {
+    background-color: #1e293b;
+    color: #ffffff;
+}
+
+.wy-menu-vertical .current > a {
+    background-color: #1e3a8a;
+    color: #ffffff;
+}
+
+/* ==========================================
+   Shrink top-left logo area
+========================================== */
+
+/* Reduce vertical padding */
+.wy-side-nav-search {
+    padding: 10px 10px !important;
+}
+
+/* Reduce logo size */
+.wy-side-nav-search img {
+    max-width: 200px !important;   /* adjust as needed */
+    height: auto !important;
+}
+
+/* Reduce spacing below logo */
+.wy-side-nav-search > a {
+    margin-bottom: 5px !important;
+}
+
+/* ----------------------------
+   Accent Colors (Galaxy Blue)
+-----------------------------*/
+
+/* Links in content */
+a {
+    color: #3b82f6;
+}
+
+a:hover {
+    color: #60a5fa;
+}
+
+/* Top navigation bar */
+.wy-nav-top {
+    background: #111c33;
+}
+
+/* Buttons */
+.btn {
+    background-color: #2563eb;
+    border-color: #2563eb;
+}
+
+.btn:hover {
+    background-color: #3b82f6;
+}
+
+/* ----------------------------
+   Code Blocks (Scientific Look)
+-----------------------------*/
+
+div.highlight {
+    background: #0d1117;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+}
+
+.highlight pre {
+    color: #e6edf3;
+}
+
+/* Inline code */
+code {
+    background-color: #1e293b;
+    color: #93c5fd;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+/* ----------------------------
+   Tables
+-----------------------------*/
+
+table.docutils {
+    border-collapse: collapse;
+    background-color: #0f172a;
+}
+
+table.docutils th {
+    background-color: #1e293b;
+    color: #e6edf3;
+}
+
+table.docutils td {
+    border: 1px solid #1f2a44;
+}
+
+/* ----------------------------
+   Admonitions
+-----------------------------*/
+
+.admonition {
+    background: #111c33;
+    border-left: 4px solid #3b82f6;
+}
+
+.admonition-title {
+    color: #60a5fa;
+}
+
+/* ----------------------------
+   Footer
+-----------------------------*/
+
+footer {
+    background: #0b1220;
+    color: #94a3b8;
+}
+
+.wy-menu-vertical .current > a {
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+/* ==========================================
+   Admonition text contrast
+========================================== */
+
+/* General admonition text */
+.admonition,
+.admonition p,
+.admonition li {
+    color: #e6edf3 !important;
+}
+
+/* Note box */
+.admonition.note {
+    background: #0f1e35;
+    border-left: 4px solid #3b82f6;
+}
+
+/* Warning box */
+.admonition.warning {
+    background: #2a1a1a;
+    border-left: 4px solid #ef4444;
+}
+
+/* Tip box */
+.admonition.tip {
+    background: #0f2a1f;
+    border-left: 4px solid #10b981;
+}
+
+/* Important box */
+.admonition.important {
+    background: #2a2333;
+    border-left: 4px solid #a855f7;
+}
+
+/* Admonition title */
+.admonition-title {
+    color: #ffffff !important;
+    font-weight: 600;
+}

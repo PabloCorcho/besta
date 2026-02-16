@@ -10,13 +10,6 @@
    :undoc-members:
    :show-inheritance:
 
-
-.. autoclass:: besta.pipeline_modules.kin_dust.KinDustModule
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-
 .. autoclass:: besta.pipeline_modules.sfh_photometry.SFHPhotometryModule
    :members:
    :undoc-members:

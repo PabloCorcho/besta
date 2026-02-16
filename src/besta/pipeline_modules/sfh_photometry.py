@@ -8,6 +8,9 @@ from cosmosis.datablock import SectionOptions
 from besta.pipeline_modules.base_module import PhotometryFitModule
 from besta import kinematics
 from besta.config import extinction as extinction_conf
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 class SFHPhotometryModule(PhotometryFitModule):
     name = "SFHPhotometry"
@@ -16,10 +19,6 @@ class SFHPhotometryModule(PhotometryFitModule):
         """Set-up the COSMOSIS sampler.
         Args:
             options: options from startup file (i.e. .ini file)
-        Returns:
-            config: parameters or objects that are passed to
-                the sampler.
-
         """
         super().__init__(options)
         options = self.parse_options(options)
@@ -27,7 +26,7 @@ class SFHPhotometryModule(PhotometryFitModule):
         self.config = {"redshift": options["redshift"],
                        "best_fit": None,
                        "best_fit_like": -np.inf}
-        print(f"Input source redshift: {self.config['redshift']}")
+        logger.info("Input source redshift: %s", self.config["redshift"])
         self.prepare_observed_photometry(options)
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)
@@ -43,19 +42,19 @@ class SFHPhotometryModule(PhotometryFitModule):
                     h4 = options["los_h4"]
                 else:
                     h4 = 0
-                print(f"Convolving SSP models with Gauss-Hermite LOSVD")
+                logger.info("Convolving SSP models with Gauss-Hermite LOSVD")
                 ssp, mask = kinematics.convolve_ssp_model(
                     self.config, options["los_sigma"], options["los_vel"], h3, h4
                 )
                 self.config["ssp_model"] = ssp
                 self.config["weights"] *= mask
-                print("Valid pixels: ", np.count_nonzero(mask), mask.size)
+                logger.info("Valid pixels: %s %s", np.count_nonzero(mask), mask.size)
         else:
-            print("No kinematic information was provided")
+            logger.info("No kinematic information was provided")
 
         if options.has_value("av"):
             av = options["av"]
-            print(f"Reddening SSP models using Av={av}")
+            logger.info("Reddening SSP models using Av=%s", av)
             self.config["ssp_model"] = self.config["extinction_law"].redden_ssp_model(
                 self.config["ssp_model"], av
             )
@@ -67,7 +66,7 @@ class SFHPhotometryModule(PhotometryFitModule):
                 self.config["photometry_grid"] = grid["photometry_grid"]
                 self.config["av_grid"] = grid["av_grid"]
         else:
-            print("Producing photometry extinction grid")
+            logger.info("Producing photometry extinction grid")
             dust_model = self.config["extinction_law"]
             av_grid = np.linspace(extinction_conf["a_v"]["min"],
                                 extinction_conf["a_v"]["max"],
@@ -94,8 +93,9 @@ class SFHPhotometryModule(PhotometryFitModule):
             self.config["photometry_grid"] = all_photometry
             # Save the photometry grid and the values of Av
             if options.has_value("SavePhotometryGrid"):
-                print("Saving photometry grid to ",
-                      options["SavePhotometryGrid"])
+                logger.info(
+                    "Saving photometry grid to %s", options["SavePhotometryGrid"]
+                )
                 with open(options["SavePhotometryGrid"], 'wb') as file:
                     pickle.dump({"photometry_grid": all_photometry,
                                  "av_grid": av_grid},
@@ -147,12 +147,14 @@ class SFHPhotometryModule(PhotometryFitModule):
         return 0
 
     def cleanup(self):
-        print("Input flux: ", self.config["photometry_flux"])
-        print("Best fit: ", self.config["best_fit"])
-        print("Best fit like: ", self.config["best_fit_like"])
-        print("Chi square: ", (
-            self.config["best_fit"] - self.config["photometry_flux"]
-            )**2 / self.config["photometry_flux_var"])
+        logger.info("Input flux: %s", self.config["photometry_flux"])
+        logger.info("Best fit: %s", self.config["best_fit"])
+        logger.info("Best fit like: %s", self.config["best_fit_like"])
+        logger.info(
+            "Chi square: %s",
+            (self.config["best_fit"] - self.config["photometry_flux"])**2
+            / self.config["photometry_flux_var"],
+        )
 
 def setup(options):
     options = SectionOptions(options)

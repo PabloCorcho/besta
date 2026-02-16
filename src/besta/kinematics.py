@@ -127,10 +127,10 @@ def convolve_spectra_with_kernel(spectra, kernel):
 
     Parameters
     ----------
-    kernel_model : :class:`Model1DKernel`
-        Kernel model
     spectra : np.ndarray
-        Target spectra to convolve with the kernel
+        Target spectra to convolve with the kernel.
+    kernel : :class:`Model1DKernel`
+        Convolution kernel.
 
     Returns
     -------
