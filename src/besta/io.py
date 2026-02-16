@@ -90,6 +90,9 @@ def _ini_string_to_dict(text):
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
 
+def _mkdir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
 def available_memory_bytes() -> int:
     return int(psutil.virtual_memory().available)
 
