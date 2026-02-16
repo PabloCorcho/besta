@@ -1373,19 +1373,18 @@ def weighted_quantiles(x: np.ndarray, w: np.ndarray,
     cdf = cdf / cdf[-1]
     return np.interp(qs, cdf, x)
 
-def hist_stats(centers: np.ndarray,
-               post: np.ndarray,
-               quantiles=(0.16, 0.5, 0.84),
-               find_multimodal: bool = False) -> dict:
+def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
+              quantiles=None,
+              find_multimodal: bool = False) -> dict:
     """
-    Compute summary stats from a discrete posterior over bin centers.
+    Compute summary stats from a discrete pdf over bin centers.
 
     Parameters
     ----------
-    centers : ndarray, shape (K,)
-        Bin centers.
-    post : ndarray, shape (K,)
-        Normalised posterior weights over bins (sum to 1).
+    edges : ndarray, shape (K,)
+        Bin edges.
+    pdf : ndarray, shape (K,)
+        PDF defined by the edges.
     quantiles : tuple of float, optional
         Quantiles to report (default 16, 50, 84 percent).
     find_multimodal : bool, optional
@@ -1396,31 +1395,39 @@ def hist_stats(centers: np.ndarray,
     stats : dict
         Keys: mean, std, map, q, lo68, hi68, modes (optional).
     """
-    w = np.asarray(post, float)
+    w = np.asarray(pdf, float)
     w = w / np.sum(w) if np.sum(w) > 0 else np.ones_like(w) / w.size
-    c = np.asarray(centers, float)
-    mean = np.sum(c * w)
-    var = np.sum(w * (c - mean) ** 2)
+    # Ensure normalization
+    pdf /= np.sum(pdf * np.diff(edges))
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    # Trapecium integrals
+    mean = np.sum(pdf * centers * np.diff(edges))
+    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
     std = var ** 0.5
     k_map = np.argmax(w)
-    v_map = c[k_map]
+    v_map = centers[k_map]
 
-    cdf = np.cumsum(w)
-    qs = np.array(quantiles, float)
-    qvals = np.interp(qs, cdf, c, left=c[0], right=c[-1])
+    cdf = np.cumsum(pdf * np.diff(edges))
+    cdf = np.insert(cdf, 0, 0)
 
-    lo68 = np.interp(0.16, cdf, c)
-    hi68 = np.interp(0.84, cdf, c)
+    if quantiles is not None:
+        qs = np.array(quantiles, float)
+        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
+    else:
+        qvals = None
+
+    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
+    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
+    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
 
     out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
-           "lo68": lo68, "hi68": hi68}
+           "median": median, "lo68": lo68, "hi68": hi68}
 
     if find_multimodal:
-        # simple peak pick: w[i] greater than neighbours
         modes = []
-        for i in range(1, len(w) - 1):
-            if w[i] > w[i - 1] and w[i] > w[i + 1]:
-                modes.append(c[i])
+        for i in range(1, len(pdf) - 1):
+            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
+                modes.append(pdf[i])
         if not modes:
             modes = [v_map]
         out["modes"] = np.asarray(modes)
