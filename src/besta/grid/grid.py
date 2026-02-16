@@ -44,7 +44,7 @@ from besta.postprocess import (
 
 from .transforms import LinearStandardiser
 
-from besta.io import available_memory_bytes
+from besta.utils import available_memory_bytes
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")

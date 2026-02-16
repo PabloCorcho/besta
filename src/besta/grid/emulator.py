@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 import numpy as np
 from joblib import dump, load
 
-from besta.io import _mkdir
+from besta.utils import _mkdir
 from besta.grid.transforms import LinearStandardiser
 
 

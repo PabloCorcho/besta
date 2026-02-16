@@ -36,6 +36,7 @@ from besta import spectrum
 from besta import kinematics
 from besta import sfh
 from besta import io
+from besta import utils
 from besta.grid import ModelGrid
 from besta.config import cosmology, memory
 from besta.logging import get_logger
@@ -244,7 +245,7 @@ class BaseModule(ClassModule):
                   f"LSF [min sigma={lsf_sigma_pixels.min():.2},"
                   f" max sigma={lsf_sigma_pixels.max():.2} pix]")
             try:
-                io.check_array_memory(
+                utils.check_array_memory(
                 (ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
                  ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
                 dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',

@@ -16,6 +16,7 @@ from astropy.table import Table
 
 from besta import pipeline_modules
 from besta.logging import get_logger
+from besta.utils import expand_env_vars
 
 logger = get_logger(__name__)
 
