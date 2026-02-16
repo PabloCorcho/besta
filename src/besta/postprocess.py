@@ -15,7 +15,6 @@ Notes
   with a log-posterior column (default: "post") and parameter columns
   named like "section--name" (default delimiter/prefix: "--").
 """
-
 from __future__ import annotations
 
 import json
@@ -1329,6 +1328,124 @@ def make_plot_chains(
             fp = os.path.join(outdir, f"chain_{safe}.png")
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
             paths.append(fp)
+
+def weighted_quantiles(x: np.ndarray, w: np.ndarray,
+                        qs: Sequence[float]) -> np.ndarray:
+    x = np.asarray(x); w = np.asarray(w)
+    m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
+    if not m.any():
+        return np.array([np.nan] * len(qs))
+    x = x[m]; w = w[m]
+    order = np.argsort(x)
+    x = x[order]; w = w[order]
+    cdf = np.cumsum(w); cdf = cdf / cdf[-1]
+    return np.interp(qs, cdf, x)
+
+def hist_stats(centers: np.ndarray,
+               post: np.ndarray,
+               quantiles=(0.16, 0.5, 0.84),
+               find_multimodal: bool = False) -> dict:
+    """
+    Compute summary stats from a discrete posterior over bin centers.
+
+    Parameters
+    ----------
+    centers : ndarray, shape (K,)
+        Bin centers.
+    post : ndarray, shape (K,)
+        Normalised posterior weights over bins (sum to 1).
+    quantiles : tuple of float, optional
+        Quantiles to report (default 16, 50, 84 percent).
+    find_multimodal : bool, optional
+        If True, return rough modes by local-maximum search.
+
+    Returns
+    -------
+    stats : dict
+        Keys: mean, std, map, q, lo68, hi68, modes (optional).
+    """
+    w = np.asarray(post, float)
+    w = w / np.sum(w) if np.sum(w) > 0 else np.ones_like(w) / w.size
+    c = np.asarray(centers, float)
+    mean = float(np.sum(c * w))
+    var = float(np.sum(w * (c - mean) ** 2))
+    std = var ** 0.5
+    k_map = int(np.argmax(w))
+    v_map = float(c[k_map])
+
+    cdf = np.cumsum(w)
+    qs = np.array(quantiles, float)
+    qvals = np.interp(qs, cdf, c, left=c[0], right=c[-1])
+
+    lo68 = float(np.interp(0.16, cdf, c))
+    hi68 = float(np.interp(0.84, cdf, c))
+
+    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
+           "lo68": lo68, "hi68": hi68}
+
+    if find_multimodal:
+        # simple peak pick: w[i] greater than neighbours
+        modes = []
+        for i in range(1, len(w) - 1):
+            if w[i] > w[i - 1] and w[i] > w[i + 1]:
+                modes.append(c[i])
+        if not modes:
+            modes = [v_map]
+        out["modes"] = np.asarray(modes)
+    return out
+
+
+def pit_from_discrete_posterior(z_true: np.ndarray,
+                                posts: np.ndarray,
+                                z_edges: np.ndarray) -> np.ndarray:
+    """
+    Probability Integral Transform for discrete posteriors on bins.
+
+    Assumes uniform density within each bin for within-bin interpolation.
+
+    Parameters
+    ----------
+    z_true : ndarray, shape (N,)
+        True values.
+    posts : ndarray, shape (N, K)
+        Row-normalised posteriors over K bins.
+    z_edges : ndarray, shape (K+1,)
+        Bin edges.
+
+    Returns
+    -------
+    pit : ndarray, shape (N,)
+        PIT values in [0, 1].
+    """
+    N, K = posts.shape
+    assert K == len(z_edges) - 1
+    cdf_bins = np.cumsum(posts, axis=1)
+    j = np.clip(np.digitize(z_true, z_edges) - 1, 0, K - 1)
+    idx = np.arange(N)
+    below = np.where(j > 0, cdf_bins[idx, j - 1], 0.0)
+    widths = z_edges[1:] - z_edges[:-1]
+    frac = np.clip((z_true - z_edges[j]) / widths[j], 0.0, 1.0)
+    pit = below + posts[idx, j] * frac
+    return np.clip(pit, 0.0, 1.0)
+
+
+def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
+    """
+    Standard photo-z metrics using delta z over 1+z.
+
+    Returns
+    -------
+    out : dict
+        Keys: bias, nmad, outlier, rmse.
+    """
+    d = (z_est - z_true) / (1.0 + z_true)
+    med = np.nanmedian(d)
+    nmad = 1.48 * np.nanmedian(np.abs(d - med))
+    outlier = float(np.mean(np.abs(d) > 0.15))
+    rmse = float(np.sqrt(np.nanmean(d ** 2)))
+    return {"bias": float(med), "nmad": float(nmad),
+            "outlier": outlier, "rmse": rmse}
+>>>>>>> 17f4e5d (add more statistical tools)
 
         if show:
             plt.show()
