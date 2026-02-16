@@ -1091,6 +1091,37 @@ def summarize_results(
     samples = np.vstack([_as_float_array(table[k])[mask] for k in keys])
     npar, nsamp = samples.shape
 
+    max_logpost, max_post_idx = (
+        np.nanmax(table[posterior_key]),
+        np.nanargmax(table[posterior_key]),
+    )
+    # Linear posterior renormalized to the maximum value
+    logpost = table[posterior_key].value
+    posterior = np.exp(logpost - max_logpost)
+    posterior /= np.nansum(posterior)
+    if np.isfinite(max_logpost):
+        header["hierarch max_logpost"] = max_logpost, "Maximum of the logposterior"
+    else:
+        header["hierarch max_logpost"] = "NAN", "Maximum of the logposterior"
+    maxpost_values = values[:, max_post_idx]
+    # Mean and covariance
+    mean_values = weighted_sample_mean(values, posterior)
+    covariance_matrix = weighted_sample_covariance(values, posterior)
+    # Store everything on the header
+    for axis, mean, maxpost, key in zip(
+        range(len(parameter_keys)), mean_values, maxpost_values, parameter_keys
+    ):
+        kname = key.replace(parameter_prefix + "--", "")
+        header[f"hierarch axis_{axis}"] = kname, "parameter"
+        if np.isfinite(mean):
+            header[f"hierarch mean_{kname}"] = mean, "post-weighted mean"
+        else:
+            header[f"hierarch mean_{kname}"] = "NAN", "post-weighted mean"
+        if np.isfinite(maxpost):
+            header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
+        else:
+            header[f"hierarch maxpost_{kname}"] = "NAN", "max-post value"
+
     map_idx = int(np.argmax(logpost))  # index within filtered arrays
     map_vec = samples[:, map_idx]
 
@@ -1335,10 +1366,11 @@ def weighted_quantiles(x: np.ndarray, w: np.ndarray,
     m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
     if not m.any():
         return np.array([np.nan] * len(qs))
-    x = x[m]; w = w[m]
+    x, w = x[m], w[m]
     order = np.argsort(x)
-    x = x[order]; w = w[order]
-    cdf = np.cumsum(w); cdf = cdf / cdf[-1]
+    x, w = x[order], w[order]
+    cdf = np.cumsum(w)
+    cdf = cdf / cdf[-1]
     return np.interp(qs, cdf, x)
 
 def hist_stats(centers: np.ndarray,
@@ -1445,7 +1477,6 @@ def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     rmse = float(np.sqrt(np.nanmean(d ** 2)))
     return {"bias": float(med), "nmad": float(nmad),
             "outlier": outlier, "rmse": rmse}
->>>>>>> 17f4e5d (add more statistical tools)
 
         if show:
             plt.show()
@@ -1453,3 +1484,61 @@ def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
             plt.close(fig)
 
     return paths
+
+def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post"):
+    """Make trace plots from an astropy Table containing chain results.
+
+    Parameters
+    ----------
+    table : Table
+        Astropy Table containing the chain results.
+    truth_values : list of float, optional
+        True values for the parameters (used for plotting).
+    output_dir : str, optional
+        Directory to save the output plots.
+    posterior_key : str, optional
+        Key to use for the posterior samples in the table.
+
+    Returns
+    -------
+    all_figs : list of Figure
+        List of all generated figures.
+    """
+    parameters = [par for par in table.colnames if "parameters" in par]
+    if truth_values is None:
+        truth_values = [np.nan] * len(parameters)
+    all_figs = []
+    #TODO: user-configurable posterior key limits
+    if posterior_key is not None and posterior_key not in table.colnames:
+        raise ValueError(f"Posterior key '{posterior_key}' not found in table columns.")
+    else:
+        print(f"Using posterior key: {posterior_key}")
+        maxpost = np.nanmax(table[posterior_key])
+        vmin = max(np.nanmin(table[posterior_key]), maxpost - 3.4)
+        norm=plt.Normalize(vmin=vmin, vmax=maxpost)
+
+    x_values = np.arange(len(table[parameters[0]]))
+    for par, truth in zip(parameters, truth_values):
+        fig = plt.figure(constrained_layout=True)
+        ax = fig.add_subplot(111)
+        mappable = ax.scatter(x_values, table[par], s=0.5,
+                              c=table[posterior_key], cmap="viridis",
+                              norm=norm)
+        cbar = fig.colorbar(mappable, ax=ax)
+        cbar.set_label("log-posterior")
+        ax.set_xlabel("Sample index")
+        ax.set_ylabel(par.replace("parameters--", ""))
+        if truth is not None and np.isfinite(truth):
+            ax.axhline(truth, c="r")
+
+        if output_dir is not None:
+            fig.savefig(
+                os.path.join(
+                    output_dir,
+                    f"chain_plot_{par.replace('parameters--', '')}.png",
+                ),
+                dpi=200,
+                bbox_inches="tight",
+            )
+        all_figs.append(fig)
+    return all_figs
