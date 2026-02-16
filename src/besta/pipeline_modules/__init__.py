@@ -3,6 +3,7 @@ from .sfh_photometry import SFHPhotometryModule
 from .full_spectral_fit import FullSpectralFitModule
 from .galaxy_spectra import GalaxySpectraModule
 from .galaxy_photometry import GalaxyPhotometryModule
+from .sfh_photometry_grid import SFHPhotometryGridModule
 
 __all__ = [
     "BaseModule",
@@ -10,4 +11,5 @@ __all__ = [
     "FullSpectralFitModule",
     "GalaxySpectraModule",
     "GalaxyPhotometryModule"
+    "SFHPhotometryGridModule",
 ]
