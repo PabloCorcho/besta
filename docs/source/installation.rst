@@ -7,7 +7,7 @@ Installation Guide
 System Requirements
 ===================
 
-- Python >3.9
+- Python >=3.10
 
 Installing CosmoSIS
 *******************
