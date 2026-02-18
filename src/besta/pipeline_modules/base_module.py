@@ -1020,8 +1020,6 @@ class PhotometryFitModule(BaseModule):
         """Plot the fit."""
         flux_model, full_spec = self.make_observable(solution, parse=True,
                                                      include_spec=True)
-        if isinstance(flux_model, tuple):
-            flux_model = flux_model[0]
 
         # Include input weights
         fig, axs = plt.subplots(ncols=2, nrows=3, sharex="col", sharey="row",
@@ -1029,14 +1027,7 @@ class PhotometryFitModule(BaseModule):
                                 width_ratios=[4, 1],
                                 height_ratios=[2, 1, 1],
                                 figsize=(16, 9))
-        flux_model = self.make_observable(solution, parse=True)
 
-        fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
-                                constrained_layout=True,
-                                squeeze=False,
-                                width_ratios=[4, 1],
-                                height_ratios=[4, 1],
-                                figsize=(8, 5))
         plt.suptitle(f"Module: {self.name}")
 
         # Display the information
