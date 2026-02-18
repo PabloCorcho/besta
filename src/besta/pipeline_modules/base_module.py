@@ -2,10 +2,17 @@
 Base pipeline module. This module contains the base class for creating new
 pipeline modules in BESTA.
 """
+from __future__ import annotations
+
 from abc import abstractmethod
 import os
 import pickle
 import sys
+
+import importlib.util
+import pathlib
+import types
+from typing import Callable, Optional
 
 from matplotlib import pyplot as plt
 from besta.visualization import draw_dict_in_axes
@@ -29,6 +36,8 @@ from besta import spectrum
 from besta import kinematics
 from besta import sfh
 from besta import io
+from besta import utils
+from besta.grid import ModelGrid
 from besta.config import cosmology, memory
 from besta.logging import get_logger
 
@@ -43,9 +52,15 @@ class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
     def __init__(self, options, *, alias=None):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
+        """
+        Set up the CosmoSIS module.
+
+        Parameters
+        ----------
+        options : dict or DataBlock
+            Options from the startup configuration.
+        alias : str, optional
+            Module alias used to resolve section names.
         """
         if alias is None:
             self.alias = self.name
@@ -236,7 +251,7 @@ class BaseModule(ClassModule):
                   f"LSF [min sigma={lsf_sigma_pixels.min():.2},"
                   f" max sigma={lsf_sigma_pixels.max():.2} pix]")
             try:
-                io.check_array_memory(
+                utils.check_array_memory(
                 (ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
                  ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
                 dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
@@ -1003,9 +1018,8 @@ class PhotometryFitModule(BaseModule):
 
     def plot_solution(self, solution: DataBlock, figname=None):
         """Plot the fit."""
-        flux_model, full_spec = self.make_observable(solution, parse=True, include_spec=True)
-        if isinstance(flux_model, tuple):
-            flux_model = flux_model[0]
+        flux_model, full_spec = self.make_observable(solution, parse=True,
+                                                     include_spec=True)
 
         # Include input weights
         fig, axs = plt.subplots(ncols=2, nrows=3, sharex="col", sharey="row",
@@ -1013,6 +1027,7 @@ class PhotometryFitModule(BaseModule):
                                 width_ratios=[4, 1],
                                 height_ratios=[2, 1, 1],
                                 figsize=(16, 9))
+
         plt.suptitle(f"Module: {self.name}")
 
         # Display the information
@@ -1041,7 +1056,7 @@ class PhotometryFitModule(BaseModule):
         sections = [(k, v) for k, v in sol_sections.items()]
 
         _ = draw_dict_in_axes(ax, sections, section_spacing=1,
-                          title_style="underline")
+                              title_style="underline")
         ax.axis("off")
         # Plot input photometry and model
         eff_wl = self.config["filter_list"].effective_wavelength
@@ -1121,7 +1136,6 @@ class PhotometryFitModule(BaseModule):
             fig.savefig(figname, bbox_inches="tight",
                     dpi=300)
             _log(f"Fit plot saved at: {figname}")
-
         plt.close()
         return fig
 
@@ -1131,3 +1145,140 @@ class EquivalentWidthFitModule(BaseModule):
 
     def plot_solution(self, solution: DataBlock, figname=None):
         pass
+
+class GridFitMixin:
+    """Mixin class for grid-based fitting modules in BESTA."""
+
+    def _load_callable_from_file(self,
+        file_path: str | pathlib.Path,
+        func_name: str,
+        *,
+        module_name: Optional[str] = None,
+    ) -> Callable:
+        """
+        Load a callable named `func_name` from a Python source file at `file_path`.
+
+        Parameters
+        ----------
+        file_path
+            Path to the .py file (does not need to be importable / on PYTHONPATH).
+        func_name
+            Name of the function (or other callable) defined in that file.
+        module_name
+            Optional module name to assign during loading. If None, a unique
+            name is generated from the filename.
+
+        Returns
+        -------
+        func
+            The loaded callable object.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the file does not exist.
+        ImportError
+            If the module cannot be loaded.
+        AttributeError
+            If func_name is not found in the module.
+        TypeError
+            If the loaded attribute is not callable.
+        """
+        file_path = pathlib.Path(file_path).expanduser().resolve()
+        if not file_path.exists():
+            raise FileNotFoundError(str(file_path))
+        if file_path.suffix != ".py":
+            raise ImportError(f"Expected a .py file, got: {file_path}")
+
+        # Give the module a deterministic-ish name to help debugging and caching
+        if module_name is None:
+            module_name = f"_user_boundary_{file_path.stem}"
+
+        spec = importlib.util.spec_from_file_location(module_name, str(file_path))
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not create import spec for: {file_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)  # type: ignore[attr-defined]
+        except Exception as e:
+            raise ImportError(f"Error importing {file_path}: {e}") from e
+
+        obj = getattr(module, func_name)  # may raise AttributeError
+        if not callable(obj):
+            raise TypeError(f"{func_name!r} in {file_path} is not callable (got {type(obj)})")
+
+        return obj
+
+    def prepare_grid_model(self, options):
+        """Prepare the model grid.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        logger.info("-> Configuring model grid")
+        if not options.has_value("modelGridFile"):
+            raise ValueError("No input model grid file provided.")
+        grid_file = os.path.expandvars(options["modelGridFile"])
+        logger.info("Loading model grid from file: %s", grid_file)
+        if not os.path.isfile(grid_file):
+            raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
+        logger.info("Reading model grid... fluxes must be in microJansky / Msun")
+        model_grid = ModelGrid.load_auto(grid_file)
+
+        if options.has_value("boundaryFunctionFile"):
+            boundary_file = os.path.expandvars(
+                options["boundaryFunctionFile"])
+            logger.info("Loading boundary function from file: %s", boundary_file)
+            # Split the path to the file and the function name given by []
+            mthd_s = boundary_file.find("[")
+            mthd_e = boundary_file.find("]")
+            boundary_func_name = boundary_file[mthd_s + 1:mthd_e]
+            boundary_file = boundary_file[:mthd_s]
+            boundary_func = self._load_callable_from_file(
+                boundary_file, boundary_func_name)
+            model_grid.check_boundaries = boundary_func
+            logger.info("Applied boundary function to model grid.")
+
+        self.config["model_grid"] = model_grid
+        
+        if options.has_value("knn"):
+            self.config["knn"] = options["knn"]
+        else:
+            self.config["knn"] = int(4 * model_grid.n_targets)
+        logger.info("-> Configuration done.")
+
+
+class EmulatorMixin:
+    """Mixin class for modules using ML emulators in BESTA."""
+
+    def prepare_emulator(self, options):
+        """Prepare the ML emulator.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        
+        Notes
+        -----
+        The ML emulator is expected to be stored in a joblib (.joblib) file.
+        """
+        try:
+            import joblib
+        except ImportError:
+            raise ImportError("joblib is required to load ML emulators."
+                              "Please install joblib and try again.")
+        logger.info("-> Configuring ML emulator")
+        if not options.has_value("emulatorFile"):
+            raise ValueError("No input emulator file provided.")
+        emulator_file = os.path.expandvars(options["emulatorFile"])
+        logger.info("Loading ML emulator from file: %s", emulator_file)
+        if not os.path.isfile(emulator_file):
+            raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
+        logger.info("Reading ML emulator...")
+        ml_emulator = joblib.load(emulator_file)
+        self.config["ml_emulator"] = ml_emulator
+        logger.info("-> Configuration done.")

@@ -15,7 +15,6 @@ Notes
   with a log-posterior column (default: "post") and parameter columns
   named like "section--name" (default delimiter/prefix: "--").
 """
-
 from __future__ import annotations
 
 import json
@@ -143,17 +142,17 @@ def weighted_hdi(
     merge_tol: float = 0.0,
 ) -> List[Tuple[float, float]]:
     """
-    Weighted highest-density interval(s) for a 1D distribution, from samples.
+    Compute weighted highest-density interval(s) from 1D samples.
 
-    This returns one or more intervals whose union approximates the smallest
-    region(s) containing `mass` of the probability, allowing multi-modality.
+    The output approximates the smallest region containing ``mass`` probability,
+    allowing multi-modality via disjoint intervals.
 
-    Approach:
-    - Sort samples by x.
-    - Use the cumulative weights CDF.
-    - Find the narrowest interval(s) [i, j] such that CDF[j]-CDF[i] >= mass.
-    - Optionally return multiple intervals by iteratively masking out the best
-      interval and repeating (approximate, but useful).
+    Method
+    ------
+    1. Sort samples by ``x``.
+    2. Use cumulative weighted mass.
+    3. Find the narrowest interval(s) with enclosed mass >= ``mass``.
+    4. Optionally repeat to recover additional disjoint intervals.
 
     Parameters
     ----------
@@ -266,14 +265,14 @@ def enclosed_fraction_map(
     yedges: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
-    Compute an HPD-style enclosed fraction map from a 2D density.
+    Compute an HPD-style enclosed fraction map from a 2D density grid.
 
-    Returns a map F with same shape as density such that:
-    - Sorting pixels by density descending, F at a pixel is the cumulative
-      probability mass enclosed at that density threshold.
+    Returns an array ``F`` with the same shape as ``density`` where each pixel
+    stores the cumulative enclosed mass at that density threshold (after sorting
+    pixels by density in descending order).
 
-    If edges are provided, uses pixel area dy*dx to compute mass; otherwise
-    assumes constant pixel area.
+    If ``xedges`` and ``yedges`` are provided, pixel areas are included when
+    computing mass; otherwise constant pixel area is assumed.
     """
     dens = _as_float_array(density)
     if dens.ndim != 2:
@@ -532,9 +531,12 @@ def laplace_logz(loglike_map: float, logprior_map: float, cov: np.ndarray) -> Ev
 
 def harmonic_mean_logz(loglike: np.ndarray, weights: np.ndarray, *, trim_frac: float = 0.01) -> EvidenceEstimate:
     """
-    Robust harmonic-mean estimator:
-      log Z = - log E_posterior[exp(-logL)].
-    This is generally unstable; trimming helps but it remains a sanity-check only.
+    Robust harmonic-mean estimator.
+
+    Uses ``log Z = -log(E_posterior[exp(-logL)])``.
+
+    This estimator is generally unstable; trimming helps, but it should still
+    be treated as a sanity check only.
     """
     ll = _as_float_array(loglike).ravel()
     w = normalize_weights(weights)
@@ -646,16 +648,11 @@ class ResultsSummary:
         """
         Estimate evidence logZ using information in the original results table.
 
-        Supported:
-        - method="laplace": uses MAP loglike/logprior + covariance
-        - method="hme_robust": uses posterior expectation of 1/L (unstable; sanity-check)
+        Supported methods are ``"laplace"`` (MAP loglike/logprior + covariance)
+        and ``"hme_robust"`` (posterior expectation of ``1/L``, sanity-check).
 
-        Inputs
-        ------
-        You said you have:
-          post = loglike + logprior
-          prior = logprior
-        So if loglike_key is not present, we reconstruct loglike = post - prior.
+        If ``loglike_key`` is not available, log-likelihood is reconstructed as
+        ``loglike = post - prior``.
         """
 
         if logpost_key is None:
@@ -1330,9 +1327,184 @@ def make_plot_chains(
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
             paths.append(fp)
 
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
+def weighted_quantiles(x: np.ndarray, w: np.ndarray,
+                        qs: Sequence[float]) -> np.ndarray:
+    x = np.asarray(x); w = np.asarray(w)
+    m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
+    if not m.any():
+        return np.array([np.nan] * len(qs))
+    x, w = x[m], w[m]
+    order = np.argsort(x)
+    x, w = x[order], w[order]
+    cdf = np.cumsum(w)
+    cdf = cdf / cdf[-1]
+    return np.interp(qs, cdf, x)
 
-    return paths
+def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
+              quantiles=None,
+              find_multimodal: bool = False) -> dict:
+    """
+    Compute summary stats from a discrete pdf over bin centers.
+
+    Parameters
+    ----------
+    edges : ndarray, shape (K,)
+        Bin edges.
+    pdf : ndarray, shape (K,)
+        PDF defined by the edges.
+    quantiles : tuple of float, optional
+        Quantiles to report (default 16, 50, 84 percent).
+    find_multimodal : bool, optional
+        If True, return rough modes by local-maximum search.
+
+    Returns
+    -------
+    stats : dict
+        Keys: mean, std, map, q, lo68, hi68, modes (optional).
+    """
+    # Ensure normalization
+    norm = np.sum(pdf * np.diff(edges))
+    pdf /= norm if norm > 0 else 1.0
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    # Trapecium integrals
+    mean = np.sum(pdf * centers * np.diff(edges))
+    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
+    std = var ** 0.5
+    k_map = np.argmax(pdf * np.diff(edges))
+    v_map = centers[k_map]
+
+    cdf = np.cumsum(pdf * np.diff(edges))
+    cdf = np.insert(cdf, 0, 0)
+
+    if quantiles is not None:
+        qs = np.array(quantiles, float)
+        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
+    else:
+        qvals = None
+
+    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
+    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
+    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
+
+    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
+           "median": median, "lo68": lo68, "hi68": hi68}
+
+    if find_multimodal:
+        modes = []
+        for i in range(1, len(pdf) - 1):
+            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
+                modes.append(centers[i])
+        if not modes:
+            modes = [v_map]
+        out["modes"] = np.asarray(modes)
+    return out
+
+
+def pit_from_discrete_posterior(z_true: np.ndarray,
+                                posts: np.ndarray,
+                                z_edges: np.ndarray) -> np.ndarray:
+    """
+    Probability Integral Transform for discrete posteriors on bins.
+
+    Assumes uniform density within each bin for within-bin interpolation.
+
+    Parameters
+    ----------
+    z_true : ndarray, shape (N,)
+        True values.
+    posts : ndarray, shape (N, K)
+        Row-normalised posteriors over K bins.
+    z_edges : ndarray, shape (K+1,)
+        Bin edges.
+
+    Returns
+    -------
+    pit : ndarray, shape (N,)
+        PIT values in [0, 1].
+    """
+    N, K = posts.shape
+    assert K == len(z_edges) - 1
+    cdf_bins = np.cumsum(posts, axis=1)
+    j = np.clip(np.digitize(z_true, z_edges) - 1, 0, K - 1)
+    idx = np.arange(N)
+    below = np.where(j > 0, cdf_bins[idx, j - 1], 0.0)
+    widths = z_edges[1:] - z_edges[:-1]
+    frac = np.clip((z_true - z_edges[j]) / widths[j], 0.0, 1.0)
+    pit = below + posts[idx, j] * frac
+    return np.clip(pit, 0.0, 1.0)
+
+
+def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
+    """
+    Standard photo-z metrics using delta z over 1+z.
+
+    Returns
+    -------
+    out : dict
+        Keys: bias, nmad, outlier, rmse.
+    """
+    d = (z_est - z_true) / (1.0 + z_true)
+    med = np.nanmedian(d)
+    nmad = 1.48 * np.nanmedian(np.abs(d - med))
+    outlier = float(np.mean(np.abs(d) > 0.15))
+    rmse = float(np.sqrt(np.nanmean(d ** 2)))
+    return {"bias": float(med), "nmad": float(nmad),
+            "outlier": outlier, "rmse": rmse}
+
+def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post"):
+    """Make trace plots from an astropy Table containing chain results.
+
+    Parameters
+    ----------
+    table : Table
+        Astropy Table containing the chain results.
+    truth_values : list of float, optional
+        True values for the parameters (used for plotting).
+    output_dir : str, optional
+        Directory to save the output plots.
+    posterior_key : str, optional
+        Key to use for the posterior samples in the table.
+
+    Returns
+    -------
+    all_figs : list of Figure
+        List of all generated figures.
+    """
+    parameters = [par for par in table.colnames if "parameters" in par]
+    if truth_values is None:
+        truth_values = [np.nan] * len(parameters)
+    all_figs = []
+    #TODO: user-configurable posterior key limits
+    if posterior_key is not None and posterior_key not in table.colnames:
+        raise ValueError(f"Posterior key '{posterior_key}' not found in table columns.")
+    else:
+        logger.info("Using posterior key: %s", posterior_key)
+        maxpost = np.nanmax(table[posterior_key])
+        vmin = max(np.nanmin(table[posterior_key]), maxpost - 3.4)
+        norm=plt.Normalize(vmin=vmin, vmax=maxpost)
+
+    x_values = np.arange(len(table[parameters[0]]))
+    for par, truth in zip(parameters, truth_values):
+        fig = plt.figure(constrained_layout=True)
+        ax = fig.add_subplot(111)
+        mappable = ax.scatter(x_values, table[par], s=0.5,
+                              c=table[posterior_key], cmap="viridis",
+                              norm=norm)
+        cbar = fig.colorbar(mappable, ax=ax)
+        cbar.set_label("log-posterior")
+        ax.set_xlabel("Sample index")
+        ax.set_ylabel(par.replace("parameters--", ""))
+        if truth is not None and np.isfinite(truth):
+            ax.axhline(truth, c="r")
+
+        if output_dir is not None:
+            fig.savefig(
+                os.path.join(
+                    output_dir,
+                    f"chain_plot_{par.replace('parameters--', '')}.png",
+                ),
+                dpi=200,
+                bbox_inches="tight",
+            )
+        all_figs.append(fig)
+    return all_figs

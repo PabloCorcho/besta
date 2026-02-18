@@ -14,6 +14,11 @@ Modern astrophysical observations demand sophisticated tools to extract meaningf
 
 BESTA is designed for both expert researchers and beginners in the field of extragalactic astronomy. It features a user-friendly interface and highly customizable workflows, enabling users to tailor their analyses to specific datasets and scientific goals. Whether you're studying individual galaxies or large cosmological surveys, BESTA ensures accurate and reproducible results.
 
+BESTA supports two complementary inference workflows:
+
+- **CosmoSIS-based sampling pipelines**, documented in :ref:`pipeline_manager`.
+- **Direct grid-based inference** (no sampler runtime required), documented in :ref:`grid_inference`.
+
 .. toctree::
    :maxdepth: 1
    :caption: Contents
@@ -23,6 +28,7 @@ BESTA is designed for both expert researchers and beginners in the field of extr
    configuration
    manager
    postprocessing
+   grid
    contributing
    api  
 
