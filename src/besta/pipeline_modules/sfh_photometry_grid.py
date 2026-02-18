@@ -32,7 +32,7 @@ class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
         targets = [block["parameters", k] for k in self.config["model_grid"].target_names]
         # microJy / Msun at 10 parsec
         flux_model = self.config["model_grid"].interpolate_observables(
-            targets, k=self.config["knn"]).squeeze()
+            targets, k=self.config.get("knn", 1)).squeeze()
         normalization = np.mean(self.config["photometry_flux"] / flux_model)
         block["parameters", "normalization"] = normalization
         return flux_model * normalization
