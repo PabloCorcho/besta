@@ -6,4 +6,3 @@ scipy>=1.13
 astropy
 psutil
 numba
-psutil
