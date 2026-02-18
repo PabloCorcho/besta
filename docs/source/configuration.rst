@@ -174,9 +174,10 @@ These options are used by
   filter identifier, flux, and flux uncertainty.
 
   Filter identifiers can be:
+
   - paths to local filter throughput files (loaded with
-    :meth:`pst.observables.Filter.from_text_file`), or
-  - SVO filter names (loaded with :meth:`pst.observables.Filter.from_svo`).
+    ``Filter.from_text_file``), or
+  - SVO filter names (loaded with ``Filter.from_svo``).
 
 - ``fluxUnits`` *(optional)*
 
