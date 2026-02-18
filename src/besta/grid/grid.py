@@ -1912,7 +1912,7 @@ class GridFitter:
                 logger.info(
                     f"  - truncation: keep_mass={posterior_keep_mass}, "
                     f"\n - min candidates={posterior_keep_min_candidates}"
-                    f"\n -f max={posterior_keep_max_candidates}"
+                    f"\n - max={posterior_keep_max_candidates}"
                     f"\n - ties={posterior_keep_ties}"
                 )
             if stats_for is not None:
