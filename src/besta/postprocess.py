@@ -1091,37 +1091,6 @@ def summarize_results(
     samples = np.vstack([_as_float_array(table[k])[mask] for k in keys])
     npar, nsamp = samples.shape
 
-    max_logpost, max_post_idx = (
-        np.nanmax(table[posterior_key]),
-        np.nanargmax(table[posterior_key]),
-    )
-    # Linear posterior renormalized to the maximum value
-    logpost = table[posterior_key].value
-    posterior = np.exp(logpost - max_logpost)
-    posterior /= np.nansum(posterior)
-    if np.isfinite(max_logpost):
-        header["hierarch max_logpost"] = max_logpost, "Maximum of the logposterior"
-    else:
-        header["hierarch max_logpost"] = "NAN", "Maximum of the logposterior"
-    maxpost_values = values[:, max_post_idx]
-    # Mean and covariance
-    mean_values = weighted_sample_mean(values, posterior)
-    covariance_matrix = weighted_sample_covariance(values, posterior)
-    # Store everything on the header
-    for axis, mean, maxpost, key in zip(
-        range(len(parameter_keys)), mean_values, maxpost_values, parameter_keys
-    ):
-        kname = key.replace(parameter_prefix + "--", "")
-        header[f"hierarch axis_{axis}"] = kname, "parameter"
-        if np.isfinite(mean):
-            header[f"hierarch mean_{kname}"] = mean, "post-weighted mean"
-        else:
-            header[f"hierarch mean_{kname}"] = "NAN", "post-weighted mean"
-        if np.isfinite(maxpost):
-            header[f"hierarch maxpost_{kname}"] = maxpost, "max-post value"
-        else:
-            header[f"hierarch maxpost_{kname}"] = "NAN", "max-post value"
-
     map_idx = int(np.argmax(logpost))  # index within filtered arrays
     map_vec = samples[:, map_idx]
 
