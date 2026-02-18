@@ -1164,6 +1164,9 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
         # Expect C-contiguous float64 for best performance
         x = np.ascontiguousarray(x_native, dtype=np.float64)
         X = np.ascontiguousarray(X_models, dtype=np.float64)
-        h = np.ascontiguousarray(sigma_native, dtype=np.float64)
+        sigma = np.ascontiguousarray(sigma_native, dtype=np.float64)
+        # Match parent class: apply scale and bandwidth_floor
+        h = np.maximum(self.scale * sigma, self.bandwidth_floor)
+        h = np.ascontiguousarray(h, dtype=np.float64)
 
         return _loglike_gaussprod_diag(X, x, h)
