@@ -513,6 +513,7 @@ class ModelGrid:
         self,
         targets_query: np.ndarray,
         *,
+        method: Optional[str] = None,
         fill_value: float = np.nan,
         k: int = 32,
         p: float = 2.0,
@@ -524,7 +525,8 @@ class ModelGrid:
         """
         Interpolate observables for arbitrary target values using cached KDTree.
 
-        mode="idw"         : inverse-distance weighted KNN (your current behaviour)
+        mode="nearest"     : nearest-neighbour lookup
+        mode="idw"         : inverse-distance weighted KNN
         mode="local_linear": weighted local affine fit (exact for linear functions)
         """
         tq = np.atleast_2d(np.asarray(targets_query, dtype=float))
@@ -533,18 +535,31 @@ class ModelGrid:
                 f"targets_query must have shape (M, {self.n_targets}); got {tq.shape}"
             )
 
+        if method is not None:
+            mode = method
+        mode = str(mode).lower()
+        if mode not in {"nearest", "idw", "local_linear"}:
+            raise ValueError(f"Unknown mode={mode!r} (use 'nearest', 'idw' or 'local_linear').")
+
         bad_q = ~np.isfinite(tq).all(axis=1) | ~self.in_boundaries(tq)
         out = np.full((tq.shape[0], self.n_observables), fill_value, dtype=float)
         if bad_q.all():
             return out
 
         if standardize:
+            if not self.target_standardiser.is_fit:
+                self.fit_target_standardiser()
             tqn = self.target_standardiser.transform(tq)
         else:
             tqn = tq
 
         tree = self.get_kdtree(standardize=standardize)
-        k_eff = max(1, min(k, self.n_models))
+        k_eff = 1 if mode == "nearest" else max(1, min(k, self.n_models))
+        if mode == "local_linear" and k_eff < (self.n_targets + 1):
+            raise ValueError(
+                "local_linear interpolation requires at least n_targets + 1 neighbours "
+                f"(got {k_eff}, need {self.n_targets + 1})."
+            )
 
         dists, idx = tree.query(tqn[~bad_q], k=k_eff, workers=-1)
         if k_eff == 1:
@@ -581,7 +596,10 @@ class ModelGrid:
             out[~bad_q] = obs_q
             return out
 
-        if mode == "idw":
+        if mode == "nearest":
+            obs_q[rows] = neigh_obs[rows, 0, :]
+
+        elif mode == "idw":
             w = 1.0 / (np.power(dists[rows], p) + eps)
             wsum = np.sum(w, axis=1, keepdims=True)
             w = np.where(wsum > 0, w / wsum, 0.0)
@@ -626,9 +644,6 @@ class ModelGrid:
                     # Fallback to IDW if ill-conditioned
                     ww = w / (w.sum() + eps)
                     obs_q[rr] = ww @ Yn
-
-        else:
-            raise ValueError(f"Unknown mode={mode!r} (use 'idw' or 'local_linear').")
 
         out[~bad_q] = obs_q
         return out
