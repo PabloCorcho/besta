@@ -52,9 +52,15 @@ class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
     def __init__(self, options, *, alias=None):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
+        """
+        Set up the CosmoSIS module.
+
+        Parameters
+        ----------
+        options : dict or DataBlock
+            Options from the startup configuration.
+        alias : str, optional
+            Module alias used to resolve section names.
         """
         if alias is None:
             self.alias = self.name

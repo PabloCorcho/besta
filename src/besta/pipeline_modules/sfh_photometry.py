@@ -16,9 +16,13 @@ class SFHPhotometryModule(PhotometryFitModule):
     name = "SFHPhotometry"
 
     def __init__(self, options):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
+        """
+        Set up the SFH photometry module.
+
+        Parameters
+        ----------
+        options : dict or DataBlock
+            Options from the startup configuration.
         """
         super().__init__(options)
         options = self.parse_options(options)

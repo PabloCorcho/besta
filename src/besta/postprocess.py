@@ -142,17 +142,17 @@ def weighted_hdi(
     merge_tol: float = 0.0,
 ) -> List[Tuple[float, float]]:
     """
-    Weighted highest-density interval(s) for a 1D distribution, from samples.
+    Compute weighted highest-density interval(s) from 1D samples.
 
-    This returns one or more intervals whose union approximates the smallest
-    region(s) containing `mass` of the probability, allowing multi-modality.
+    The output approximates the smallest region containing ``mass`` probability,
+    allowing multi-modality via disjoint intervals.
 
-    Approach:
-    - Sort samples by x.
-    - Use the cumulative weights CDF.
-    - Find the narrowest interval(s) [i, j] such that CDF[j]-CDF[i] >= mass.
-    - Optionally return multiple intervals by iteratively masking out the best
-      interval and repeating (approximate, but useful).
+    Method
+    ------
+    1. Sort samples by ``x``.
+    2. Use cumulative weighted mass.
+    3. Find the narrowest interval(s) with enclosed mass >= ``mass``.
+    4. Optionally repeat to recover additional disjoint intervals.
 
     Parameters
     ----------
@@ -265,14 +265,14 @@ def enclosed_fraction_map(
     yedges: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
-    Compute an HPD-style enclosed fraction map from a 2D density.
+    Compute an HPD-style enclosed fraction map from a 2D density grid.
 
-    Returns a map F with same shape as density such that:
-    - Sorting pixels by density descending, F at a pixel is the cumulative
-      probability mass enclosed at that density threshold.
+    Returns an array ``F`` with the same shape as ``density`` where each pixel
+    stores the cumulative enclosed mass at that density threshold (after sorting
+    pixels by density in descending order).
 
-    If edges are provided, uses pixel area dy*dx to compute mass; otherwise
-    assumes constant pixel area.
+    If ``xedges`` and ``yedges`` are provided, pixel areas are included when
+    computing mass; otherwise constant pixel area is assumed.
     """
     dens = _as_float_array(density)
     if dens.ndim != 2:
@@ -1395,7 +1395,7 @@ def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
         modes = []
         for i in range(1, len(pdf) - 1):
             if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
-                modes.append(pdf[i])
+                modes.append(centers[i])
         if not modes:
             modes = [v_map]
         out["modes"] = np.asarray(modes)
