@@ -35,12 +35,11 @@ from besta.grid.prob import (
     posterior_over_models as posterior_over_models_fn,
 )
 from besta.postprocess import (
-    compute_fraction_from_map,
+    enclosed_fraction_map,
     pit_from_discrete_posterior,
     pdf_stats,
     photoz_metrics,
     weighted_quantiles,
-    weighted_sample_covariance
 )
 
 from .transforms import LinearStandardiser
@@ -2214,7 +2213,7 @@ class GridFitter:
                 # ax.pcolormesh(xe, ye, H.T, shading="auto", alpha=alpha_mesh,
                 #               norm=LogNorm(vmin=max_val / 1e5, vmax=max_val),
                 #               cmap="hot_r")
-                frac = compute_fraction_from_map(H, xedges=xedges, yedges=yedges)
+                frac = enclosed_fraction_map(H, xedges=xedges, yedges=yedges)
                 ax.contourf(
                     xb, yb, frac.T, cmap="Greys", levels=[0.01, 0.05, 0.32, 0.5, 1]
                 )
