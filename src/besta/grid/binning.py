@@ -122,10 +122,10 @@ class BaseBinner:
     Required methods
     ----------------
     fit(grid)
-    candidates(y_native, sigmas_native=None, **kwargs) -> (indices, aux_level_or_radius)
+    candidates(y_native, sigmas_native=None, ``**kwargs``) -> (indices, aux_level_or_radius)
     dims property
     save(path), load(path) for persistence
-    batch_candidates(Y_native, SIG_native=None, **kwargs) convenience method
+    batch_candidates(Y_native, SIG_native=None, ``**kwargs``) convenience method
     """
 
     def fit(self, grid: ModelGrid) -> "BaseBinner":

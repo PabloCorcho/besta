@@ -120,7 +120,6 @@ html_css_files = [
 html_logo = "_static/besta.png"
 html_theme_options = {
     'logo_only': True,
-    'display_version': False,
 }
 
 # -- Extension configuration -------------------------------------------------

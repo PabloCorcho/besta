@@ -20,7 +20,6 @@ Kinematics
 
 .. automodule:: besta.kinematics
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Input/Output
@@ -28,7 +27,6 @@ Input/Output
 
 .. automodule:: besta.io
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Pipeline Manager
@@ -37,7 +35,6 @@ Pipeline Manager
 
 .. automodule:: besta.pipeline
    :members:
-   :undoc-members:
    :show-inheritance:
 
 
@@ -46,7 +43,6 @@ Star formation histories
 
 .. automodule:: besta.sfh
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Model grid-based inference
@@ -60,7 +56,6 @@ Basics
 
 .. autoclass:: besta.grid.grid.ModelGrid
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Candidate selection
@@ -68,17 +63,15 @@ Candidate selection
 
 .. automodule:: besta.grid.binning
    :members:
-   :undoc-members:
    :show-inheritance:
 
 .. automodule:: besta.grid.prob
    :members:
-   :undoc-members:
+   :no-index:
    :show-inheritance:
 
 .. automodule:: besta.grid.transforms
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Model fitting
@@ -86,12 +79,10 @@ Model fitting
 
 .. autoclass:: besta.grid.grid.GridFitter
    :members:
-   :undoc-members:
    :show-inheritance:
 
 .. autoclass:: besta.grid.grid.GridFitHDF5Writer
    :members:
-   :undoc-members:
    :show-inheritance:
 
 Postprocessing
@@ -99,5 +90,4 @@ Postprocessing
 
 .. automodule:: besta.postprocess
    :members:
-   :undoc-members:
    :show-inheritance:

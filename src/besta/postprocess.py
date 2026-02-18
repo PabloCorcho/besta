@@ -531,9 +531,12 @@ def laplace_logz(loglike_map: float, logprior_map: float, cov: np.ndarray) -> Ev
 
 def harmonic_mean_logz(loglike: np.ndarray, weights: np.ndarray, *, trim_frac: float = 0.01) -> EvidenceEstimate:
     """
-    Robust harmonic-mean estimator:
-      log Z = - log E_posterior[exp(-logL)].
-    This is generally unstable; trimming helps but it remains a sanity-check only.
+    Robust harmonic-mean estimator.
+
+    Uses ``log Z = -log(E_posterior[exp(-logL)])``.
+
+    This estimator is generally unstable; trimming helps, but it should still
+    be treated as a sanity check only.
     """
     ll = _as_float_array(loglike).ravel()
     w = normalize_weights(weights)
@@ -645,16 +648,11 @@ class ResultsSummary:
         """
         Estimate evidence logZ using information in the original results table.
 
-        Supported:
-        - method="laplace": uses MAP loglike/logprior + covariance
-        - method="hme_robust": uses posterior expectation of 1/L (unstable; sanity-check)
+        Supported methods are ``"laplace"`` (MAP loglike/logprior + covariance)
+        and ``"hme_robust"`` (posterior expectation of ``1/L``, sanity-check).
 
-        Inputs
-        ------
-        You said you have:
-          post = loglike + logprior
-          prior = logprior
-        So if loglike_key is not present, we reconstruct loglike = post - prior.
+        If ``loglike_key`` is not available, log-likelihood is reconstructed as
+        ``loglike = post - prior``.
         """
 
         if logpost_key is None:

@@ -1,5 +1,5 @@
 Post-processing and Posterior Analysis
-=====================================
+======================================
 
 This module provides a high-level interface to **summarise, analyse, and export**
 the results produced by BESTA / CosmoSIS runs. It is designed to sit *after*
@@ -12,7 +12,7 @@ sampling and focuses on:
 * Bayesian evidence estimation
 * Machine-readable outputs (FITS and JSON)
 
-The core abstraction is the :class:`ResultsSummary` object, which collects all
+The core abstraction is the :class:`besta.postprocess.ResultsSummary` object, which collects all
 derived quantities in a single, reusable container.
 
 Overview
@@ -21,8 +21,8 @@ Overview
 Typical workflow:
 
 1. Load a CosmoSIS results table (or pass one directly).
-2. Call :func:`summarize_results`.
-3. Inspect or plot results via :class:`ResultsSummary`.
+2. Call :func:`besta.postprocess.summarize_results`.
+3. Inspect or plot results via :class:`besta.postprocess.ResultsSummary`.
 4. Export summaries to FITS and/or JSON.
 
 The module is **sampler-agnostic** and works with any posterior sample stored
@@ -62,7 +62,7 @@ Summarising a results table:
         output_json="besta_summary.json",
     )
 
-The returned object is an instance of :class:`ResultsSummary`.
+The returned object is an instance of :class:`besta.postprocess.ResultsSummary`.
 
 Selecting parameters
 --------------------

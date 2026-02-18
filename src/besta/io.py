@@ -284,14 +284,14 @@ class Reader(object):
     includes two methods that allow to pull a subset of the solutions:
 
     - Users can retrieve a fraction of the solutions with the highest posterior
-    by calling:
+      by calling:
         
         >>> reader.get_top_frac_solutions(frac=1)
 
     which will return the first top percent of all the solutions.
 
     - Users can retrieve a fraction of the solutions that accounts for a given
-    fraction of the cumulative posterior.
+      fraction of the cumulative posterior.
 
         >>> reader.get_pct_solutions(pct=99)
 

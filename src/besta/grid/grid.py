@@ -684,7 +684,9 @@ class ModelGrid:
         Notes
         -----
         - check_boundaries is NOT serialised (it is generally not portable).
-        If you need it, store a string key in meta and resolve via a registry.
+
+          If you need it, store a string key in ``meta`` and resolve via a
+          registry.
         """
         return {
             "observables": np.asarray(self.observables),
@@ -1420,9 +1422,15 @@ class GridFitter:
 
     Notes
     -----
-    Posterior over models is computed with
-        log w_i = log p(x | model_i) + log p(model_i) + log weight_i
-    and normalised to sum to one over the candidate set.
+    Posterior over models is computed as:
+
+    .. math::
+
+       \log w_i = \log p(x \mid \mathrm{model}_i) +
+                  \log p(\mathrm{model}_i) +
+                  \log w_i^{\mathrm{model}}
+
+    and then normalised to sum to one over the candidate set.
     """
 
     def __init__(
@@ -2294,9 +2302,9 @@ class GridFitHDF5Writer:
     """
     HDF5 writer for GridFitter.fit_batch streaming outputs.
 
-    Layout written under <group>:
+    Layout written under ``<group>``::
 
-      /configuration           (attrs['json'] with a JSON blob)
+      /configuration           attrs['json'] with a JSON blob
       /index/m                 (M,) int64  [0..M-1]
       /index/status            (M,) int8   [0=not written, 1=ok, -1=failed]
       /truncation/*            (M,) scalar datasets (level, n_before, n_after, ...)
@@ -2306,9 +2314,10 @@ class GridFitHDF5Writer:
 
     Notes
     -----
-    - Writes are done by index `m` in each result dict, so results may arrive unsorted.
-    - Designed to be used from the *main* thread/process only (collect results from workers,
-      then call writer.write(r) as they arrive).
+    - Writes are done by index ``m`` in each result dict, so results may
+      arrive unsorted.
+    - Designed for use from the main thread/process: collect worker results,
+      then call ``writer.write(r)`` as they arrive.
     """
 
     def __init__(

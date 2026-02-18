@@ -132,7 +132,7 @@ Input/Output and Reproducibility
 :class:`~besta.grid.grid.ModelGrid` supports multiple formats:
 
 - FITS tables: :meth:`~besta.grid.grid.ModelGrid.from_fits_table`,
-  :meth:`~besta.grid.grid.ModelGrid.to_fits_table`
+  ``ModelGrid.to_fits_table(...)``
 - HDF5: :meth:`~besta.grid.grid.ModelGrid.from_hdf5`,
   :meth:`~besta.grid.grid.ModelGrid.to_hdf5`
 - Pickle: :meth:`~besta.grid.grid.ModelGrid.from_pickle`,
