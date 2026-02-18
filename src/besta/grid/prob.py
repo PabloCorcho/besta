@@ -13,6 +13,9 @@ from typing import Optional, Sequence, Tuple, List
 import warnings
 
 import numpy as np
+from besta.logging import get_logger
+
+logger = get_logger(__name__)
 
 try:
     from numba import njit, prange
@@ -20,7 +23,7 @@ try:
     NUMBA_OK = True
 except Exception:
     NUMBA_OK = False
-    print("numba could not be imported")
+    logger.warning("numba could not be imported")
 
 # ------------------------------- utilities -------------------------------
 

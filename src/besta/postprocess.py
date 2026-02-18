@@ -1478,7 +1478,7 @@ def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post")
     if posterior_key is not None and posterior_key not in table.colnames:
         raise ValueError(f"Posterior key '{posterior_key}' not found in table columns.")
     else:
-        print(f"Using posterior key: {posterior_key}")
+        logger.info("Using posterior key: %s", posterior_key)
         maxpost = np.nanmax(table[posterior_key])
         vmin = max(np.nanmin(table[posterior_key]), maxpost - 3.4)
         norm=plt.Normalize(vmin=vmin, vmax=maxpost)

@@ -45,10 +45,13 @@ from besta.postprocess import (
 from .transforms import LinearStandardiser
 
 from besta.utils import available_memory_bytes
+from besta.logging import get_logger
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
+
+logger = get_logger(__name__)
 
 
 def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
@@ -670,7 +673,7 @@ class ModelGrid:
                     beta = np.linalg.solve(G, rhs)  # (1+D, P)
                     obs_q[rr] = beta[0]  # prediction at xq (delta=0)
                 except np.linalg.LinAlgError:
-                    print("Fallback to IDW")
+                    logger.warning("Local linear interpolation failed; falling back to IDW.")
                     # Fallback to IDW if ill-conditioned
                     ww = w / (w.sum() + eps)
                     obs_q[rr] = ww @ Yn
@@ -1823,7 +1826,7 @@ class GridFitter:
                 stats_j.append(j)
                 stats_key.append(key)
             if stats_bins is None or len(stats_for) != len(stats_bins):
-                print("stats_bins not provided, creating bins based on grid")
+                logger.info("stats_bins not provided; creating bins based on grid.")
                 stats_bins = [
                     np.linspace(
                         self.grid.targets[:, j].min(),
@@ -1846,10 +1849,10 @@ class GridFitter:
                 _p.dumps((self.likelihood, self.prior))
             except Exception as e:
                 if verbose:
-                    print(
+                    logger.warning(
                         "[fit_batch] prior/likelihood are not picklable; "
-                        "falling back to thread backend. Reason:",
-                        repr(e),
+                        "falling back to thread backend. Reason: %r",
+                        e,
                     )
                 backend = "thread"
 
@@ -1858,25 +1861,25 @@ class GridFitter:
         slices = _guess_slices(M, P, max(1, int(n_jobs)), tasks_per_worker=tpw)
         # Pre-flight summary
         if verbose:
-            print(
+            logger.info(
                 f"Starting batch fit: #queries={M}, #observables={P}, "
                 f"batch backend={backend}, n_jobs={n_jobs}, job tasks={len(slices)}"
             )
             if posterior_keep_mass is not None:
-                print(
+                logger.info(
                     f"  - truncation: keep_mass={posterior_keep_mass}, "
                     f"\n - min candidates={posterior_keep_min_candidates}"
                     f"\n -f max={posterior_keep_max_candidates}"
                     f"\n - ties={posterior_keep_ties}"
                 )
             if stats_for is not None:
-                print(f"OTF statistics")
-                print(
+                logger.info("OTF statistics")
+                logger.info(
                     f"  - stats_for={stats_key} (return_pdf_for_stats={return_pdf_for_stats})"
                 )
         if output_hdf5_path is not None:
-            print("Data output")
-            print(f"  - HDF5 directory: {output_hdf5_path}:{output_hdf5_group}")
+            logger.info("Data output")
+            logger.info("  - HDF5 directory: %s:%s", output_hdf5_path, output_hdf5_group)
 
         # if max_memory_gb is not None:
         #     avail = available_memory_bytes()
@@ -2041,7 +2044,10 @@ class GridFitter:
                                 kde = gaussian_kde(y, weights=w_kept)
                             except np.linalg.LinAlgError:
                                 # Fallback to histogram if KDE fails
-                                print("KDE failed, falling back to histogram for stats")
+                                logger.warning(
+                                    "KDE failed for stats target '%s'; falling back to histogram.",
+                                    key,
+                                )
                                 kde = None
                             if kde is None:
                                 post, _ = np.histogram(
@@ -2135,7 +2141,7 @@ class GridFitter:
                 if n_jobs == 1:
                     for s, e in slices:
                         if verbose:
-                            print(f"  - slice {s}:{e}")
+                            logger.info("  - slice %s:%s", s, e)
                         batch = _slice_worker(s, e)
                         for r in batch:
                             if writer is not None:
@@ -2159,7 +2165,7 @@ class GridFitter:
                                     yield r
 
                 if verbose:
-                    print("fit_batch complete.")
+                    logger.info("fit_batch complete.")
             finally:
                 if writer is not None:
                     try:

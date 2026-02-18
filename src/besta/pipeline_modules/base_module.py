@@ -1218,20 +1218,20 @@ class GridFitMixin:
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        print("\n-> Configuring model grid")
+        logger.info("-> Configuring model grid")
         if not options.has_value("modelGridFile"):
             raise ValueError("No input model grid file provided.")
         grid_file = os.path.expandvars(options["modelGridFile"])
-        print("Loading model grid from file: ", grid_file)
+        logger.info("Loading model grid from file: %s", grid_file)
         if not os.path.isfile(grid_file):
             raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
-        print("Reading model grid... fluxes must be in microJansky / Msun")
+        logger.info("Reading model grid... fluxes must be in microJansky / Msun")
         model_grid = ModelGrid.load_auto(grid_file)
 
         if options.has_value("boundaryFunctionFile"):
             boundary_file = os.path.expandvars(
                 options["boundaryFunctionFile"])
-            print("Loading boundary function from file: ", boundary_file)
+            logger.info("Loading boundary function from file: %s", boundary_file)
             # Split the path to the file and the function name given by []
             mthd_s = boundary_file.find("[")
             mthd_e = boundary_file.find("]")
@@ -1240,7 +1240,7 @@ class GridFitMixin:
             boundary_func = self._load_callable_from_file(
                 boundary_file, boundary_func_name)
             model_grid.check_boundaries = boundary_func
-            print("Applied boundary function to model grid.")
+            logger.info("Applied boundary function to model grid.")
 
         self.config["model_grid"] = model_grid
         
@@ -1248,7 +1248,7 @@ class GridFitMixin:
             self.config["knn"] = options["knn"]
         else:
             self.config["knn"] = int(4 * model_grid.n_targets)
-        print("-> Configuration done.")
+        logger.info("-> Configuration done.")
 
 
 class EmulatorMixin:
@@ -1271,16 +1271,16 @@ class EmulatorMixin:
         except ImportError:
             raise ImportError("joblib is required to load ML emulators."
                               "Please install joblib and try again.")
-        print("\n-> Configuring ML emulator")
+        logger.info("-> Configuring ML emulator")
         if not options.has_value("emulatorFile"):
             raise ValueError("No input emulator file provided.")
         emulator_file = os.path.expandvars(options["emulatorFile"])
-        print("Loading ML emulator from file: ", emulator_file)
+        logger.info("Loading ML emulator from file: %s", emulator_file)
         if not os.path.isfile(emulator_file):
             raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
-        print("Reading ML emulator...")
+        logger.info("Reading ML emulator...")
         ml_emulator = joblib.load(emulator_file)
         self.config["ml_emulator"] = ml_emulator
-        print("-> Configuration done.")
+        logger.info("-> Configuration done.")
         self.config["emulator"] = ml_emulator
-        print("-> Configuration done.")
+        logger.info("-> Configuration done.")
