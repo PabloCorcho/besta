@@ -3,8 +3,8 @@
 API
 ===
 
-MC-based inference
-^^^^^^^^^^^^^^^^^^
+CosmoSIS-based Inference
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 Pipeline Modules
@@ -51,6 +51,9 @@ Star formation histories
 
 Model grid-based inference
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a user-oriented guide (without CosmoSIS sampling), see
+:ref:`grid_inference`.
 
 Basics
 ******
