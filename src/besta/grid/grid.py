@@ -82,16 +82,59 @@ def _truncate_posterior_mass(
     tie_atol: float = 0.0,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
-    Truncate a discrete posterior w over candidates to the smallest set
-    whose cumulative mass >= keep_mass (after sorting by weight desc).
+    Truncate a discrete posterior ``w`` over candidates to the smallest set
+    whose cumulative mass is at least ``keep_mass`` (after sorting by weight
+    in descending order).
 
     Parameters
     ----------
-    #TODO
+    cand_idx : numpy.ndarray
+        Integer array of candidate indices corresponding to the weights in
+        ``w``. This is typically an index into a larger grid or catalogue.
+    w : numpy.ndarray
+        Array of (possibly unnormalised) posterior weights for each
+        candidate. Values are normalised internally to sum to one before
+        truncation.
+    keep_mass : float
+        Target cumulative posterior mass to retain in the truncated set.
+        Must be between 0 and 1. The function selects the smallest number
+        of highest-weight candidates whose cumulative mass meets or exceeds
+        this value.
+    min_candidates : int, optional
+        Minimum number of candidates to keep, regardless of the posterior
+        mass accumulated. This is applied after sorting by descending weight
+        but before enforcing ``keep_mass``.
+    max_candidates : int or None, optional
+        Optional upper bound on the number of candidates to keep. If not
+        ``None``, the truncated set will contain at most this many
+        candidates, even if the requested ``keep_mass`` has not yet been
+        reached.
+    keep_ties : bool, optional
+        If ``True``, include all candidates whose weight is numerically tied
+        (within ``tie_rtol`` and ``tie_atol``) with the cut-off candidate at
+        the truncation boundary, potentially increasing the number of kept
+        candidates beyond ``max_candidates``.
+    tie_rtol : float, optional
+        Relative tolerance used when determining whether two weights are
+        considered equal for the purpose of tie handling. Passed to
+        ``numpy.isclose`` via the ``rtol`` parameter.
+    tie_atol : float, optional
+        Absolute tolerance used when determining whether two weights are
+        considered equal for the purpose of tie handling. Passed to
+        ``numpy.isclose`` via the ``atol`` parameter.
 
-    Returns:
-      cand_kept, w_kept (renormalized), meta dict
-
+    Returns
+    -------
+    cand_kept : numpy.ndarray
+        Array of indices of the candidates retained after truncation.
+    w_kept : numpy.ndarray
+        Array of posterior weights for the retained candidates, renormalised
+        to sum to one after truncation.
+    meta : dict
+        Dictionary with bookkeeping information about the truncation, such as
+        the number of candidates before and after truncation, the total mass
+        kept and discarded, the weight at the truncation cut, and effective
+        sample sizes before and after truncation.
     """
     cand_idx = np.asarray(cand_idx, dtype=np.int64)
     w = np.asarray(w, dtype=float)
