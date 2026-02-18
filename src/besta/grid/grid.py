@@ -1204,13 +1204,18 @@ class ModelGrid:
         """
         Save the grid as an HDF5 group with per-column datasets.
 
-        Layout:
-          {group}/observables/<name>    1-D dataset per observable
-          {group}/targets/<name>        1-D dataset per target
-          {group}/weights               optional 1-D dataset
-          Attributes on {group}:
-            observable_names, target_names, n_models, n_observables,
-            n_targets, meta (JSON if include_meta)
+        Layout
+        ------
+        ``{group}/observables/<name>``
+            One 1-D dataset per observable.
+        ``{group}/targets/<name>``
+            One 1-D dataset per target.
+        ``{group}/weights``
+            Optional 1-D dataset if model weights are present.
+        Attributes on ``{group}``
+            ``observable_names``, ``target_names``, ``n_models``,
+            ``n_observables``, ``n_targets``, and ``meta`` (JSON when
+            ``include_meta=True``).
 
         Parameters
         ----------
@@ -1631,7 +1636,6 @@ class GridFitter:
 
         Workflow
         --------
-        #TODO: rewrite according to current implementation
         The computation is split into three stages:
 
         Step 1 — Candidate selection
@@ -1667,7 +1671,12 @@ class GridFitter:
 
         Memory safety
         -------------
-        # TODO: add description and implement checks
+        The previous explicit memory pre-check is currently disabled in this
+        implementation. For large runs, prefer:
+        - candidate selection via ``binner``,
+        - posterior truncation controls,
+        - ``return_mode="iter"``,
+        - HDF5 output with ``output_hdf5_write_only=True`` when appropriate.
 
         Parameters
         ----------
@@ -1715,15 +1724,19 @@ class GridFitter:
 
         Returns
         -------
-        out : dict
-            {
-            "post_models": List[np.ndarray],  # per-query posterior weights
-            "candidates":  List[np.ndarray],  # per-query candidate indices
-            "levels":      List[Optional[int]],  # binner level per query (if any)
-            # optionally:
-            "stats": {target_name: {...}},   # per-target summaries
-            "posts_target": {target_name: (M, K) arrays}  # if requested
-            }
+        iterator or list of dict
+            Controlled by ``return_mode``:
+            - ``"iter"``: returns an iterator yielding one result dict per query.
+            - ``"list"``: returns a list with one result dict per query.
+
+            Each result dict contains:
+            - ``"m"``: query index
+            - ``"candidates"``: kept candidate indices
+            - ``"post_models"``: posterior weights over kept candidates
+            - ``"level"``: binner level (or ``None``)
+            - ``"truncation"``: truncation metadata
+            - optional ``"stats"``: per-target summary stats
+            - optional ``"posts_target"``: per-target posterior over bins
 
         Notes
         -----
@@ -1732,15 +1745,6 @@ class GridFitter:
         observables.
         If ``SIG_native`` contains zeros/near-zeros, pre-clip or configure a
         positive floor in your Likelihood to avoid degenerate bandwidths.
-
-        Each yielded dict contains:
-          - "m": query index
-          - "candidates": kept candidate indices (int)
-          - "post_models": kept posterior weights (float, sum=1)
-          - "level": binner level (or None)
-          - "truncation": truncation metadata dict
-          - optional "stats": per-target summary dicts
-          - optional "posts_target": per-target (K,) posterior over bins (only if return_pdf_for_stats)
 
         """
         X_native = np.asarray(X_native)
