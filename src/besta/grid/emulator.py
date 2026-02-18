@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 import numpy as np
 from joblib import dump, load
 
-from besta.utils import _mkdir
+from besta.utils import mkdir
 from besta.grid.transforms import LinearStandardiser
 
 
@@ -254,7 +254,7 @@ class Emulator:
         name: str = "emulator",
         compress: Union[Tuple[str, int], None] = ("lz4", 3),
     ) -> Dict[str, str]:
-        _mkdir(outdir)
+        mkdir(outdir)
         model_path = os.path.join(outdir, f"{name}.joblib")
         meta_path = os.path.join(outdir, f"{name}.json")
 
@@ -340,7 +340,7 @@ class EnsembleEmulator:
         return mean, err
 
     def save(self, outdir: str, name: str = "ensemble") -> Dict[str, Any]:
-        _mkdir(outdir)
+        mkdir(outdir)
         member_dirs = []
         for k, mem in enumerate(self.members):
             d = os.path.join(outdir, f"{name}_member{k:02d}")

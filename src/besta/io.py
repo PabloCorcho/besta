@@ -91,9 +91,6 @@ def _ini_string_to_dict(text):
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
 
-def _mkdir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
 def expand_env_vars(arg_spec=0):
     """
     Decorator that expands environment variables in a specified argument.
