@@ -75,8 +75,9 @@ def check_array_memory(array_shape, dtype=np.float64, unit='MB', safety_margin=0
         NumPy data type (default is np.float64).
     unit : {'B', 'KB', 'MB', 'GB'}, optional
         Unit for error message reporting (default is 'MB').
-    safety_margin : bool
+    safety_margin : float, optional
         Additional margin (fraction of the array size) for ensuring good performance.
+        Default is 0.2 (20% more than the predicted memory requirement).
     Returns
     -------
     bool
