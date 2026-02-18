@@ -34,7 +34,7 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
         flux_model_err = flux_model_err.squeeze()
         normalization = np.mean(self.config["photometry_flux"] / flux_model)
         block["parameters", "normalization"] = normalization
-        return flux_model * normalization
+        return flux_model * normalization, flux_model_err * normalization
 
     def execute(self, block):
         flux_model, flux_model_err = self.make_observable(block)
