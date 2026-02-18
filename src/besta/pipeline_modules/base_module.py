@@ -1282,5 +1282,3 @@ class EmulatorMixin:
         ml_emulator = joblib.load(emulator_file)
         self.config["ml_emulator"] = ml_emulator
         logger.info("-> Configuration done.")
-        self.config["emulator"] = ml_emulator
-        logger.info("-> Configuration done.")
