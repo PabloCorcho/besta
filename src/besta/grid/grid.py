@@ -716,8 +716,8 @@ class ModelGrid:
         )
 
         std = d.get("standardisers", {}) or {}
-        _state_to_std(std.get("observables", {}), grid.observable_standardiser)
-        _state_to_std(std.get("targets", {}), grid.target_standardiser)
+        cls._state_to_std(std.get("observables", {}), grid.observable_standardiser)
+        cls._state_to_std(std.get("targets", {}), grid.target_standardiser)
 
         return grid
 
