@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class ModelGridGenerator(ABC):
     """
     Abstract interface for producing a ModelGrid from inputs.

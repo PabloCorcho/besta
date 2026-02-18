@@ -13,14 +13,17 @@ from typing import Optional, Sequence, Tuple, List
 import warnings
 
 import numpy as np
+
 try:
     from numba import njit, prange
+
     NUMBA_OK = True
 except Exception:
     NUMBA_OK = False
     print("numba could not be imported")
 
 # ------------------------------- utilities -------------------------------
+
 
 def _logsumexp(a: np.ndarray, axis: Optional[int] = None) -> np.ndarray:
     """
@@ -78,11 +81,15 @@ def _std_norm_cdf(x: np.ndarray) -> np.ndarray:
     cdf : ndarray
     """
     from math import sqrt
-    from scipy.special import erf  # if you prefer not to depend on SciPy, replace with a rational approx
+    from scipy.special import (
+        erf,
+    )  # if you prefer not to depend on SciPy, replace with a rational approx
+
     return 0.5 * (1.0 + erf(x / sqrt(2.0)))
 
 
 # ================================ Priors ================================
+
 
 class Prior(ABC):
     """
@@ -149,6 +156,7 @@ class GaussianPrior1D(Prior):
         t = targets[:, self.target_col]
         return _normal_logpdf(t, self.mu, self.sigma)
 
+
 @dataclass
 class UniformPrior1D(Prior):
     """
@@ -170,10 +178,11 @@ class UniformPrior1D(Prior):
 
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         t = targets[:, self.target_col]
-        logp = np.where((t >= self.low) & (t <= self.high),
-                        -np.log(self.high - self.low),
-                        -np.inf)
+        logp = np.where(
+            (t >= self.low) & (t <= self.high), -np.log(self.high - self.low), -np.inf
+        )
         return logp
+
 
 @dataclass
 class DeltaPrior1D(Prior):
@@ -196,10 +205,13 @@ class DeltaPrior1D(Prior):
 
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         t = targets[:, self.target_col]
-        logp = np.where(np.abs(t - self.value) <= self.tolerance,
-                        -np.log(2.0 * self.tolerance),
-                        -np.inf)
+        logp = np.where(
+            np.abs(t - self.value) <= self.tolerance,
+            -np.log(2.0 * self.tolerance),
+            -np.inf,
+        )
         return logp
+
 
 @dataclass
 class ExponentialPrior1D(Prior):
@@ -219,10 +231,9 @@ class ExponentialPrior1D(Prior):
 
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         t = targets[:, self.target_col]
-        logp = np.where(t >= 0,
-                        -t / self.scale - np.log(self.scale),
-                        -np.inf)
+        logp = np.where(t >= 0, -t / self.scale - np.log(self.scale), -np.inf)
         return logp
+
 
 @dataclass
 class ExponentialTruncatedPrior1D(Prior):
@@ -246,10 +257,13 @@ class ExponentialTruncatedPrior1D(Prior):
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         t = targets[:, self.target_col]
         norm = 1.0 - np.exp(-self.t_max / self.scale)
-        logp = np.where((t >= 0) & (t <= self.t_max),
-                        -t / self.scale - np.log(self.scale * norm),
-                        -np.inf)
+        logp = np.where(
+            (t >= 0) & (t <= self.t_max),
+            -t / self.scale - np.log(self.scale * norm),
+            -np.inf,
+        )
         return logp
+
 
 @dataclass
 class PowerLawPrior1D(Prior):
@@ -275,10 +289,14 @@ class PowerLawPrior1D(Prior):
 
     def log_prob_for_models(self, targets: np.ndarray) -> np.ndarray:
         t = targets[:, self.target_col]
-        norm = (self.t_max ** (self.alpha + 1) - self.t_min ** (self.alpha + 1)) / (self.alpha + 1)
-        logp = np.where((t >= self.t_min) & (t <= self.t_max),
-                        self.alpha * np.log(t) - np.log(norm),
-                        -np.inf)
+        norm = (self.t_max ** (self.alpha + 1) - self.t_min ** (self.alpha + 1)) / (
+            self.alpha + 1
+        )
+        logp = np.where(
+            (t >= self.t_min) & (t <= self.t_max),
+            self.alpha * np.log(t) - np.log(norm),
+            -np.inf,
+        )
         return logp
 
 
@@ -304,7 +322,9 @@ class EmpiricalHistogramPrior1D(Prior):
     edges: np.ndarray
     density_floor: float = 1e-12
 
-    def fit_from_targets(self, targets: np.ndarray, weights: Optional[np.ndarray] = None) -> "EmpiricalHistogramPrior1D":
+    def fit_from_targets(
+        self, targets: np.ndarray, weights: Optional[np.ndarray] = None
+    ) -> "EmpiricalHistogramPrior1D":
         """
         Fit histogram from targets.
 
@@ -320,7 +340,11 @@ class EmpiricalHistogramPrior1D(Prior):
         t = targets[:, self.target_col]
         hist, _ = np.histogram(t, bins=self.edges, weights=weights, density=False)
         mass = hist.astype(float)
-        mass = mass / np.sum(mass) if np.sum(mass) > 0 else np.full_like(mass, 1.0 / mass.size)
+        mass = (
+            mass / np.sum(mass)
+            if np.sum(mass) > 0
+            else np.full_like(mass, 1.0 / mass.size)
+        )
         mass = np.clip(mass, self.density_floor, None)
         self._logp_per_bin = np.log(mass)
         return self
@@ -516,14 +540,14 @@ class EmpiricalFlatteningPriorND(Prior):
                 td = t[:, d]
                 j = np.digitize(td, edges) - 1
                 j = np.clip(j, 0, edges.size - 2)
-    
+
                 log_inv_mass_d = self._log_inv_mass_list[d]
                 logp += log_inv_mass_d[j]
 
         elif self.mode == "joint":
             if not hasattr(self, "_log_mass_per_cell"):
                 raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
-            
+
             bin_indices = []
             for d in range(D):
                 edges = self.edges_list[d]
@@ -532,10 +556,8 @@ class EmpiricalFlatteningPriorND(Prior):
                 # Clip into valid range
                 j = np.clip(j, 0, edges.size - 2)
                 bin_indices.append(j)
-            
-            linear_indices = np.ravel_multi_index(
-                bin_indices, dims=self._bin_sizes
-            )
+
+            linear_indices = np.ravel_multi_index(bin_indices, dims=self._bin_sizes)
             logp += self._log_mass_per_cell[linear_indices]
 
         return logp
@@ -543,8 +565,10 @@ class EmpiricalFlatteningPriorND(Prior):
 
 class ObservableDependentPrior(Prior):
     """TODO"""
+
     def fit_from_grid(self):
         raise NotImplementedError()
+
 
 @dataclass
 class MagDependentRedshiftPrior(ObservableDependentPrior):
@@ -578,7 +602,12 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
     m_edges: np.ndarray
     density_floor: float = 1e-12
 
-    def fit_from_grid(self, observables: np.ndarray, targets: np.ndarray, weights: Optional[np.ndarray] = None) -> "MagDependentRedshiftPrior":
+    def fit_from_grid(
+        self,
+        observables: np.ndarray,
+        targets: np.ndarray,
+        weights: Optional[np.ndarray] = None,
+    ) -> "MagDependentRedshiftPrior":
         """
         Fit conditional histogram from the model grid.
 
@@ -594,7 +623,9 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         """
         z = targets[:, self.z_col]
         m = observables[:, self.mag_observable_index]
-        H, z_edges, m_edges = np.histogram2d(z, m, bins=[self.z_edges, self.m_edges], weights=weights)
+        H, z_edges, m_edges = np.histogram2d(
+            z, m, bins=[self.z_edges, self.m_edges], weights=weights
+        )
         # normalise each magnitude column to sum 1 over z
         colsum = H.sum(axis=0, keepdims=True)
         colsum[colsum == 0] = 1.0
@@ -603,7 +634,9 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         self._logP_z_given_m = np.log(P)  # shape (Kz, Km)
         return self
 
-    def log_prob_for_models(self, targets: np.ndarray, observables: Optional[np.ndarray] = None) -> np.ndarray:
+    def log_prob_for_models(
+        self, targets: np.ndarray, observables: Optional[np.ndarray] = None
+    ) -> np.ndarray:
         """
         Evaluate log p(z | m) per model row.
 
@@ -623,8 +656,12 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
             raise ValueError("observables must be provided to evaluate p(z|m)")
         z = targets[:, self.z_col]
         m = observables[:, self.mag_observable_index]
-        iz = np.clip(np.digitize(z, self.z_edges) - 1, 0, self._logP_z_given_m.shape[0] - 1)
-        im = np.clip(np.digitize(m, self.m_edges) - 1, 0, self._logP_z_given_m.shape[1] - 1)
+        iz = np.clip(
+            np.digitize(z, self.z_edges) - 1, 0, self._logP_z_given_m.shape[0] - 1
+        )
+        im = np.clip(
+            np.digitize(m, self.m_edges) - 1, 0, self._logP_z_given_m.shape[1] - 1
+        )
         return self._logP_z_given_m[iz, im]
 
 
@@ -640,8 +677,14 @@ class HierarchicalPrior(Prior):
         pass
 
     @abstractmethod
-    def fit_from_data(self, targets: np.ndarray, observables: np.ndarray, weights: np.ndarray | None = None) -> None:
+    def fit_from_data(
+        self,
+        targets: np.ndarray,
+        observables: np.ndarray,
+        weights: np.ndarray | None = None,
+    ) -> None:
         pass
+
 
 @dataclass
 class CompositePrior(Prior):
@@ -726,7 +769,9 @@ class CompositePrior(Prior):
             logp_total = lp_i if logp_total is None else (logp_total + lp_i)
 
         if logp_total is None:
-            warnings.warn("All weights were zero in CompositePrior; returning flat prior.")
+            warnings.warn(
+                "All weights were zero in CompositePrior; returning flat prior."
+            )
             return np.zeros(N, dtype=float)
 
         return logp_total
@@ -776,7 +821,9 @@ class ObservableCompositePrior(ObservableDependentPrior):
     def __post_init__(self):
         self.priors = list(self.priors)
         if not self.priors:
-            raise ValueError("ObservableCompositePrior requires at least one component prior.")
+            raise ValueError(
+                "ObservableCompositePrior requires at least one component prior."
+            )
 
         if self.weights is not None:
             if len(self.weights) != len(self.priors):
@@ -847,7 +894,9 @@ class ObservableCompositePrior(ObservableDependentPrior):
 
         return logp_total
 
+
 # ============================== Likelihoods ==============================
+
 
 class Likelihood(ABC):
     """
@@ -860,10 +909,9 @@ class Likelihood(ABC):
     """
 
     @abstractmethod
-    def log_likelihood(self,
-                       x_native: np.ndarray,
-                       sigma_native: np.ndarray,
-                       X_models: np.ndarray) -> np.ndarray:
+    def log_likelihood(
+        self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
+    ) -> np.ndarray:
         """
         Evaluate log likelihood for each model.
 
@@ -903,16 +951,17 @@ class GaussianProductLikelihood(Likelihood):
     bandwidth_floor: float = 0.0
     scale: float = 1.0
 
-    def log_likelihood(self,
-                       x_native: np.ndarray,
-                       sigma_native: np.ndarray,
-                       X_models: np.ndarray) -> np.ndarray:
+    def log_likelihood(
+        self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
+    ) -> np.ndarray:
         h = np.maximum(self.scale * sigma_native, self.bandwidth_floor)
         # broadcast to (Nc, P)
-        diff = (X_models - x_native[None, :])
+        diff = X_models - x_native[None, :]
         var = h[None, :] ** 2
         # sum of 1-D logpdfs
-        logL = -0.5 * (np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff ** 2 / var, axis=1))
+        logL = -0.5 * (
+            np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff**2 / var, axis=1)
+        )
         return logL
 
 
@@ -948,18 +997,19 @@ class CensoredSizeLikelihood(Likelihood):
     bandwidth_floor: float = 0.0
     scale: float = 1.0
 
-    def log_likelihood(self,
-                       x_native: np.ndarray,
-                       sigma_native: np.ndarray,
-                       X_models: np.ndarray) -> np.ndarray:
+    def log_likelihood(
+        self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
+    ) -> np.ndarray:
         # Photometry part
         phot_idx = np.asarray(self.phot_indices, dtype=int)
         x_ph = x_native[phot_idx]
         sig_ph = np.maximum(self.scale * sigma_native[phot_idx], self.bandwidth_floor)
         Xm_ph = X_models[:, phot_idx]
-        diff = (Xm_ph - x_ph[None, :])
+        diff = Xm_ph - x_ph[None, :]
         var = sig_ph[None, :] ** 2
-        logL_ph = -0.5 * (np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff ** 2 / var, axis=1))
+        logL_ph = -0.5 * (
+            np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff**2 / var, axis=1)
+        )
 
         # Censored size factor: log Phi((s_min - s_model)/h_s)
         h_s = max(self.scale * sigma_native[self.size_index], self.bandwidth_floor)
@@ -985,10 +1035,9 @@ class CompositeLikelihood(Likelihood):
 
     terms: List[Likelihood]
 
-    def log_likelihood(self,
-                       x_native: np.ndarray,
-                       sigma_native: np.ndarray,
-                       X_models: np.ndarray) -> np.ndarray:
+    def log_likelihood(
+        self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
+    ) -> np.ndarray:
         total = None
         for lk in self.terms:
             lp = lk.log_likelihood(x_native, sigma_native, X_models)
@@ -998,15 +1047,18 @@ class CompositeLikelihood(Likelihood):
 
 # =========================== posterior helper ===========================
 
-def posterior_over_models(x_native: np.ndarray,
-                          sigma_native: np.ndarray,
-                          X_models: np.ndarray,
-                          targets_models: np.ndarray,
-                          likelihood: Likelihood,
-                          prior: Prior,
-                          model_weights: Optional[np.ndarray] = None,
-                          prior_needs_observables: bool = False,
-                          observables_models: Optional[np.ndarray] = None) -> np.ndarray:
+
+def posterior_over_models(
+    x_native: np.ndarray,
+    sigma_native: np.ndarray,
+    X_models: np.ndarray,
+    targets_models: np.ndarray,
+    likelihood: Likelihood,
+    prior: Prior,
+    model_weights: Optional[np.ndarray] = None,
+    prior_needs_observables: bool = False,
+    observables_models: Optional[np.ndarray] = None,
+) -> np.ndarray:
     """
     Compute normalised posterior weights over models.
 
@@ -1039,8 +1091,12 @@ def posterior_over_models(x_native: np.ndarray,
     logL = likelihood.log_likelihood(x_native, sigma_native, X_models)
 
     if prior_needs_observables:
-        logP = prior.log_prob_for_models(targets_models,
-        observables=observables_models if observables_models is not None else X_models)
+        logP = prior.log_prob_for_models(
+            targets_models,
+            observables=observables_models
+            if observables_models is not None
+            else X_models,
+        )
     else:
         logP = prior.log_prob_for_models(targets_models)
 
@@ -1055,7 +1111,9 @@ def posterior_over_models(x_native: np.ndarray,
     w = np.exp(logw - logZ)
     return w
 
+
 # Numba-dedicated likelihood
+
 
 @njit(parallel=True, fastmath=True, cache=True)
 def _quadform_diag_parallel(X, x, h):
@@ -1072,11 +1130,13 @@ def _quadform_diag_parallel(X, x, h):
         out[i] = s
     return out  # squared Mahalanobis with diagonal covariance
 
+
 @njit(parallel=True, fastmath=True, cache=True)
 def _loglike_gaussprod_diag(X, x, h):
     # log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2   (constants drop)
     q = _quadform_diag_parallel(X, x, h)
     return -0.5 * q
+
 
 class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
     """
@@ -1085,8 +1145,12 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
     log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2
     """
 
-    def __init__(self, bandwidth_floor: float = 0.0, scale: float = 1.0,
-                 prefer_batch: bool = False):
+    def __init__(
+        self,
+        bandwidth_floor: float = 0.0,
+        scale: float = 1.0,
+        prefer_batch: bool = False,
+    ):
         super().__init__(bandwidth_floor=bandwidth_floor, scale=scale)
         self.prefer_batch = prefer_batch
 

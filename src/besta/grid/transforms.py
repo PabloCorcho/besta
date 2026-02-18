@@ -19,6 +19,7 @@ class LinearStandardiser:
     - Uses ddof=0 by default (population std), matching your ModelGrid.
     - If sd == 0, it is set to 1 to avoid division by zero.
     """
+
     mean: Optional[np.ndarray] = None
     sd: Optional[np.ndarray] = None
 
@@ -37,12 +38,16 @@ class LinearStandardiser:
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         if not self.is_fit:
-            raise RuntimeError("LinearStandardiser must be fit before calling transform().")
+            raise RuntimeError(
+                "LinearStandardiser must be fit before calling transform()."
+            )
         return (np.asarray(X) - self.mean) / self.sd
 
     def inverse_transform(self, X_std: np.ndarray) -> np.ndarray:
         if not self.is_fit:
-            raise RuntimeError("LinearStandardiser must be fit before calling inverse_transform().")
+            raise RuntimeError(
+                "LinearStandardiser must be fit before calling inverse_transform()."
+            )
         return np.asarray(X_std) * self.sd + self.mean
 
     def to_dict(self) -> Dict[str, Any]:
@@ -66,6 +71,7 @@ class MagTransform:
     mag = -2.5 log10(flux) + zero_point
     flux = 10^((zero_point - mag)/2.5)
     """
+
     zero_point: float = 0.0
     eps: float = 1e-30
 
@@ -82,5 +88,6 @@ class MagTransform:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "MagTransform":
-        return cls(zero_point=float(d.get("zero_point", 0.0)),
-                   eps=float(d.get("eps", 1e-30)))
+        return cls(
+            zero_point=float(d.get("zero_point", 0.0)), eps=float(d.get("eps", 1e-30))
+        )

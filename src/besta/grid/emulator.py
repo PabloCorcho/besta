@@ -24,6 +24,7 @@ def _ensure_2d(a: np.ndarray) -> np.ndarray:
         return a[:, None]
     return a
 
+
 def _as_f32(a: np.ndarray) -> np.ndarray:
     a = np.asarray(a)
     return a.astype(np.float32, copy=False) if a.dtype != np.float32 else a
@@ -40,27 +41,40 @@ class TransformPack:
     - Standardises targets -> features X
     - Optionally standardises y (in whatever user-chosen y_space)
     """
+
     target_names: List[str]
     observable_names: List[str]
 
     target_standardiser: LinearStandardiser
-    y_standardiser: Optional[LinearStandardiser] = None  # standardises *y_space* outputs
+    y_standardiser: Optional[
+        LinearStandardiser
+    ] = None  # standardises *y_space* outputs
 
     def X_from_targets(self, targets: np.ndarray) -> np.ndarray:
         return self.target_standardiser.transform(targets)
 
     def y_to_model_space(self, y_space: np.ndarray) -> np.ndarray:
-        return y_space if self.y_standardiser is None else self.y_standardiser.transform(y_space)
+        return (
+            y_space
+            if self.y_standardiser is None
+            else self.y_standardiser.transform(y_space)
+        )
 
     def y_from_model_space(self, y_model: np.ndarray) -> np.ndarray:
-        return y_model if self.y_standardiser is None else self.y_standardiser.inverse_transform(y_model)
+        return (
+            y_model
+            if self.y_standardiser is None
+            else self.y_standardiser.inverse_transform(y_model)
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "target_names": list(self.target_names),
             "observable_names": list(self.observable_names),
             "target_standardiser": self.target_standardiser.to_dict(),
-            "y_standardiser": None if self.y_standardiser is None else self.y_standardiser.to_dict(),
+            "y_standardiser": None
+            if self.y_standardiser is None
+            else self.y_standardiser.to_dict(),
         }
 
     @classmethod
@@ -69,7 +83,9 @@ class TransformPack:
             target_names=list(d["target_names"]),
             observable_names=list(d["observable_names"]),
             target_standardiser=LinearStandardiser.from_dict(d["target_standardiser"]),
-            y_standardiser=None if d.get("y_standardiser") is None else LinearStandardiser.from_dict(d["y_standardiser"]),
+            y_standardiser=None
+            if d.get("y_standardiser") is None
+            else LinearStandardiser.from_dict(d["y_standardiser"]),
         )
 
     @classmethod
@@ -77,7 +93,7 @@ class TransformPack:
         cls,
         grid: Any,  # besta.grid.grid.ModelGrid
         *,
-        y_space: str,                 # "mag" or "flux" (metadata only)
+        y_space: str,  # "mag" or "flux" (metadata only)
         standardize_y: bool = True,
         y_for_stats: Optional[np.ndarray] = None,
         stats_mask: Optional[np.ndarray] = None,
@@ -95,7 +111,9 @@ class TransformPack:
         """
         # Ensure target standardiser exists and is fit
         if not hasattr(grid, "target_standardiser") or grid.target_standardiser is None:
-            raise AttributeError("ModelGrid must have attribute target_standardiser (LinearStandardiser).")
+            raise AttributeError(
+                "ModelGrid must have attribute target_standardiser (LinearStandardiser)."
+            )
         if not getattr(grid.target_standardiser, "is_fit", False):
             grid.fit_target_standardiser(mask=stats_mask)
 
@@ -105,11 +123,19 @@ class TransformPack:
         if standardize_y:
             if y_for_stats is not None:
                 Y = y_for_stats if stats_mask is None else y_for_stats[stats_mask]
-                y_std = LinearStandardiser().fit(np.asarray(Y, dtype=np.float32), ddof=0)
+                y_std = LinearStandardiser().fit(
+                    np.asarray(Y, dtype=np.float32), ddof=0
+                )
             else:
                 if y_space == "flux":
-                    Y = grid.observables if stats_mask is None else grid.observables[stats_mask]
-                    y_std = LinearStandardiser().fit(np.asarray(Y, dtype=np.float32), ddof=0)
+                    Y = (
+                        grid.observables
+                        if stats_mask is None
+                        else grid.observables[stats_mask]
+                    )
+                    y_std = LinearStandardiser().fit(
+                        np.asarray(Y, dtype=np.float32), ddof=0
+                    )
                 elif y_space == "mag":
                     raise ValueError(
                         "y_space='mag' requires y_for_stats to be provided (magnitudes array). "
@@ -131,14 +157,14 @@ class TransformPack:
 # -----------------------------------------------------------------------------
 @dataclass
 class EmulatorConfig:
-    y_space: str = "mag"              # metadata only: "mag", "flux", "ew" etc.
+    y_space: str = "mag"  # metadata only: "mag", "flux", "ew" etc.
     standardize_y: bool = True
     predict_batch_size: int = 131072
     version: str = "EmulatorV5"
 
     # error model
-    error_model: str = "zero"         # "zero" | "ensemble_std"
-    error_floor: float = 0.0          # constant floor in y_space units
+    error_model: str = "zero"  # "zero" | "ensemble_std"
+    error_floor: float = 0.0  # constant floor in y_space units
 
 
 # -----------------------------------------------------------------------------
@@ -155,7 +181,7 @@ class Emulator:
         Transforms for targets -> X and model_space -> y_space.
     config : EmulatorConfig, optional
         Emulator configuration.
-    
+
     Methods
     -------
     predict(targets, return_model_space=False) -> np.ndarray
@@ -170,7 +196,12 @@ class Emulator:
         Load an emulator from disk.
     """
 
-    def __init__(self, model: Any, transforms: TransformPack, config: Optional[EmulatorConfig] = None):
+    def __init__(
+        self,
+        model: Any,
+        transforms: TransformPack,
+        config: Optional[EmulatorConfig] = None,
+    ):
         self.model = model
         self.transforms = transforms
         self.config = config or EmulatorConfig()
@@ -180,17 +211,21 @@ class Emulator:
         y = _ensure_2d(y)
         return _as_f32(y)
 
-    def predict(self, targets: np.ndarray, *, return_model_space: bool = False) -> np.ndarray:
+    def predict(
+        self, targets: np.ndarray, *, return_model_space: bool = False
+    ) -> np.ndarray:
         targets = _ensure_2d(targets)
         X_all = _as_f32(self.transforms.X_from_targets(targets))
 
-        bs = int(self.config.predict_batch_size) if self.config.predict_batch_size else 0
+        bs = (
+            int(self.config.predict_batch_size) if self.config.predict_batch_size else 0
+        )
         if bs <= 0 or X_all.shape[0] <= bs:
             y_model = self._predict_model_space(X_all)
         else:
             out = []
             for i in range(0, X_all.shape[0], bs):
-                out.append(self._predict_model_space(X_all[i:i + bs]))
+                out.append(self._predict_model_space(X_all[i : i + bs]))
             y_model = np.vstack(out)
 
         if return_model_space:
@@ -213,7 +248,12 @@ class Emulator:
         return y, self.predict_error(targets)
 
     # persistence
-    def save(self, outdir: str, name: str = "emulator", compress: Union[Tuple[str, int], None] = ("lz4", 3)) -> Dict[str, str]:
+    def save(
+        self,
+        outdir: str,
+        name: str = "emulator",
+        compress: Union[Tuple[str, int], None] = ("lz4", 3),
+    ) -> Dict[str, str]:
         _mkdir(outdir)
         model_path = os.path.join(outdir, f"{name}.joblib")
         meta_path = os.path.join(outdir, f"{name}.json")
@@ -266,7 +306,9 @@ class EnsembleEmulator:
         ref_space = members[0].config.y_space
         for m in members[1:]:
             if m.transforms.to_dict() != ref_t:
-                raise ValueError("All ensemble members must share identical transforms.")
+                raise ValueError(
+                    "All ensemble members must share identical transforms."
+                )
             if m.config.y_space != ref_space:
                 raise ValueError("All ensemble members must share y_space.")
 
@@ -286,7 +328,9 @@ class EnsembleEmulator:
             err = np.sqrt(err**2 + self.error_floor**2).astype(np.float32)
         return err
 
-    def predict_with_error(self, targets: np.ndarray, ddof: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+    def predict_with_error(
+        self, targets: np.ndarray, ddof: int = 0
+    ) -> Tuple[np.ndarray, np.ndarray]:
         preds = [m.predict(targets) for m in self.members]
         P = np.stack(preds, axis=0)
         mean = np.mean(P, axis=0).astype(np.float32)

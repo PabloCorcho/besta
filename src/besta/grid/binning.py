@@ -15,8 +15,10 @@ from besta.grid.grid import ModelGrid
 # Utilities
 # ----------------------------
 
-def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
-                   pca_variance: float = 1.0) -> Dict[str, Any]:
+
+def _fit_transform(
+    dims_array: np.ndarray, mode: str = "standardize", pca_variance: float = 1.0
+) -> Dict[str, Any]:
     """
     Fit a linear transform on dims_array and return a dict with parameters.
 
@@ -37,8 +39,14 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
     """
     mode = (mode or "standardize").lower()
     if mode == "none":
-        return {"mode": "none", "mu": None, "sd": None, "W": None,
-                "b": None, "kept_dims": slice(None)}
+        return {
+            "mode": "none",
+            "mu": None,
+            "sd": None,
+            "W": None,
+            "b": None,
+            "kept_dims": slice(None),
+        }
 
     # Training dataset
     X = np.asarray(dims_array, float)
@@ -49,26 +57,43 @@ def _fit_transform(dims_array: np.ndarray, mode: str = "standardize",
         sd = np.nanstd(Xc, axis=0)
         sd = np.where(sd == 0.0, 1.0, sd)
         # y = (x - mu) / sd
-        return {"mode": "standardize", "mu": mu, "sd": sd, "W": None, "b": None,
-                "kept_dims": slice(None)}
+        return {
+            "mode": "standardize",
+            "mu": mu,
+            "sd": sd,
+            "W": None,
+            "b": None,
+            "kept_dims": slice(None),
+        }
 
     if mode == "pca_whiten":
         # PCA on covariance of centered data
-        U, S, Vt = np.linalg.svd(Xc / np.sqrt(max(1, Xc.shape[0] - 1)),
-                                 full_matrices=False)
+        U, S, Vt = np.linalg.svd(
+            Xc / np.sqrt(max(1, Xc.shape[0] - 1)), full_matrices=False
+        )
         eigvals = S**2
         # Determine number of components
-        cum = np.cumsum(eigvals) / np.sum(eigvals) if np.sum(eigvals) > 0 else np.ones_like(eigvals)
+        cum = (
+            np.cumsum(eigvals) / np.sum(eigvals)
+            if np.sum(eigvals) > 0
+            else np.ones_like(eigvals)
+        )
         r = np.searchsorted(cum, float(pca_variance)) + 1
         # Clip to valid range
         r = max(1, min(r, Vt.shape[0]))
-        Vr = Vt[:r, :]                   # r x D
-        lambdar = eigvals[:r]            # r
+        Vr = Vt[:r, :]  # r x D
+        lambdar = eigvals[:r]  # r
         inv_sqrt = 1.0 / np.sqrt(np.where(lambdar > 0, lambdar, 1.0))
         # Transformation matrix
-        W = (Vr * inv_sqrt[:, None])     # r x D
-        return {"mode": "pca_whiten", "mu": mu, "sd": None, "W": W, "b": None,
-                "kept_dims": np.arange(r)}
+        W = Vr * inv_sqrt[:, None]  # r x D
+        return {
+            "mode": "pca_whiten",
+            "mu": mu,
+            "sd": None,
+            "W": W,
+            "b": None,
+            "kept_dims": np.arange(r),
+        }
 
     raise ValueError(f"Unknown transform mode: {mode}")
 
@@ -96,6 +121,7 @@ def _chunk_ranges(n: int, batch_size: Optional[int]):
         yield s, e
         s = e
 
+
 def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
     """Map 1-sigma vector from native into the transform space described by T."""
     mode = (T.get("mode") or "none").lower()
@@ -111,9 +137,11 @@ def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
     # Fallback
     return sig_native
 
+
 # ----------------------------
 # Base class
 # ----------------------------
+
 
 class BaseBinner:
     """
@@ -131,10 +159,9 @@ class BaseBinner:
     def fit(self, grid: ModelGrid) -> "BaseBinner":
         raise NotImplementedError
 
-    def candidates(self,
-                   y_native: np.ndarray,
-                   sigmas_native: Optional[np.ndarray] = None,
-                   **kwargs) -> Tuple[np.ndarray, Optional[int]]:
+    def candidates(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray] = None, **kwargs
+    ) -> Tuple[np.ndarray, Optional[int]]:
         raise NotImplementedError
 
     def info(self) -> Dict[str, Any]:
@@ -147,11 +174,13 @@ class BaseBinner:
     def load(cls, path: str) -> "BaseBinner":
         raise NotImplementedError
 
-    def batch_candidates(self,
-                         Y_native: np.ndarray,
-                         SIG_native: Optional[np.ndarray] = None,
-                         batch_size: Optional[int] = None,
-                         **kwargs) -> Tuple[List[np.ndarray], List[Optional[int]]]:
+    def batch_candidates(
+        self,
+        Y_native: np.ndarray,
+        SIG_native: Optional[np.ndarray] = None,
+        batch_size: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[List[np.ndarray], List[Optional[int]]]:
         """Select candidates in batch."""
         M = Y_native.shape[0]
         out_idx: List[np.ndarray] = [None] * M
@@ -166,28 +195,29 @@ class BaseBinner:
                 out_aux[m] = aux
         return out_idx, out_aux
 
-    def plot_candidates(self,
-                        grid: ModelGrid,
-                        y_native: np.ndarray,
-                        sigmas_native: Optional[np.ndarray] = None,
-                        *,
-                        dims_plot: Optional[Sequence[int]] = None,
-                        # candidate selection kwargs
-                        candidate_kwargs: Optional[dict] = None,
-                        # plotting controls
-                        plot_space: str = "native",   # "native" | "transformed" | "both"
-                        max_background: int = 50_000,
-                        background_alpha: float = 0.15,
-                        background_ms: float = 1.0,
-                        cand_alpha: float = 0.9,
-                        cand_ms: float = 4.0,
-                        query_ms: float = 10.0,
-                        show_sigma_boxes: bool = True,
-                        sigma_scale: float = 1.0,
-                        figsize: Optional[Tuple[float, float]] = None,
-                        suptitle: Optional[str] = None,
-                        random_state: Optional[int] = 42
-                        ):
+    def plot_candidates(
+        self,
+        grid: ModelGrid,
+        y_native: np.ndarray,
+        sigmas_native: Optional[np.ndarray] = None,
+        *,
+        dims_plot: Optional[Sequence[int]] = None,
+        # candidate selection kwargs
+        candidate_kwargs: Optional[dict] = None,
+        # plotting controls
+        plot_space: str = "native",  # "native" | "transformed" | "both"
+        max_background: int = 50_000,
+        background_alpha: float = 0.15,
+        background_ms: float = 1.0,
+        cand_alpha: float = 0.9,
+        cand_ms: float = 4.0,
+        query_ms: float = 10.0,
+        show_sigma_boxes: bool = True,
+        sigma_scale: float = 1.0,
+        figsize: Optional[Tuple[float, float]] = None,
+        suptitle: Optional[str] = None,
+        random_state: Optional[int] = 42,
+    ):
         """
         Pairwise visualisation of binner candidates versus the model grid.
 
@@ -211,9 +241,8 @@ class BaseBinner:
         if candidate_kwargs is None:
             candidate_kwargs = dict()
         cand_idx, aux = self.candidates(
-                y_native=y_native,
-                sigmas_native=sigmas_native,
-                **candidate_kwargs)
+            y_native=y_native, sigmas_native=sigmas_native, **candidate_kwargs
+        )
 
         # Common data
         X = grid.observables
@@ -232,26 +261,40 @@ class BaseBinner:
 
         # Try to retrieve transform (RectBinner / KDTreeBinner expose _T)
         T = getattr(self, "_T", {"mode": "none"})
-        has_transform = isinstance(T, dict) and (T.get("mode") or "none").lower() != "none"
+        has_transform = (
+            isinstance(T, dict) and (T.get("mode") or "none").lower() != "none"
+        )
 
         def _make_pairplot(X_bg, X_c, xq, sq, axis_labels, title_suffix):
             if figsize is None:
                 fsz = (2.2 * D, 2.2 * D)
             else:
                 fsz = figsize
-            fig, axes = plt.subplots(D, D, figsize=fsz,
-                                     squeeze=False, sharex="col")
+            fig, axes = plt.subplots(D, D, figsize=fsz, squeeze=False, sharex="col")
 
             # Diagonals
             for i in range(D):
                 ax = axes[i, i]
                 if X_bg is not None:
-                    ax.hist(X_bg[:, i], bins=40, density=False, alpha=0.25,
-                            lw=0, label="grid",
-                            log=True)
+                    ax.hist(
+                        X_bg[:, i],
+                        bins=40,
+                        density=False,
+                        alpha=0.25,
+                        lw=0,
+                        label="grid",
+                        log=True,
+                    )
                 if X_c.size:
-                    ax.hist(X_c[:, i], bins=40, density=False, alpha=0.5, lw=0, label="candidates",
-                            log=True)
+                    ax.hist(
+                        X_c[:, i],
+                        bins=40,
+                        density=False,
+                        alpha=0.5,
+                        lw=0,
+                        label="candidates",
+                        log=True,
+                    )
                 ax.axvline(xq[i], color="k", lw=1.2)
                 ax.axvline(xq[i] - sq[i], color="k", lw=1.2, ls=":")
                 ax.axvline(xq[i] + sq[i], color="k", lw=1.2, ls=":")
@@ -265,20 +308,39 @@ class BaseBinner:
                 for j in range(i + 1, D):
                     ax = axes[j, i]  # lower triangle
                     if X_bg is not None:
-                        ax.plot(X_bg[:, i], X_bg[:, j], ",",
-                                alpha=background_alpha,
-                                ms=background_ms, color="0.5")
+                        ax.plot(
+                            X_bg[:, i],
+                            X_bg[:, j],
+                            ",",
+                            alpha=background_alpha,
+                            ms=background_ms,
+                            color="0.5",
+                        )
                     if X_c.size:
-                        ax.plot(X_c[:, i], X_c[:, j], ",", alpha=cand_alpha,
-                                ms=cand_ms, color="C0")
+                        ax.plot(
+                            X_c[:, i],
+                            X_c[:, j],
+                            ",",
+                            alpha=cand_alpha,
+                            ms=cand_ms,
+                            color="C0",
+                        )
                     ax.plot(xq[i], xq[j], marker="+", ms=query_ms, color="fuchsia")
                     if show_sigma_boxes and (sq is not None):
                         wi = sigma_scale * float(sq[i])
                         wj = sigma_scale * float(sq[j])
                         if np.isfinite(wi) and np.isfinite(wj) and wi > 0 and wj > 0:
-                            ax.add_patch(plt.Rectangle((xq[i] - wi, xq[j] - wj),
-                                                       2 * wi, 2 * wj,
-                                                       fill=False, ec="k", lw=0.8, alpha=0.9))
+                            ax.add_patch(
+                                plt.Rectangle(
+                                    (xq[i] - wi, xq[j] - wj),
+                                    2 * wi,
+                                    2 * wj,
+                                    fill=False,
+                                    ec="k",
+                                    lw=0.8,
+                                    alpha=0.9,
+                                )
+                            )
                     if j == D - 1:
                         ax.set_xlabel(axis_labels[i])
                     if i == 0:
@@ -286,7 +348,9 @@ class BaseBinner:
                     # hide upper triangle
                     axes[i, j].axis("off")
 
-            title = f"Candidates ({n_candidates} / {frac_candidates:.3f}%) vs grid" + (f" [{title_suffix}]" if title_suffix else "")
+            title = f"Candidates ({n_candidates} / {frac_candidates:.3f}%) vs grid" + (
+                f" [{title_suffix}]" if title_suffix else ""
+            )
             if suptitle:
                 title = f"{title} – {suptitle}"
             fig.suptitle(title)
@@ -307,9 +371,12 @@ class BaseBinner:
                 X_bg_nat = None
             X_c_nat = X[cand_idx][:, dims_plot] if cand_idx.size else np.empty((0, D))
             figN, axN = _make_pairplot(
-                X_bg_nat, X_c_nat, xq_nat, sq_nat,
+                X_bg_nat,
+                X_c_nat,
+                xq_nat,
+                sq_nat,
                 [names[d] for d in dims_plot],
-                "native"
+                "native",
             )
             if plot_space == "native":
                 return figN, axN, cand_idx, aux
@@ -334,9 +401,7 @@ class BaseBinner:
             else:
                 labels = [names[d] for d in dims_plot]
             figZ, axZ = _make_pairplot(
-                X_bg_z, X_c_z, xq_z, sq_z,
-                labels,
-                f"transformed: {mode}"
+                X_bg_z, X_c_z, xq_z, sq_z, labels, f"transformed: {mode}"
             )
             if plot_space == "transformed":
                 return figZ, axZ, cand_idx, aux
@@ -350,6 +415,7 @@ class BaseBinner:
             return out, cand_idx, aux
 
         return out, cand_idx, aux
+
 
 # ----------------------------
 # Rectangular multi-resolution binner
@@ -398,7 +464,9 @@ class RectBinner(BaseBinner):
     # fitted attributes
     _T: Dict[str, Any] = field(default_factory=dict)
     _edges: List[List[np.ndarray]] = field(default_factory=list)  # per level per dim
-    _layers: List[Dict[Tuple[int, ...], np.ndarray]] = field(default_factory=list)  # key -> model idx
+    _layers: List[Dict[Tuple[int, ...], np.ndarray]] = field(
+        default_factory=list
+    )  # key -> model idx
     _grid_n: int = 0
     _D_eff: int = 0
 
@@ -427,19 +495,18 @@ class RectBinner(BaseBinner):
         self._edges = []
         self._layers = []
         # Store the characteristic bin size per level and dimension
-        self._level_bin_size = np.full((self.levels, self._D_eff),
-                                       fill_value=np.nan)
+        self._level_bin_size = np.full((self.levels, self._D_eff), fill_value=np.nan)
         # bounds per dim to build edges
         if self.edges_mode == "quantile":
             for lev in range(self.levels):
                 # Number of bins at this level
-                n_bins = self.base_bins * (2 ** lev)
+                n_bins = self.base_bins * (2**lev)
                 q = np.linspace(0.0, 1.0, n_bins + 1)
                 edges = np.quantile(Xz, q, axis=0, method="linear").T
                 span = edges[:, -1] - edges[:, 0]
                 pad = np.where(span > 0, 1e-6 * span, 1.0)
                 edges[:, 0] -= pad
-                edges[:, -1] += pad                 
+                edges[:, -1] += pad
                 self._level_bin_size[lev] = np.diff(edges, axis=1).mean(axis=1)
                 self._edges.append(edges)
 
@@ -449,7 +516,9 @@ class RectBinner(BaseBinner):
                 layer = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
-                self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
+                self._layers.append(
+                    {k: np.asarray(v, dtype=np.int64) for k, v in layer.items()}
+                )
 
         elif self.edges_mode == "linear":
             lo = np.nanmin(Xz, axis=0)
@@ -458,9 +527,10 @@ class RectBinner(BaseBinner):
             lo -= pad
             hi += pad
             for lev in range(self.levels):
-                n_bins = self.base_bins * (2 ** lev)
+                n_bins = self.base_bins * (2**lev)
                 edges = np.array(
-                    [np.linspace(lo[d], hi[d], n_bins + 1) for d in range(self._D_eff)])
+                    [np.linspace(lo[d], hi[d], n_bins + 1) for d in range(self._D_eff)]
+                )
                 self._level_bin_size[lev] = np.diff(edges, axis=1).mean(axis=1)
                 self._edges.append(edges)
                 cell_idx = self._digitize_nd(Xz, edges)
@@ -468,7 +538,9 @@ class RectBinner(BaseBinner):
                 layer = {}
                 for i, key in enumerate(keys):
                     (layer.setdefault(key, [])).append(i)
-                self._layers.append({k: np.asarray(v, dtype=np.int64) for k, v in layer.items()})
+                self._layers.append(
+                    {k: np.asarray(v, dtype=np.int64) for k, v in layer.items()}
+                )
         else:
             raise ValueError("edges_mode must be 'quantile' or 'linear'")
         return self
@@ -476,15 +548,21 @@ class RectBinner(BaseBinner):
     @staticmethod
     def _digitize_nd(X: np.ndarray, edges_per_dim: List[np.ndarray]) -> np.ndarray:
         return np.stack(
-            [np.clip(np.digitize(X[:, d], ed) - 1, 0, len(ed) - 2) for d, ed in enumerate(edges_per_dim)],
-            axis=1)
+            [
+                np.clip(np.digitize(X[:, d], ed) - 1, 0, len(ed) - 2)
+                for d, ed in enumerate(edges_per_dim)
+            ],
+            axis=1,
+        )
 
-    def _choose_level_by_sigma(self, sig_trans: np.ndarray,
-                               target_factor: float = 2.0) -> int:
+    def _choose_level_by_sigma(
+        self, sig_trans: np.ndarray, target_factor: float = 2.0
+    ) -> int:
         """Choose the binning level given an vector of uncertainties."""
         target = target_factor * sig_trans
         score = np.sum(
-            np.log((self._level_bin_size + 1e-12) / (target + 1e-12)), axis=1)
+            np.log((self._level_bin_size + 1e-12) / (target + 1e-12)), axis=1
+        )
         best_lev = np.argmin(score)
         return best_lev
 
@@ -499,12 +577,14 @@ class RectBinner(BaseBinner):
         # Otherwise return the lowest level
         return lev
 
-    def _expand_neighbour_keys(self,
-                               y_trans: np.ndarray,
-                               lev: int,
-                               sig_trans: Optional[np.ndarray] = None,
-                               expand_factor: float = 2.0,
-                               min_keys_radius: int = 0) -> List[Tuple[int, ...]]:
+    def _expand_neighbour_keys(
+        self,
+        y_trans: np.ndarray,
+        lev: int,
+        sig_trans: Optional[np.ndarray] = None,
+        expand_factor: float = 2.0,
+        min_keys_radius: int = 0,
+    ) -> List[Tuple[int, ...]]:
         edges = self._edges[lev]
         cell = self._digitize_nd(y_trans[None, :], edges)[0]
         widths = self._level_bin_size[lev]
@@ -512,15 +592,18 @@ class RectBinner(BaseBinner):
             half_span = np.ceil((expand_factor * sig_trans) / widths).astype(int)
         else:
             half_span = np.full(self._D_eff, min_keys_radius, dtype=int)
-        ranges = [range(max(0, cell[d] - half_span[d]),
-                        min(len(edges[d]) - 1, cell[d] + half_span[d]) + 1)
-                  for d in range(self._D_eff)]
+        ranges = [
+            range(
+                max(0, cell[d] - half_span[d]),
+                min(len(edges[d]) - 1, cell[d] + half_span[d]) + 1,
+            )
+            for d in range(self._D_eff)
+        ]
         return list(product(*ranges))
 
-    def candidates(self,
-                   y_native: np.ndarray,
-                   sigmas_native: Optional[np.ndarray] = None
-                   ) -> Tuple[np.ndarray, int]:
+    def candidates(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, int]:
         """
         Candidate selector.
         """
@@ -549,8 +632,13 @@ class RectBinner(BaseBinner):
             total = sum(len(a) for a in idxs)
             step = 1
             while total < self.target_k and step <= int(self.max_expand_steps):
-                keys = self._expand_neighbour_keys(y_trans, lev, sig_trans=None,
-                                                   expand_factor=1.0, min_keys_radius=step)
+                keys = self._expand_neighbour_keys(
+                    y_trans,
+                    lev,
+                    sig_trans=None,
+                    expand_factor=1.0,
+                    min_keys_radius=step,
+                )
                 idxs = [layer[k] for k in keys if k in layer]
                 total = sum(len(a) for a in idxs)
                 step += 1
@@ -561,9 +649,11 @@ class RectBinner(BaseBinner):
         if sig_trans is None:
             raise ValueError("sigmas_native must be provided for mode='radius'")
         lev = self._choose_level_by_sigma(
-            sig_trans, target_factor=float(self.target_factor))
+            sig_trans, target_factor=float(self.target_factor)
+        )
         keys = self._expand_neighbour_keys(
-            y_trans, lev, sig_trans=sig_trans, expand_factor=self.expand_factor)
+            y_trans, lev, sig_trans=sig_trans, expand_factor=self.expand_factor
+        )
         layer = self._layers[lev]
         idxs = [layer[k] for k in keys if k in layer]
         if not idxs:
@@ -594,9 +684,15 @@ class RectBinner(BaseBinner):
             "transform": self.transform,
             "pca_variance": self.pca_variance,
             "edges_mode": self.edges_mode,
-            "_T": {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self._T.items()},
+            "_T": {
+                k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                for k, v in self._T.items()
+            },
             "_edges": [[e.tolist() for e in lev] for lev in self._edges],
-            "_layers": {str(li): {str(k): v.tolist() for k, v in layer.items()} for li, layer in enumerate(self._layers)},
+            "_layers": {
+                str(li): {str(k): v.tolist() for k, v in layer.items()}
+                for li, layer in enumerate(self._layers)
+            },
             "_level_bin_size": self._level_bin_size.tolist(),
             "_grid_n": self._grid_n,
             "_D_eff": self._D_eff,
@@ -608,12 +704,14 @@ class RectBinner(BaseBinner):
     def load(cls, path: str) -> "RectBinner":
         with open(path, "r") as f:
             d = json.load(f)
-        obj = cls(dims=list(d["dims"]),
-                  levels=int(d["levels"]),
-                  base_bins=int(d["base_bins"]),
-                  transform=d["transform"],
-                  pca_variance=float(d["pca_variance"]),
-                  edges_mode=d["edges_mode"])
+        obj = cls(
+            dims=list(d["dims"]),
+            levels=int(d["levels"]),
+            base_bins=int(d["base_bins"]),
+            transform=d["transform"],
+            pca_variance=float(d["pca_variance"]),
+            edges_mode=d["edges_mode"],
+        )
         T = d["_T"]
         for k in ("mu", "sd", "W", "b"):
             if k in T and T[k] is not None:
@@ -642,15 +740,20 @@ class RectBinner(BaseBinner):
         Xz = _apply_transform(X, self._T)
         dim = Xz.shape[1]
 
-        fig, axs = plt.subplots(nrows=self.levels, ncols=dim, sharex="col",
-                                sharey=True, constrained_layout=True)
+        fig, axs = plt.subplots(
+            nrows=self.levels,
+            ncols=dim,
+            sharex="col",
+            sharey=True,
+            constrained_layout=True,
+        )
         for lev in range(self.levels):
             for d in range(dim):
                 ax = axs[lev, d]
                 ax.hist(Xz[:, d], bins="auto", color="k", alpha=0.7, log=True)
                 for e in self._edges[lev][d]:
                     ax.axvline(e, color="r", ls="-", lw=0.8)
-        
+
         for ith, s in enumerate(self.dims):
             ax = axs[-1, ith]
             ax.set_xlabel(f"z({grid.observable_names[s]})")
@@ -743,10 +846,9 @@ class KDTreeBinner(BaseBinner):
         s_z = np.maximum(s_z, self.sigma_floor)
         return s_z
 
-    def candidates(self,
-                   y_native: np.ndarray,
-                   sigmas_native: Optional[np.ndarray] = None
-                   ) -> Tuple[np.ndarray, Optional[int]]:
+    def candidates(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, Optional[int]]:
         """Candidate selector."""
         if self._tree is None or self._Xz is None:
             raise RuntimeError("fit must be called before candidates")
@@ -775,13 +877,12 @@ class KDTreeBinner(BaseBinner):
         elif self.radius_shape == "ellipsoid":
             # if ||(dx / s_z)||_2 <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
             r_cons = self.radius_factor * np.linalg.norm(s_z, ord=2)
-            cand = np.asarray(
-                self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
+            cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
 
             if cand.size:
                 dz = self._Xz[cand] - xz[None, :]
-                u = dz / s_z[None, :]                  # normalize per dimension
-                ok = (np.sum(u*u, axis=1) <= (self.radius_factor**2))
+                u = dz / s_z[None, :]  # normalize per dimension
+                ok = np.sum(u * u, axis=1) <= (self.radius_factor**2)
                 inds = cand[ok].tolist()
             else:
                 inds = []
@@ -790,8 +891,7 @@ class KDTreeBinner(BaseBinner):
             # if max_i |dx_i|/s_i <= radius_factor, then ||dx||_2 <= radius_factor * ||s_z||_2
             # (still a valid conservative ball for candidates)
             r_cons = self.radius_factor * np.linalg.norm(s_z, ord=2)
-            cand = np.asarray(
-                self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
+            cand = np.asarray(self._tree.query_ball_point(xz, r=r_cons), dtype=np.int64)
 
             if cand.size:
                 dz = np.abs(self._Xz[cand] - xz[None, :])
@@ -801,8 +901,10 @@ class KDTreeBinner(BaseBinner):
                 inds = []
 
         else:
-            raise ValueError(f"Unknown radius_shape={self.radius_shape!r} "
-                             f"(expected 'ball','ellipsoid','box')")
+            raise ValueError(
+                f"Unknown radius_shape={self.radius_shape!r} "
+                f"(expected 'ball','ellipsoid','box')"
+            )
 
         inds = np.asarray(inds, dtype=np.int64)
         if inds.size == 0:
@@ -814,8 +916,13 @@ class KDTreeBinner(BaseBinner):
     def info(self) -> Dict[str, Any]:
         n = 0 if self._Xz is None else self._Xz.shape[0]
         d = 0 if self._Xz is None else self._Xz.shape[1]
-        return {"name": "KDTreeBinner", "n": n, "d": d,
-                "leafsize": self.leafsize, "transform": self.transform}
+        return {
+            "name": "KDTreeBinner",
+            "n": n,
+            "d": d,
+            "leafsize": self.leafsize,
+            "transform": self.transform,
+        }
 
     def save(self, path: str) -> None:
         if self._Xz is None:
@@ -828,7 +935,10 @@ class KDTreeBinner(BaseBinner):
             "dims": self.dims,
             "transform": self.transform,
             "pca_variance": self.pca_variance,
-            "_T": {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in self._T.items()},
+            "_T": {
+                k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                for k, v in self._T.items()
+            },
             "_Xz": self._Xz.tolist(),
             "leafsize": self.leafsize,
         }
@@ -839,10 +949,12 @@ class KDTreeBinner(BaseBinner):
     def load(cls, path: str) -> "KDTreeBinner":
         with open(path, "r") as f:
             d = json.load(f)
-        obj = cls(dims=list(d["dims"]),
-                  transform=d["transform"],
-                  pca_variance=float(d.get("pca_variance", 1.0)),
-                  leafsize=int(d.get("leafsize", 40)))
+        obj = cls(
+            dims=list(d["dims"]),
+            transform=d["transform"],
+            pca_variance=float(d.get("pca_variance", 1.0)),
+            leafsize=int(d.get("leafsize", 40)),
+        )
         T = d["_T"]
         for k in ("mu", "sd", "W", "b"):
             if k in T and T[k] is not None:

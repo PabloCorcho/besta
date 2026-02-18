@@ -50,6 +50,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
+
 def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
     # fewer, larger slices when P is large
     base_tasks = n_jobs * tasks_per_worker
@@ -64,6 +65,7 @@ def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
         out.append((s, s + size))
         s += size
     return out
+
 
 def _truncate_posterior_mass(
     cand_idx: np.ndarray,
@@ -121,7 +123,7 @@ def _truncate_posterior_mass(
     keep_mass = max(0.0, min(1.0, keep_mass))
 
     # If keep_mass==1, we still may apply max_candidates
-    #TODO: if keep_mass==1, return all candidates
+    # TODO: if keep_mass==1, return all candidates
 
     # Compute the cumulative weights from high to low
     ord_desc = np.argsort(w)[::-1]
@@ -164,8 +166,7 @@ def _truncate_posterior_mass(
     mass_kept = np.sum(w_kept_raw)
     # Re-normalize weights
     if not np.isfinite(mass_kept) or mass_kept <= 0:
-        w_kept = np.full_like(
-            w_kept_raw, 1.0 / max(1, w_kept_raw.size), dtype=float)
+        w_kept = np.full_like(w_kept_raw, 1.0 / max(1, w_kept_raw.size), dtype=float)
         mass_kept = 0.0
     else:
         w_kept = w_kept_raw / mass_kept
@@ -184,7 +185,9 @@ def _truncate_posterior_mass(
     }
     return cand_kept, w_kept, meta
 
+
 # Base model grid class
+
 
 @dataclass
 class ModelGrid:
@@ -242,12 +245,15 @@ class ModelGrid:
     weights: Optional[np.ndarray] = None
     meta: Dict[str, Any] = field(default_factory=dict)
     check_boundaries: Optional["Callable[[np.ndarray], bool]"] = field(
-        default=None, init=True, repr=False)
+        default=None, init=True, repr=False
+    )
     # Cached stats for standardisation
     observable_standardiser: LinearStandardiser = field(
-        default_factory=LinearStandardiser, init=False, repr=False)
+        default_factory=LinearStandardiser, init=False, repr=False
+    )
     target_standardiser: LinearStandardiser = field(
-        default_factory=LinearStandardiser, init=False, repr=False)
+        default_factory=LinearStandardiser, init=False, repr=False
+    )
 
     _kdtree: Optional["cKDTree"] = field(default=None, init=False, repr=False)
     _kdtree_standardized: Optional[bool] = field(default=None, init=False, repr=False)
@@ -268,6 +274,7 @@ class ModelGrid:
                 raise ValueError("weights must have shape (N,)")
         if self.check_boundaries is not None and not callable(self.check_boundaries):
             raise ValueError("check_boundaries must be callable if provided")
+
     # ------------ basic properties ------------
     @property
     def n_models(self) -> int:
@@ -305,7 +312,9 @@ class ModelGrid:
         col = self.target_names.index(key)
         return self.targets[:, col]
 
-    def select(self, idx: np.ndarray, observables=None, targets=None, standardisers=True) -> "ModelGrid":
+    def select(
+        self, idx: np.ndarray, observables=None, targets=None, standardisers=True
+    ) -> "ModelGrid":
         """
         Return a new ModelGrid containing a subset of models.
 
@@ -346,10 +355,16 @@ class ModelGrid:
 
         if standardisers:
             if self.observable_standardiser.is_fit:
-                sub.observable_standardiser.mean = self.observable_standardiser.mean[observables].copy()
-                sub.observable_standardiser.sd = self.observable_standardiser.sd[observables].copy()
+                sub.observable_standardiser.mean = self.observable_standardiser.mean[
+                    observables
+                ].copy()
+                sub.observable_standardiser.sd = self.observable_standardiser.sd[
+                    observables
+                ].copy()
             if self.target_standardiser.is_fit:
-                sub.target_standardiser.mean = self.target_standardiser.mean[targets].copy()
+                sub.target_standardiser.mean = self.target_standardiser.mean[
+                    targets
+                ].copy()
                 sub.target_standardiser.sd = self.target_standardiser.sd[targets].copy()
 
         return sub
@@ -357,7 +372,7 @@ class ModelGrid:
     # ------------ standardisation ------------
     def fit_target_standardiser(self, mask: Optional[np.ndarray] = None) -> None:
         """Fit mean/std for target standardisation used by KDTree distances.
-        
+
         Parameters
         ----------
         mask : ndarray of bool, shape (N,), optional
@@ -386,7 +401,9 @@ class ModelGrid:
             If fit_target_standardiser has not been called.
         """
         if not self.target_standardiser.is_fit:
-            raise RuntimeError("fit_target_standardiser must be called before transform_targets")
+            raise RuntimeError(
+                "fit_target_standardiser must be called before transform_targets"
+            )
         return self.target_standardiser.transform(X)
 
     def inverse_transform_targets(self, X_std: np.ndarray) -> np.ndarray:
@@ -394,7 +411,9 @@ class ModelGrid:
         Inverse of transform_targets.
         """
         if not self.target_standardiser.is_fit:
-            raise RuntimeError("fit_target_standardiser must be called before inverse_transform_targets")
+            raise RuntimeError(
+                "fit_target_standardiser must be called before inverse_transform_targets"
+            )
         return self.target_standardiser.inverse_transform(X_std)
 
     def fit_standardiser(self, mask: Optional[np.ndarray] = None) -> None:
@@ -429,7 +448,9 @@ class ModelGrid:
             If fit_standardiser has not been called.
         """
         if not self.observable_standardiser.is_fit:
-            raise RuntimeError("fit_standardiser must be called before transform_observables")
+            raise RuntimeError(
+                "fit_standardiser must be called before transform_observables"
+            )
         return self.observable_standardiser.transform(X)
 
     def inverse_transform_observables(self, X_std: np.ndarray) -> np.ndarray:
@@ -452,7 +473,9 @@ class ModelGrid:
             If fit_standardiser has not been called.
         """
         if not self.observable_standardiser.is_fit:
-            raise RuntimeError("fit_standardiser must be called before inverse_transform_observables")
+            raise RuntimeError(
+                "fit_standardiser must be called before inverse_transform_observables"
+            )
         return self.observable_standardiser.inverse_transform(X_std)
 
     # ------------ KDTree for KNN and interpolation ------------
@@ -519,8 +542,8 @@ class ModelGrid:
         p: float = 2.0,
         eps: float = 1e-12,
         standardize: bool = True,
-        mode: str = "local_linear",   # "idw" | "local_linear"
-        ridge: float = 1e-8,          # Tikhonov regularization for stability
+        mode: str = "local_linear",  # "idw" | "local_linear"
+        ridge: float = 1e-8,  # Tikhonov regularization for stability
     ) -> np.ndarray:
         """
         Interpolate observables for arbitrary target values using cached KDTree.
@@ -539,7 +562,9 @@ class ModelGrid:
             mode = method
         mode = str(mode).lower()
         if mode not in {"nearest", "idw", "local_linear"}:
-            raise ValueError(f"Unknown mode={mode!r} (use 'nearest', 'idw' or 'local_linear').")
+            raise ValueError(
+                f"Unknown mode={mode!r} (use 'nearest', 'idw' or 'local_linear')."
+            )
 
         bad_q = ~np.isfinite(tq).all(axis=1) | ~self.in_boundaries(tq)
         out = np.full((tq.shape[0], self.n_observables), fill_value, dtype=float)
@@ -567,13 +592,18 @@ class ModelGrid:
             idx = idx[:, None]
 
         neigh_obs = self.observables[idx]  # (Mgood, k, P)
-        neigh_tgt = (self.targets[idx] if not standardize else self.targets_standardized[idx]) \
-            if hasattr(self, "targets_standardized") else None
+        neigh_tgt = (
+            (self.targets[idx] if not standardize else self.targets_standardized[idx])
+            if hasattr(self, "targets_standardized")
+            else None
+        )
 
         # Build standardized targets on the fly:
         if neigh_tgt is None:
             if standardize:
-                self.targets_standardized = self.target_standardiser.transform(self.targets)
+                self.targets_standardized = self.target_standardiser.transform(
+                    self.targets
+                )
                 neigh_tgt = self.targets_standardized[idx]
             else:
                 neigh_tgt = self.targets[idx]
@@ -613,22 +643,22 @@ class ModelGrid:
             P = self.n_observables
 
             for rr in rows:
-                xq = tqn[~bad_q][rr]              # (D,)
-                Xn = neigh_tgt[rr]                # (k, D)
-                Yn = neigh_obs[rr]                # (k, P)
-                dn = dists[rr]                    # (k,)
+                xq = tqn[~bad_q][rr]  # (D,)
+                Xn = neigh_tgt[rr]  # (k, D)
+                Yn = neigh_obs[rr]  # (k, P)
+                dn = dists[rr]  # (k,)
 
                 # weights (same spirit as IDW)
                 w = 1.0 / (np.power(dn, p) + eps)  # (k,)
                 # build design matrix: (k, 1+D)
                 A = np.empty((k_eff, 1 + D), dtype=float)
                 A[:, 0] = 1.0
-                A[:, 1:] = (Xn - xq[None, :])
+                A[:, 1:] = Xn - xq[None, :]
 
                 # Apply weights via sqrt(w)
                 sw = np.sqrt(w)[:, None]  # (k,1)
-                Aw = A * sw               # (k,1+D)
-                Yw = Yn * sw              # (k,P)
+                Aw = A * sw  # (k,1+D)
+                Yw = Yn * sw  # (k,P)
 
                 # Solve (Aw^T Aw + ridge I) beta = Aw^T Yw
                 G = Aw.T @ Aw
@@ -637,8 +667,8 @@ class ModelGrid:
                 rhs = Aw.T @ Yw
 
                 try:
-                    beta = np.linalg.solve(G, rhs)   # (1+D, P)
-                    obs_q[rr] = beta[0]              # prediction at xq (delta=0)
+                    beta = np.linalg.solve(G, rhs)  # (1+D, P)
+                    obs_q[rr] = beta[0]  # prediction at xq (delta=0)
                 except np.linalg.LinAlgError:
                     print("Fallback to IDW")
                     # Fallback to IDW if ill-conditioned
@@ -656,7 +686,9 @@ class ModelGrid:
             return {"is_fit": False, "mean": None, "sd": None}
         return {
             "is_fit": bool(getattr(std, "is_fit", False)),
-            "mean": None if getattr(std, "mean", None) is None else np.asarray(std.mean),
+            "mean": None
+            if getattr(std, "mean", None) is None
+            else np.asarray(std.mean),
             "sd": None if getattr(std, "sd", None) is None else np.asarray(std.sd),
         }
 
@@ -674,7 +706,6 @@ class ModelGrid:
             return
         std.mean = np.asarray(mean, dtype=float).copy()
         std.sd = np.asarray(sd, dtype=float).copy()
-
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -726,7 +757,9 @@ class ModelGrid:
             targets=np.asarray(d["targets"]),
             observable_names=list(d["observable_names"]),
             target_names=list(d["target_names"]),
-            weights=None if d.get("weights", None) is None else np.asarray(d["weights"]),
+            weights=None
+            if d.get("weights", None) is None
+            else np.asarray(d["weights"]),
             meta=dict(d.get("meta", {}) or {}),
             check_boundaries=check_boundaries,
         )
@@ -736,7 +769,6 @@ class ModelGrid:
         cls._state_to_std(std.get("targets", {}), grid.target_standardiser)
 
         return grid
-
 
     @classmethod
     def from_fits_table(
@@ -1319,20 +1351,29 @@ class ModelGrid:
                     g.attrs["meta"] = json.dumps({}, ensure_ascii=True)
 
             g.attrs["standardisers"] = json.dumps(
-            {
-                "observables": {
-                    "is_fit": self.observable_standardiser.is_fit,
-                    "mean": None if not self.observable_standardiser.is_fit else self.observable_standardiser.mean.tolist(),
-                    "sd": None if not self.observable_standardiser.is_fit else self.observable_standardiser.sd.tolist(),
+                {
+                    "observables": {
+                        "is_fit": self.observable_standardiser.is_fit,
+                        "mean": None
+                        if not self.observable_standardiser.is_fit
+                        else self.observable_standardiser.mean.tolist(),
+                        "sd": None
+                        if not self.observable_standardiser.is_fit
+                        else self.observable_standardiser.sd.tolist(),
+                    },
+                    "targets": {
+                        "is_fit": self.target_standardiser.is_fit,
+                        "mean": None
+                        if not self.target_standardiser.is_fit
+                        else self.target_standardiser.mean.tolist(),
+                        "sd": None
+                        if not self.target_standardiser.is_fit
+                        else self.target_standardiser.sd.tolist(),
+                    },
                 },
-                "targets": {
-                    "is_fit": self.target_standardiser.is_fit,
-                    "mean": None if not self.target_standardiser.is_fit else self.target_standardiser.mean.tolist(),
-                    "sd": None if not self.target_standardiser.is_fit else self.target_standardiser.sd.tolist(),
-                },
-            },
-            ensure_ascii=True,
-        )
+                ensure_ascii=True,
+            )
+
     @classmethod
     def from_pickle(cls, path):
         """
@@ -1350,9 +1391,11 @@ class ModelGrid:
         with open(path, "rb") as f:
             obj = pickle.load(f)
         if not isinstance(obj, cls):
-            raise TypeError(f"Pickle file does not contain a ModelGrid; got {type(obj)}")
+            raise TypeError(
+                f"Pickle file does not contain a ModelGrid; got {type(obj)}"
+            )
         return obj
-    
+
     def to_pickle(self, path):
         """
         Save the ModelGrid to a pickle file.
@@ -1374,14 +1417,14 @@ class ModelGrid:
           .fits, .fit, .fts      FITS table via from_fits_table
           .hdf5, .h5             HDF5 via from_hdf5
           .pkl, .pickle          Pickle via from_pickle
-        
+
         Parameters
         ----------
         path : str
             Path to the file.
         **kwargs
             Additional keyword arguments passed to the specific loader.
-        
+
         Returns
         -------
         grid : ModelGrid
@@ -1395,6 +1438,7 @@ class ModelGrid:
             return cls.from_pickle(path)
         else:
             raise ValueError(f"Unsupported file extension '{ext}' for auto-loading")
+
 
 # ---------------------------------------------------------------------
 # ModelGrid fitter
@@ -1637,8 +1681,7 @@ class GridFitter:
         output_hdf5_compression_opts: int = 4,
         output_hdf5_flush_every: int = 256,
         output_hdf5_write_only: bool = False,
-
-        ) -> Union[Iterator[Dict[str, Any]], List[Dict[str, Any]]]:
+    ) -> Union[Iterator[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Evaluate model posteriors for multiple queries.
 
@@ -1781,9 +1824,14 @@ class GridFitter:
                 stats_key.append(key)
             if stats_bins is None or len(stats_for) != len(stats_bins):
                 print("stats_bins not provided, creating bins based on grid")
-                stats_bins = [np.linspace(self.grid.targets[:, j].min(),
-                                          self.grid.targets[:, j].max(),
-                                          200) for j in stats_j]
+                stats_bins = [
+                    np.linspace(
+                        self.grid.targets[:, j].min(),
+                        self.grid.targets[:, j].max(),
+                        200,
+                    )
+                    for j in stats_j
+                ]
         else:
             stats_j, stats_key = [], []
 
@@ -1794,6 +1842,7 @@ class GridFitter:
         if backend == "process":
             try:
                 import pickle as _p
+
                 _p.dumps((self.likelihood, self.prior))
             except Exception as e:
                 if verbose:
@@ -1822,7 +1871,9 @@ class GridFitter:
                 )
             if stats_for is not None:
                 print(f"OTF statistics")
-                print(f"  - stats_for={stats_key} (return_pdf_for_stats={return_pdf_for_stats})")
+                print(
+                    f"  - stats_for={stats_key} (return_pdf_for_stats={return_pdf_for_stats})"
+                )
         if output_hdf5_path is not None:
             print("Data output")
             print(f"  - HDF5 directory: {output_hdf5_path}:{output_hdf5_group}")
@@ -1905,8 +1956,9 @@ class GridFitter:
             if binner is None:
                 return np.arange(self.grid.n_models, dtype=self.grid.grid_int), None
             idx, lev = binner.candidates(
-                    y_native=X_native[m, binner.dims],
-                    sigmas_native=SIG_native[m, binner.dims])
+                y_native=X_native[m, binner.dims],
+                sigmas_native=SIG_native[m, binner.dims],
+            )
             if idx.size == 0:
                 idx = np.arange(self.grid.n_models, dtype=self.grid.grid_int)
                 lev = lev
@@ -1931,7 +1983,8 @@ class GridFitter:
                         keep_mass=posterior_keep_mass,
                         min_candidates=posterior_keep_min_candidates,
                         max_candidates=(
-                            None if posterior_keep_max_candidates is None
+                            None
+                            if posterior_keep_max_candidates is None
                             else posterior_keep_max_candidates
                         ),
                         keep_ties=posterior_keep_ties,
@@ -1943,7 +1996,9 @@ class GridFitter:
                     ssum = np.sum(w_full)
                     if not np.isfinite(ssum) or ssum <= 0:
                         # TODO: raise a warning?
-                        w_kept = np.full_like(w_full, 1.0 / max(1, w_full.size), dtype=float)
+                        w_kept = np.full_like(
+                            w_full, 1.0 / max(1, w_full.size), dtype=float
+                        )
                     else:
                         w_kept = w_full / ssum
                     tmeta = {
@@ -1953,8 +2008,12 @@ class GridFitter:
                         "mass_kept": 1.0,
                         "mass_dropped": 0.0,
                         "cut_weight": np.nan,
-                        "ess_before": 1.0 / np.sum(np.square(w_kept)) if w_kept.size else 0.0,
-                        "ess_after": 1.0 / np.sum(np.square(w_kept)) if w_kept.size else 0.0,
+                        "ess_before": 1.0 / np.sum(np.square(w_kept))
+                        if w_kept.size
+                        else 0.0,
+                        "ess_after": 1.0 / np.sum(np.square(w_kept))
+                        if w_kept.size
+                        else 0.0,
                     }
 
                 # compute stats on truncated posterior
@@ -1964,7 +2023,7 @@ class GridFitter:
                     stats_out = {}
                     if return_pdf_for_stats:
                         posts_target_out = {}
-                    
+
                     Y_cov = self.grid.targets[cand_kept][:, stats_j]
                     if Y_cov.ndim == 1:
                         Y_cov = Y_cov[:, None]
@@ -1985,13 +2044,15 @@ class GridFitter:
                                 print("KDE failed, falling back to histogram for stats")
                                 kde = None
                             if kde is None:
-                                post, _ = np.histogram(y, bins=bins,
-                                                   weights=w_kept, density=True)
+                                post, _ = np.histogram(
+                                    y, bins=bins, weights=w_kept, density=True
+                                )
                             else:
                                 post = kde.evaluate(0.5 * (bins[:-1] + bins[1:]))
                         else:
-                            post, _ = np.histogram(y, bins=bins,
-                                                   weights=w_kept, density=True)
+                            post, _ = np.histogram(
+                                y, bins=bins, weights=w_kept, density=True
+                            )
                         st = pdf_stats(bins, post, find_multimodal=find_multimodal)
 
                         stats_out[key] = {
@@ -2048,9 +2109,13 @@ class GridFitter:
                     "backend": str(backend),
                     "n_jobs": int(n_jobs),
                     "tasks_per_worker": int(tpw),
-                    "posterior_keep_mass": None if posterior_keep_mass is None else float(posterior_keep_mass),
+                    "posterior_keep_mass": None
+                    if posterior_keep_mass is None
+                    else float(posterior_keep_mass),
                     "posterior_keep_min_candidates": int(posterior_keep_min_candidates),
-                    "posterior_keep_max_candidates": None if posterior_keep_max_candidates is None else int(posterior_keep_max_candidates),
+                    "posterior_keep_max_candidates": None
+                    if posterior_keep_max_candidates is None
+                    else int(posterior_keep_max_candidates),
                     "posterior_keep_ties": bool(posterior_keep_ties),
                     "find_multimodal": bool(find_multimodal),
                     "return_pdf_for_stats": bool(return_pdf_for_stats),
@@ -2068,7 +2133,7 @@ class GridFitter:
         def _iter_results() -> Iterator[Dict[str, Any]]:
             try:
                 if n_jobs == 1:
-                    for (s, e) in slices:
+                    for s, e in slices:
                         if verbose:
                             print(f"  - slice {s}:{e}")
                         batch = _slice_worker(s, e)
@@ -2078,7 +2143,11 @@ class GridFitter:
                             if not output_hdf5_write_only:
                                 yield r
                 else:
-                    Executor = ThreadPoolExecutor if backend == "thread" else ProcessPoolExecutor
+                    Executor = (
+                        ThreadPoolExecutor
+                        if backend == "thread"
+                        else ProcessPoolExecutor
+                    )
                     with Executor(max_workers=max(1, int(n_jobs))) as ex:
                         futs = [ex.submit(_slice_worker, s, e) for (s, e) in slices]
                         for fut in as_completed(futs):
@@ -2104,7 +2173,6 @@ class GridFitter:
             return list(_iter_results())
         else:
             raise ValueError("return_mode must be 'iter' or 'list'")
-
 
     def corner_for_targets(
         self,
@@ -2196,10 +2264,8 @@ class GridFitter:
                 lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
-                min_v = max(mid - kappa_sigma_edges * (mid - lo),
-                            Y[:, i].min())
-                max_v = min(mid + kappa_sigma_edges * (hi - mid),
-                            Y[:, i].max())
+                min_v = max(mid - kappa_sigma_edges * (mid - lo), Y[:, i].min())
+                max_v = min(mid + kappa_sigma_edges * (hi - mid), Y[:, i].max())
                 if min_v == max_v:
                     min_v = Y[:, i].min() * 0.9
                     max_v = Y[:, i].max() * 1.1
@@ -2218,7 +2284,7 @@ class GridFitter:
                 ax.axvline(true_target_vals[i], color="r", label="True")
             for qv in q[i]:
                 ax.axvline(qv, ls="--", lw=1.0, color="gold")
-                
+
             tlt = ", ".join([f"{v:.3f}" for v in q[i]])
             ax.set_title(tlt)
             ax.axvline(best_y[i], color="fuchsia", lw=1.0, label="Max-like")
@@ -2245,13 +2311,12 @@ class GridFitter:
                     xb, yb, frac.T, cmap="Greys", levels=[0.01, 0.05, 0.32, 0.5, 1]
                 )
 
-                ax.scatter(best_y[j], best_y[i],
-                           ec="fuchsia", fc="none")
-                ax.scatter(mean_y[j], mean_y[i],
-                           ec="lime", fc="none")
+                ax.scatter(best_y[j], best_y[i], ec="fuchsia", fc="none")
+                ax.scatter(mean_y[j], mean_y[i], ec="lime", fc="none")
                 if true_target_vals is not None:
-                    ax.scatter(true_target_vals[j],
-                               true_target_vals[i], ec="r", fc="none")
+                    ax.scatter(
+                        true_target_vals[j], true_target_vals[i], ec="r", fc="none"
+                    )
                 if i == D - 1:
                     ax.set_xlabel(names[j])
                 if j == 0:
@@ -2294,6 +2359,7 @@ class GridFitStatsSpec:
     bins : ndarray, shape (K+1,)
         Bin edges used to build the discrete posterior.
     """
+
     key: str
     bins: np.ndarray
 
@@ -2373,7 +2439,6 @@ class GridFitHDF5Writer:
         self._cov_dim = 0
         self._cov_keys: Tuple[str, ...] = ()
 
-
         self._prepare(configuration=configuration or {})
 
     # --------------------------
@@ -2413,7 +2478,9 @@ class GridFitHDF5Writer:
 
         # vlen candidates + post_models
         self.ds_candidates[m] = np.asarray(r["candidates"], dtype=np.int64)
-        self.ds_post_models[m] = np.asarray(r["post_models"], dtype=self.dtype_post_models)
+        self.ds_post_models[m] = np.asarray(
+            r["post_models"], dtype=self.dtype_post_models
+        )
 
         # truncation + level
         lev = r.get("level", None)
@@ -2506,7 +2573,10 @@ class GridFitHDF5Writer:
         cfg.setdefault("P", int(self.P))
         cfg.setdefault("group", str(self.group))
         cfg.setdefault("return_pdf_for_stats", bool(self.return_pdf_for_stats))
-        cfg.setdefault("stats_keys", [s.key for s in self._stats_specs] if self._stats_specs else None)
+        cfg.setdefault(
+            "stats_keys",
+            [s.key for s in self._stats_specs] if self._stats_specs else None,
+        )
         gc.attrs["json"] = json.dumps(cfg, ensure_ascii=True)
 
         # /index
@@ -2520,28 +2590,44 @@ class GridFitHDF5Writer:
         self.ds_level = gt.create_dataset("level", shape=(self.M,), dtype=np.int32)
         self.ds_level[...] = -1
 
-        self.ds_n_before = gt.create_dataset("n_before", shape=(self.M,), dtype=np.int32)
+        self.ds_n_before = gt.create_dataset(
+            "n_before", shape=(self.M,), dtype=np.int32
+        )
         self.ds_n_before[...] = -1
         self.ds_n_after = gt.create_dataset("n_after", shape=(self.M,), dtype=np.int32)
         self.ds_n_after[...] = -1
 
-        self.ds_mass_kept = gt.create_dataset("mass_kept", shape=(self.M,), dtype=np.float32)
+        self.ds_mass_kept = gt.create_dataset(
+            "mass_kept", shape=(self.M,), dtype=np.float32
+        )
         self.ds_mass_kept[...] = np.nan
-        self.ds_mass_dropped = gt.create_dataset("mass_dropped", shape=(self.M,), dtype=np.float32)
+        self.ds_mass_dropped = gt.create_dataset(
+            "mass_dropped", shape=(self.M,), dtype=np.float32
+        )
         self.ds_mass_dropped[...] = np.nan
-        self.ds_cut_weight = gt.create_dataset("cut_weight", shape=(self.M,), dtype=np.float32)
+        self.ds_cut_weight = gt.create_dataset(
+            "cut_weight", shape=(self.M,), dtype=np.float32
+        )
         self.ds_cut_weight[...] = np.nan
-        self.ds_ess_before = gt.create_dataset("ess_before", shape=(self.M,), dtype=np.float32)
+        self.ds_ess_before = gt.create_dataset(
+            "ess_before", shape=(self.M,), dtype=np.float32
+        )
         self.ds_ess_before[...] = np.nan
-        self.ds_ess_after = gt.create_dataset("ess_after", shape=(self.M,), dtype=np.float32)
+        self.ds_ess_after = gt.create_dataset(
+            "ess_after", shape=(self.M,), dtype=np.float32
+        )
         self.ds_ess_after[...] = np.nan
 
         # /candidates (variable-length arrays)
         gcand = self.g.create_group("candidates")
         vlen_i64 = h5py.vlen_dtype(np.dtype("int64"))
         vlen_post = h5py.vlen_dtype(self.dtype_post_models)
-        self.ds_candidates = gcand.create_dataset("candidates", shape=(self.M,), dtype=vlen_i64)
-        self.ds_post_models = gcand.create_dataset("post_models", shape=(self.M,), dtype=vlen_post)
+        self.ds_candidates = gcand.create_dataset(
+            "candidates", shape=(self.M,), dtype=vlen_i64
+        )
+        self.ds_post_models = gcand.create_dataset(
+            "post_models", shape=(self.M,), dtype=vlen_post
+        )
 
         # /stats
         if self._stats_specs:
