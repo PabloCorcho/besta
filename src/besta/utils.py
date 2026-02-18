@@ -56,8 +56,8 @@ def predict_array_memory(array_shape, dtype=np.float64, unit='MB'):
     try:
         dtype_obj = np.dtype(dtype)
         element_size = dtype_obj.itemsize
-    except:
-        raise ValueError("Invalid dtype provided")
+    except Exception as e:
+        raise ValueError(f"Invalid dtype provided: {e}")
     
     total_elements = np.prod(array_shape)
     total_bytes = total_elements * element_size
