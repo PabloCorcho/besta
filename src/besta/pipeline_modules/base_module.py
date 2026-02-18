@@ -1012,7 +1012,8 @@ class PhotometryFitModule(BaseModule):
 
     def plot_solution(self, solution: DataBlock, figname=None):
         """Plot the fit."""
-        flux_model, full_spec = self.make_observable(solution, parse=True, include_spec=True)
+        flux_model, full_spec = self.make_observable(solution, parse=True,
+                                                     include_spec=True)
         if isinstance(flux_model, tuple):
             flux_model = flux_model[0]
 
@@ -1023,9 +1024,6 @@ class PhotometryFitModule(BaseModule):
                                 height_ratios=[2, 1, 1],
                                 figsize=(16, 9))
         flux_model = self.make_observable(solution, parse=True)
-        # Grab the solution values (visualuzation purpose only)
-        param_keys = [k[1] for k in solution.keys("parameters") if k[0] == "parameters"]
-        param_val = [solution["parameters", k] for k in param_keys]
 
         fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
                                 constrained_layout=True,
@@ -1051,13 +1049,6 @@ class PhotometryFitModule(BaseModule):
                 sol_sections[sec].update({name: solution[sec, name]})
 
         if sol_sections["Settings"]["use_transforms"]:
-        # Pixel masking information
-        info = {"Total bands": self.config["photometry_flux"].size,
-                     }
-        model_params = dict(zip(param_keys, param_val))
-        model_params["use_transforms"] = self.config.get(
-            "use_transforms", False)
-        if model_params["use_transforms"]:
             sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
             sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
 
@@ -1068,7 +1059,7 @@ class PhotometryFitModule(BaseModule):
         sections = [(k, v) for k, v in sol_sections.items()]
 
         _ = draw_dict_in_axes(ax, sections, section_spacing=1,
-                          title_style="underline")
+                              title_style="underline")
         ax.axis("off")
         # Plot input photometry and model
         eff_wl = self.config["filter_list"].effective_wavelength
