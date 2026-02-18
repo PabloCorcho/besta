@@ -1484,13 +1484,6 @@ def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     return {"bias": float(med), "nmad": float(nmad),
             "outlier": outlier, "rmse": rmse}
 
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-    return paths
-
 def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post"):
     """Make trace plots from an astropy Table containing chain results.
 
