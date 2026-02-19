@@ -30,8 +30,12 @@ _NUM_RE = re.compile(r"""
 """, re.VERBOSE)
 
 def _split_tokens(s: str) -> list[str]:
+    # Protect quoted strings with spaces
+    if s.startswith(("'", '"')) and s.endswith(("'", '"')) and s[0] == s[-1]:
+        return [s[1:-1]]
     # split on whitespace and/or commas
-    s = s.replace(",", " ")
+    if "," in s:
+        s = s.replace(",", " ")
     return [t for t in s.split() if t]
 
 def _parse_scalar(token: str):

@@ -174,8 +174,9 @@ class BaseModule(ClassModule):
 
         # Additional arguments to be passed to the SSP model
         if options.has_value("SSPModelArgs"):
-            ssp_args = options.get_string("SSPModelArgs")
-            ssp_args = ssp_args.split(",")
+            ssp_args = options["SSPModelArgs"]
+            if isinstance(ssp_args, str):
+                ssp_args = ssp_args.split(",")
             _log("SSP Model extra arguments: ", ssp_args)
         else:
             ssp_args = []

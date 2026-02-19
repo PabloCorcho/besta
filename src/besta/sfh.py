@@ -311,11 +311,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         if self.use_transforms:
             # Map unconstrained latents to positive fractions that sum to 1
             # directly update the table of masses
-            increments = _softmax(ssfr_over_last)
-            mass = np.concatenate(
-                ([0.0], np.cumsum(increments).clip(0, 1), [1.0])
-                ) * self.model.mass_today
-            self.model.masses = Parameter(mass, u.Msun, fixed=True)
+            self.model.ssfr = self.to_physical(ssfr_over_last) << 1 / u.yr
         else:
             if np.any(ssfr_over_last > self.max_ssfr_logyr):
                 return 0, 10**np.max(ssfr_over_last - self.max_ssfr_logyr)
@@ -334,10 +330,10 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         """
         latent = np.asarray(latent, dtype=float)
         if self.use_transforms:
-            lt_yr = self.lookback_time[1:-1].to_value("yr")
+            # Map unconstrained latents to positive fractions that sum to 1
             increments = _softmax(latent)
-            cumulative = np.concatenate(([0.0], np.cumsum(increments), [1.0]))
-            ssfr = (1 - cumulative[1:-1]) / lt_yr
+            cumfrac = np.cumsum(increments)
+            ssfr = increments / self.lookback_time.to_value("yr")
             ssfr = np.clip(ssfr, 1e-20, None)
             return np.log10(ssfr)
         return latent
@@ -347,7 +343,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         physical = np.asarray(physical, dtype=float)
         if not self.use_transforms:
             return physical
-        lt_yr = self.lookback_time[1:-1].to_value("yr")
+        lt_yr = self.lookback_time.to_value("yr")
         ssfr = 10**physical
         cumulative = 1 - lt_yr * ssfr
         cumulative = np.insert(cumulative, [0, cumulative.size], [0.0, 1.0])
