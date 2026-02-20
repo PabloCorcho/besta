@@ -19,6 +19,7 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 def setup_logging(
     level: str = "INFO",
     log_file: Optional[str] = None,
+    console: bool = True,
     overwrite: bool = False,
 ):
     """
@@ -45,9 +46,10 @@ def setup_logging(
     formatter = logging.Formatter(DEFAULT_FORMAT, DATE_FORMAT)
 
     # Console handler
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+    if console:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
 
     # File handler (optional)
     if log_file:
