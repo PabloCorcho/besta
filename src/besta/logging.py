@@ -9,7 +9,7 @@ from typing import Optional
 
 DEFAULT_FORMAT = (
     "[%(name)s | %(asctime)s] "
-    "(%(levelname)-8s) "
+    "(%(levelname)s) "
     "%(message)s"
 )
 
