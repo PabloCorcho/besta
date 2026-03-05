@@ -304,6 +304,9 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                 np.log10(1 / self.today.to_value("yr")),
                 max_logssfr,
             ]
+        
+        # log(tau1 / tau2) where tau1 > tau2
+        self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
 
     def parse_datablock(self, datablock: DataBlock):
         ssfr_over_last = self.get_sfh_parameters_array(datablock)
@@ -314,7 +317,14 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             self.model.ssfr = self.to_physical(ssfr_over_last) << 1 / u.yr
         else:
             if np.any(ssfr_over_last > self.max_ssfr_logyr):
-                return 0, 10**np.max(ssfr_over_last - self.max_ssfr_logyr)
+                return 0, 1.0 #0**np.max(ssfr_over_last - self.max_ssfr_logyr)
+            # log(ssfr2 / ssfr_1) < log(tau1 / tau2) for tau1 > tau2
+            elif np.any(np.diff(ssfr_over_last) >= self.delta_logtau):
+                # print("WRONGS SSFR", ssfr_over_last, np.diff(ssfr_over_last),
+                # self.delta_logtau,
+                # self.model.tau_ssfr.to_value("yr"), self.lookback_time.to_value("yr"))
+                return 0, 1.0 #0**np.max(np.diff(ssfr_over_last) - self.delta_logtau)
+
             self.model.ssfr = 10**(ssfr_over_last) << 1 / u.yr
         # Update the chemical evolution parameters
         self.model.alpha_powerlaw.set(datablock[self.sect_name, "alpha_powerlaw"])
@@ -332,8 +342,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         if self.use_transforms:
             # Map unconstrained latents to positive fractions that sum to 1
             increments = _softmax(latent)
-            cumfrac = np.cumsum(increments)
-            ssfr = increments / self.lookback_time.to_value("yr")
+            ssfr = (1 - np.cumsum(increments)) / self.lookback_time.to_value("yr")
             ssfr = np.clip(ssfr, 1e-20, None)
             return np.log10(ssfr)
         return latent
