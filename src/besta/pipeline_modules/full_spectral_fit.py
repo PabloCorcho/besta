@@ -98,7 +98,7 @@ class FullSpectralFitModule(SpectraFitModule):
         if not valid:
             logger.warning("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["extra", "stellar_mass"] = 0.0
+            block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
         cov = self.config["var"]
