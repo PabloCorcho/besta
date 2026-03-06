@@ -787,9 +787,15 @@ class ResultsSummary:
             hdr[f"{tag}SC"] = sect[:68]
             hdr[f"{tag}KY"] = full_key[:68]
             if i < self.mean.size:
-                hdr[f"{tag}MN"] = float(self.mean[i])
+                if np.isfinite(self.mean[i]):
+                    hdr[f"{tag}MN"] = float(self.mean[i]), "mean"
+                else:
+                    hdr[f"{tag}MN"] = "nan", "mean not finite"
             if i < self.map.size:
-                hdr[f"{tag}MP"] = float(self.map[i])
+                if np.isfinite(self.map[i]):
+                    hdr[f"{tag}MP"] = float(self.map[i]), "MAP"
+                else:
+                    hdr[f"{tag}MP"] = "nan", "map not finite"
 
         if self.evidence is not None and np.isfinite(self.evidence.logz):
             prim.header["LOGZ"] = float(self.evidence.logz)
@@ -808,12 +814,12 @@ class ResultsSummary:
 
         # Add HDI intervals as header cards on the percentiles HDU (compact)
         pct_hdr = fits.Header()
-        pct_hdr["HDIMASS"] = float(self.hdi_mass)
+        pct_hdr["HDIMASS"] = float(self.hdi_mass) if np.isfinite(self.hdi_mass) else "nan", "HDI mass"
         for name, ivs in self.hdi_intervals.items():
             # store up to 2 intervals by default
             for j, (lo, hi) in enumerate(ivs[:2]):
-                pct_hdr[f"{name[:6]}L{j}"] = float(lo)
-                pct_hdr[f"{name[:6]}H{j}"] = float(hi)
+                pct_hdr[f"{name[:6]}L{j}"] = float(lo) if np.isfinite(lo) else "nan", "lower limit"
+                pct_hdr[f"{name[:6]}H{j}"] = float(hi) if np.isfinite(hi) else "nan", "upper limit"
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
@@ -1087,9 +1093,15 @@ def summarize_results(
 
     # Samples matrix (D, N)
     samples = np.vstack([_as_float_array(table[k])[mask] for k in keys])
+    # Filter NaN in samples
+    finite_mask = np.isfinite(samples).all(axis=0)
+    logpost = logpost[finite_mask]
+    w = w[finite_mask]
+    samples = samples[:, finite_mask]
+    
     npar, nsamp = samples.shape
 
-    map_idx = int(np.argmax(logpost))  # index within filtered arrays
+    map_idx = np.argmax(logpost)
     map_vec = samples[:, map_idx]
 
     mean_vec = weighted_mean(samples, w, axis=1)
