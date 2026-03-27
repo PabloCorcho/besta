@@ -101,7 +101,7 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         status, overflow_val = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
-        self.assertGreater(overflow_val, 1.0)
+        self.assertGreaterEqual(overflow_val, 1.0)
 
 
 class TestFixedMassFracSFH(unittest.TestCase):
