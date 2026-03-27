@@ -10,7 +10,12 @@
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: besta.pipeline_modules.sfh_photometry.SFHPhotometryModule
+.. autoclass:: besta.pipeline_modules.galaxy_photometry.GalaxyPhotometryModule
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: besta.pipeline_modules.galaxy_spectra.GalaxySpectraModule
    :members:
    :undoc-members:
    :show-inheritance:
