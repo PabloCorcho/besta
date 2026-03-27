@@ -95,64 +95,6 @@ def _ini_string_to_dict(text):
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
 
-def expand_env_vars(arg_spec=0):
-    """
-    Decorator that expands environment variables in a specified argument.
-
-    The target argument can be specified either by position (int) or name (str).
-    If no argument is specified, expands the first positional argument (default).
-
-    Parameters
-    ----------
-    arg_spec : int or str, optional
-        Either the position (0-based index) or name of the argument to expand.
-        Default is 0 (first positional argument).
-
-    Returns
-    -------
-    callable
-        A decorator function that wraps the original function.
-
-    Examples
-    --------
-    # Expand first positional argument (default)
-    >>> @expand_env_vars()
-    ... def load_file(path):
-    ...     print(path)
-    >>> load_file("$HOME/test.txt")
-
-    # Expand named argument
-    >>> @expand_env_vars('filename')
-    ... def process_file(filename, mode='r'):
-    ...     print(filename, mode)
-    >>> process_file("${TMPDIR}/data.txt")
-
-    # Expand argument at position 1
-    >>> @expand_env_vars(1)
-    ... def save_data(header, filepath):
-    ...     print(header, filepath)
-    >>> save_data("results", "$APPDIR/output.dat")
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Handle different argument specifications
-            if isinstance(arg_spec, int):
-                # Positional argument expansion
-                if arg_spec < len(args):
-                    expanded = os.path.expandvars(args[arg_spec])
-                    args = args[:arg_spec] + (expanded,) + args[arg_spec+1:]
-            elif isinstance(arg_spec, str):
-                # Keyword argument expansion
-                if arg_spec in kwargs:
-                    kwargs[arg_spec] = os.path.expandvars(kwargs[arg_spec])
-            else:
-                raise TypeError("arg_spec must be int (position) or str (argument name)")
-
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
 @expand_env_vars()
 def make_ini_file(filename, config, ignore_sec="Values"):
     """Create a .ini file from an input configuration.
