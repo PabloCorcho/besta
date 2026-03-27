@@ -15,7 +15,7 @@ def test_mask_telluric_regions():
     err = np.ones_like(wl) * 0.1
     weights = np.ones_like(wl)
     new_w, mask = spectrum.mask_telluric_regions(
-        wl, weights=weights, return_mask=True, pad=0.0
+        wl, weight=weights, return_mask=True, pad=0.0
     )
     # Ensure some mask applied within known band (~6860-6950)
     assert mask.any()
