@@ -414,7 +414,12 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             # Enforce strictly increasing times within [0, today]
             deltas = np.exp(times)  # positive
             times = np.cumsum(deltas)
-            times = times / times[-1] * self.today.to_value("Gyr")
+            # TEMPFIX:
+            times = times / times[-1] * self.today.to_value("Gyr") * 0.999
+            # TODO: this enforces that mass_fraction[-1] occurs at present time
+            # which is unphysical. This transformed sampling should therefore
+            # include and additional fraction (*mass_frac, today).
+
         # Ensure monotonically increasing and always smaller than the age of the Universe
         delta_t = times[1:] - times[:-1]
         if (delta_t <= 0).any() or times[-1] >= self.today.to_value("Gyr"):
