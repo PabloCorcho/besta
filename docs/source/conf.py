@@ -17,42 +17,6 @@ sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../../src'))
     )
 
-# Avoid build failures on read the docs
-try:
-    import numpy
-except ImportError:
-    from mock import MagicMock
-
-    MOCK_MODULES = [
-        'numpy',
-        'astropy',
-        'astropy.modeling',
-        'astropy.modeling.models',
-        'astropy.convolution.kernels',
-        'astropy.table',
-        'astropy.convolution',
-        'astropy.io',
-        'astropy.wcs',
-        'matplotlib',
-        'matplotlib.colors',
-        'matplotlib.pyplot',
-        'synphot',
-        'scipy',
-        'scipy.ndimage',
-        'scipy.ndimage.interpolation',
-        'scipy.optimize',
-        'scipy.signal',
-        'scipy.special',
-        "sklearn",
-        "sklearn.decomposition",
-        "pst",
-        "pst.observables",
-        "past",
-        "past.utils",
-        "yaml"
-    ]
-    sys.modules.update((mod_name, MagicMock()) for mod_name in MOCK_MODULES)
-
 import besta
 
 # -- Project information -----------------------------------------------------
@@ -89,6 +53,17 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
 
+]
+
+# Optional runtime dependencies used by the inference pipeline are not required
+# to render the API reference.
+autodoc_mock_imports = [
+    "cosmosis",
+    "cosmosis.datablock",
+    "pst",
+    "pst.utils",
+    "pst.observables",
+    "pst.galaxy",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
