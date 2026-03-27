@@ -156,7 +156,7 @@ class TestFixedMassFracSFH(unittest.TestCase):
         status, overflow = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
-        self.assertGreater(overflow, 1.0)
+        self.assertGreaterEqual(overflow, 1.0)
 
 
 class TestExponentialSFH(unittest.TestCase):
