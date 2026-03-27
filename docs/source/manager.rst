@@ -30,7 +30,7 @@ Typical usage
            "quiet": "F",
            "timing": "T",
            "debug": "T",
-           "extra_output": "parameters/stellar_mass",
+           "extra_output": "extra/stellar_mass",
        },
        "FullSpectralFit": {
            "file": FullSpectralFitModule.get_path(),
