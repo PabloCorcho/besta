@@ -123,10 +123,8 @@ DEFAULT_TELLURIC_BANDS_AA: Tuple[TelluricBand, ...] = (
 
 def mask_telluric_regions(
     wavelength: np.ndarray,
-    flux: np.ndarray,
-    uncertainty: np.ndarray,
-    weight: np.ndarray,
     *,
+    weight: Optional[np.ndarray] = None,
     bands: Optional[Sequence[Tuple[float, float]]] = None,
     pad: float = 0.0,
     return_mask: bool = False,
@@ -136,17 +134,12 @@ def mask_telluric_regions(
 
     Parameters
     ----------
-    wavelength, flux, uncertainty, weight : ndarray
-        1D arrays of the same length. The function does not modify `flux` or
-        `uncertainty`; it only returns an updated `weight` array.
+    wavelength : ndarray
+        1D array of wavelength values in Angstrom.
 
     bands : sequence of (wmin, wmax), optional
-        Telluric band edges in the same units as `wavelength` *after* applying
-        `wave_unit`. If None, uses a reasonable default set (see below).
-
-    wave_unit : {"um","nm","A","angstrom"}, optional
-        Unit of `wavelength`. Used only if `bands` is None (defaults are defined
-        in microns).
+        Telluric band edges in the same units as `wavelength`.
+        If None, uses a default set.
 
     pad : float, optional
         Extra padding (same units as `wavelength`) added to both sides of every
@@ -160,16 +153,17 @@ def mask_telluric_regions(
     new_weight : ndarray
         Copy of input weight with telluric regions set to 0.
     mask : ndarray of bool, optional
-        True where telluric masking was applied.
+        If ``return_mask`` is True, also return the boolean mask of where weights were set to 0.
     """
     w = np.asanyarray(wavelength)
-    f = np.asanyarray(flux)
-    s = np.asanyarray(uncertainty)
-    wt = np.asanyarray(weight)
+    if weight is None:
+        wt = np.ones_like(w)
+    else:
+        wt = np.asanyarray(weight)
 
-    if w.ndim != 1 or f.ndim != 1 or s.ndim != 1 or wt.ndim != 1:
+    if w.ndim != 1 or wt.ndim != 1:
         raise ValueError("All inputs must be 1D arrays.")
-    if not (w.size == f.size == s.size == wt.size):
+    if not (w.size == wt.size):
         raise ValueError("All inputs must have the same length.")
 
     # Build list of bands in the same units as wavelength array (i.e. input units)

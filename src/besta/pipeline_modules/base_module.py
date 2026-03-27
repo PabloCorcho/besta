@@ -527,7 +527,7 @@ class SpectraFitModule(BaseModule):
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
             _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
             weights, tell_mask = spectrum.mask_telluric_regions(
-                wavelength, flux, error, weights,
+                wavelength, weights=weights,
                 pad=telluric_pad,
                 return_mask=True)
             _log("Number of masked pixels: ", np.count_nonzero(tell_mask))
