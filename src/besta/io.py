@@ -96,7 +96,7 @@ def _ini_string_to_dict(text):
     return ini_dict
 
 @expand_env_vars()
-def make_ini_file(filename, config, ignore_sec="Values"):
+def make_ini_file(filename, config, ignore_sec="values"):
     """Create a .ini file from an input configuration.
 
     Parameters
@@ -111,7 +111,7 @@ def make_ini_file(filename, config, ignore_sec="Values"):
         f.write(f"; File generated automatically by BESTA\n")
         for section in config.keys():
             # Ignore the Values section
-            if section == ignore_sec:
+            if section.lower() == ignore_sec.lower():
                 continue
             f.write(f"[{section}]\n")
             for key, value in config[section].items():
