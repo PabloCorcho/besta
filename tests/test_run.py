@@ -53,10 +53,10 @@ class TestPipelineManagerFit(unittest.TestCase):
         print("Removing files")
         if os.path.exists("./test_spectra_exp_sfh.dat"):
             os.remove("./test_spectra_exp_sfh.dat")
-        # if os.path.exists("./values.ini"):
-        #     os.remove("./values.ini")
-        # if os.path.exists("./FullSpectralFit_auto.ini"):
-        #     os.remove("./FullSpectralFit_auto.ini")
+        if os.path.exists("./values.ini"):
+            os.remove("./values.ini")
+        if os.path.exists("./FullSpectralFit_auto.ini"):
+            os.remove("./FullSpectralFit_auto.ini")
         if os.path.exists("./full_fit_exponential_sfh.txt"):
             os.remove("./full_fit_exponential_sfh.txt")
         if os.path.exists("./full_fit_exponential_sfh.maxlike.txt"):
