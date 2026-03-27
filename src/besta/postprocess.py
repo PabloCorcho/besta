@@ -509,10 +509,14 @@ def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
     return float(m + np.log(np.nansum(w * np.exp(a - m))))
 
 def effective_sample_size(weights: np.ndarray) -> float:
+    """Return the standard importance-sampling effective sample size."""
+
     w = normalize_weights(weights)
     return float(1.0 / np.sum(w**2))
 
 def laplace_logz(loglike_map: float, logprior_map: float, cov: np.ndarray) -> EvidenceEstimate:
+    """Estimate log-evidence with a Laplace approximation around the MAP point."""
+
     cov = _as_float_array(cov)
     d = cov.shape[0]
     sign, logdet = np.linalg.slogdet(cov)
@@ -564,6 +568,8 @@ def harmonic_mean_logz(loglike: np.ndarray, weights: np.ndarray, *, trim_frac: f
 
 @dataclass
 class EvidenceEstimate:
+    """Container for a scalar evidence estimate and method-specific metadata."""
+
     method: str
     logz: float
     logz_err: Optional[float] = None
@@ -1341,6 +1347,8 @@ def make_plot_chains(
 
 def weighted_quantiles(x: np.ndarray, w: np.ndarray,
                         qs: Sequence[float]) -> np.ndarray:
+    """Compute weighted quantiles for a one-dimensional sample."""
+
     x = np.asarray(x); w = np.asarray(w)
     m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
     if not m.any():

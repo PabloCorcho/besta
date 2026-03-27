@@ -1,3 +1,5 @@
+"""Full spectral fitting pipeline module."""
+
 from besta.pipeline_modules.base_module import SpectraFitModule
 import numpy as np
 
@@ -10,6 +12,8 @@ from besta.logging import get_logger
 logger = get_logger(__name__)
 
 class FullSpectralFitModule(SpectraFitModule):
+    """Fit stellar populations and kinematics directly from galaxy spectra."""
+
     name = "FullSpectralFit"
 
     def __init__(self, options, **kwargs):
@@ -118,17 +122,23 @@ class FullSpectralFitModule(SpectraFitModule):
 
 
 def setup(options):
+    """Create the CosmoSIS-facing module instance."""
+
     options = SectionOptions(options)
     mod = FullSpectralFitModule(options)
     return mod
 
 
 def execute(block, mod):
+    """Run one likelihood evaluation for the configured module."""
+
     mod.execute(block)
     return 0
 
 
 def cleanup(mod):
+    """Release module resources after sampling."""
+
     mod.cleanup()
 
 module = FullSpectralFitModule

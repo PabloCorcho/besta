@@ -1,3 +1,5 @@
+"""Spectroscopic galaxy-fitting pipeline module."""
+
 from besta.pipeline_modules.base_module import SpectraFitModule
 import numpy as np
 
@@ -10,13 +12,13 @@ from besta.logging import get_logger
 logger = get_logger(__name__)
 
 class GalaxySpectraModule(SpectraFitModule):
+    """Fit a galaxy emission model to observed spectra."""
+
     name = "GalaxySpectra"
 
     def __init__(self, options, **kwargs):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
-        """
+        """Set up the module from a CosmoSIS configuration block."""
+
         super().__init__(options, **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_spectra(options)
@@ -112,17 +114,23 @@ class GalaxySpectraModule(SpectraFitModule):
 
 
 def setup(options):
+    """Create the CosmoSIS-facing module instance."""
+
     options = SectionOptions(options)
     mod = GalaxySpectraModule(options)
     return mod
 
 
 def execute(block, mod):
+    """Run one likelihood evaluation for the configured module."""
+
     mod.execute(block)
     return 0
 
 
 def cleanup(mod):
+    """Release module resources after sampling."""
+
     mod.cleanup()
 
 module = GalaxySpectraModule

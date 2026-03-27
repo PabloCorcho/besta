@@ -177,6 +177,8 @@ def read_results_file(path):
     return table
 
 def load_class_from_path(file_path, class_name):
+    """Load a class object from a Python file path at runtime."""
+
     file_path = Path(file_path)
 
     # Create module spec

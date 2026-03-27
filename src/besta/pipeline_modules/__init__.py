@@ -1,3 +1,5 @@
+"""Predefined CosmoSIS pipeline modules shipped with BESTA."""
+
 from .base_module import BaseModule
 from .full_spectral_fit import FullSpectralFitModule
 from .galaxy_spectra import GalaxySpectraModule

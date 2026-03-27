@@ -1,3 +1,5 @@
+"""Abstract interfaces for generating :class:`besta.grid.grid.ModelGrid` objects."""
+
 from abc import ABC, abstractmethod
 
 
@@ -25,7 +27,7 @@ class ModelGridGenerator(ABC):
 
         Returns
         -------
-        grid : ModelGrid
+        grid : besta.grid.grid.ModelGrid
             A populated model grid instance.
         """
         raise NotImplementedError

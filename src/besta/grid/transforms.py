@@ -1,3 +1,5 @@
+"""Lightweight transforms used by model grids and emulators."""
+
 # pst/transforms.py
 # -*- coding: utf-8 -*-
 

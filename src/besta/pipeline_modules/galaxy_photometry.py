@@ -1,3 +1,5 @@
+"""Photometric galaxy-fitting pipeline module."""
+
 from astropy import units as u
 from besta.pipeline_modules.base_module import PhotometryFitModule
 import numpy as np
@@ -15,13 +17,13 @@ logger = get_logger(__name__)
 warnings.simplefilter('ignore', category=UnitsWarning)
 
 class GalaxyPhotometryModule(PhotometryFitModule):
+    """Fit a galaxy model to broadband photometric measurements."""
+
     name = "GalaxyPhotometry"
 
     def __init__(self, options, **kwargs):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
-        """
+        """Set up the module from a CosmoSIS configuration block."""
+
         super().__init__(options, **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_photometry(options)
@@ -94,17 +96,23 @@ class GalaxyPhotometryModule(PhotometryFitModule):
 
 
 def setup(options):
+    """Create the CosmoSIS-facing module instance."""
+
     options = SectionOptions(options)
     mod = GalaxyPhotometryModule(options)
     return mod
 
 
 def execute(block, mod):
+    """Run one likelihood evaluation for the configured module."""
+
     mod.execute(block)
     return 0
 
 
 def cleanup(mod):
+    """Release module resources after sampling."""
+
     mod.cleanup()
 
 module = GalaxyPhotometryModule

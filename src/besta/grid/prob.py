@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov  4 06:18:51 2025
-
-@author: pcorchoc
-"""
+"""Probability, likelihood, and prior models for grid-based inference."""
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -669,6 +663,8 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
 
 
 class HierarchicalPrior(Prior):
+    """Abstract base class for priors controlled by learnable hyperparameters."""
+
     def __init__(self, hyperparams: dict):
         self.hyperparams = hyperparams
 

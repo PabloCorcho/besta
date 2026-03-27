@@ -1,3 +1,5 @@
+"""Visualization helpers for compact textual summaries in matplotlib figures."""
+
 from __future__ import annotations
 
 from typing import Mapping, Sequence, Tuple, Optional, Union, List

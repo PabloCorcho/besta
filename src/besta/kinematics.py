@@ -90,6 +90,8 @@ class GaussHermite(Fittable1DModel):
 
 # TODO : remove and homogeneize
 def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
+    """Evaluate a Gauss-Hermite line-of-sight velocity distribution kernel."""
+
     y = vel_pixel / sigma_pixel
     g = (
         np.exp(-(y**2) / 2)
@@ -172,6 +174,8 @@ def convolve_ssp_with_lsf(ssp, lsf_sigma_pixels):
         raise ArithmeticError("Dimensions of SSP and LSF do not match")
 
 def convolve_ssp(module_config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
+    """Convolve SSP spectra stored in a module configuration with LOS kinematics."""
+
     velscale = module_config["velscale"]
     extra_pixels = module_config["extra_pixels"]
     ssp_sed = module_config["ssp_sed"]
@@ -202,6 +206,8 @@ def convolve_ssp(module_config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
 
 
 def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
+    """Convolve an SSP model instance in place with LOS kinematics."""
+
     velscale = module_config["velscale"]
     extra_pixels = int(module_config["extra_pixels"])
     ssp = module_config["ssp_model"]

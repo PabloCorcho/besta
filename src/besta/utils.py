@@ -1,15 +1,23 @@
+"""General utility helpers used across BESTA."""
+
 import os
 import functools
 import numpy as np
 import psutil
 
 def mkdir(path: str) -> None:
+    """Create a directory path if it does not already exist."""
+
     os.makedirs(path, exist_ok=True)
 
 def available_memory_bytes() -> int:
+    """Return the currently available system memory in bytes."""
+
     return int(psutil.virtual_memory().available)
 
 def convert_bytes(size_bytes, to_unit):
+    """Convert a byte count into ``B``, ``KB``, ``MB``, or ``GB``."""
+
     to_unit = to_unit.upper()
     if to_unit == 'B':
         return size_bytes

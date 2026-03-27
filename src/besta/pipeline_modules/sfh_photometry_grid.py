@@ -1,3 +1,5 @@
+"""Photometric SFH inference pipeline module backed by a model grid."""
+
 import pickle
 import numpy as np
 from astropy import units as u
@@ -11,17 +13,13 @@ from besta.logging import get_logger
 logger = get_logger(__name__)
 
 class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
+    """Infer SFH parameters from photometry using direct grid interpolation."""
+
     name = "SFHPhotometryGrid"
 
     def __init__(self, options):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
-        Returns:
-            config: parameters or objects that are passed to
-                the sampler.
+        """Set up the module from a CosmoSIS configuration block."""
 
-        """
         super().__init__(options)
         options = self.parse_options(options)
         # Pipeline values file
@@ -59,15 +57,21 @@ class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
         pass
 
 def setup(options):
+    """Create the CosmoSIS-facing module instance."""
+
     options = SectionOptions(options)
     mod = SFHPhotometryGridModule(options)
     return mod
 
 
 def execute(block, mod):
+    """Run one likelihood evaluation for the configured module."""
+
     mod.execute(block)
     return 0
 
 
 def cleanup(mod):
+    """Release module resources after sampling."""
+
     mod.cleanup()

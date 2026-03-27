@@ -1,3 +1,5 @@
+"""Photometric SFH inference pipeline module backed by an emulator."""
+
 import pickle
 import numpy as np
 from astropy import units as u
@@ -11,17 +13,13 @@ from besta.logging import get_logger
 logger = get_logger(__name__)
 
 class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
+    """Infer SFH parameters from photometry using an emulator-backed model."""
+
     name = "SFHPhotometryEmulator"
 
     def __init__(self, options):
-        """Set-up the COSMOSIS sampler.
-        Args:
-            options: options from startup file (i.e. .ini file)
-        Returns:
-            config: parameters or objects that are passed to
-                the sampler.
+        """Set up the module from a CosmoSIS configuration block."""
 
-        """
         super().__init__(options)
         options = self.parse_options(options)
         # Pipeline values file
@@ -61,15 +59,21 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
         pass
 
 def setup(options):
+    """Create the CosmoSIS-facing module instance."""
+
     options = SectionOptions(options)
     mod = SFHPhotometryEmulatorModule(options)
     return mod
 
 
 def execute(block, mod):
+    """Run one likelihood evaluation for the configured module."""
+
     mod.execute(block)
     return 0
 
 
 def cleanup(mod):
+    """Release module resources after sampling."""
+
     mod.cleanup()

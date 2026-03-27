@@ -1,3 +1,5 @@
+"""Model-grid emulator utilities."""
+
 # besta/grid/emulator.py
 # -*- coding: utf-8 -*-
 
@@ -157,6 +159,8 @@ class TransformPack:
 # -----------------------------------------------------------------------------
 @dataclass
 class EmulatorConfig:
+    """Configuration container for :class:`Emulator` predictions and errors."""
+
     y_space: str = "mag"  # metadata only: "mag", "flux", "ew" etc.
     standardize_y: bool = True
     predict_batch_size: int = 131072

@@ -97,6 +97,8 @@ def legendre_decorator(make_observable_mthd):
 
 @dataclass(frozen=True)
 class TelluricBand:
+    """Named wavelength interval affected by telluric absorption."""
+
     name: str
     wmin: float  # in Angstrom
     wmax: float  # in Angstrom
@@ -275,7 +277,7 @@ def mask_strong_emission_lines(
         Minimum peak (flux-continuum)/sigma within the line window to mask.
 
     min_continuum_snr : float, optional
-        Require median(|continuum|/sigma) in the continuum window to be at least
+        Require median(abs(continuum)/sigma) in the continuum window to be at least
         this value; helps avoid false positives when everything is noise.
 
     cont_half_window : int, optional
