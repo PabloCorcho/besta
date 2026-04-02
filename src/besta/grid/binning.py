@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 from besta.grid.grid import ModelGrid
 
@@ -769,7 +769,7 @@ class RectBinner(BaseBinner):
 @dataclass
 class KDTreeBinner(BaseBinner):
     """
-    Nearest-neighbour binner using cKDTree over transformed dims.
+    Nearest-neighbour binner using KDTree over transformed dims.
 
     Parameters
     ----------
@@ -800,7 +800,7 @@ class KDTreeBinner(BaseBinner):
     sigma_floor: float = 1e-12
 
     _T: Dict[str, Any] = field(default_factory=dict)
-    _tree: Optional[cKDTree] = field(default=None)
+    _tree: Optional[KDTree] = field(default=None)
     _Xz: Optional[np.ndarray] = field(default=None)
 
     def __post_init__(self):
@@ -819,7 +819,7 @@ class KDTreeBinner(BaseBinner):
         self._T = _fit_transform(X, self.transform, pca_variance=self.pca_variance)
         Xz = _apply_transform(X, self._T)
         self._Xz = Xz
-        self._tree = cKDTree(Xz, leafsize=self.leafsize)
+        self._tree = KDTree(Xz, leafsize=self.leafsize)
         return self
 
     def _sigma_to_tree_space(self, s_native: np.ndarray) -> np.ndarray:
@@ -964,5 +964,5 @@ class KDTreeBinner(BaseBinner):
         obj._T = T
         Xz = np.asarray(d["_Xz"], float)
         obj._Xz = Xz
-        obj._tree = cKDTree(Xz, leafsize=obj.leafsize)
+        obj._tree = KDTree(Xz, leafsize=obj.leafsize)
         return obj
