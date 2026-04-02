@@ -764,6 +764,317 @@ class RectBinner(BaseBinner):
 
 
 # ----------------------------
+# Hashed grid binner
+# ----------------------------
+@dataclass
+class HashedGridBinner(BaseBinner):
+    """
+    Fixed-resolution hashed grid over transformed observable space.
+
+    Parameters
+    ----------
+    dims : list of int
+        Observable columns to index.
+    transform : {"none","standardize","pca_whiten"}
+        Linear transform fitted on training dims.
+    pca_variance : float
+        Variance fraction to keep when whitening.
+    select_mode : {"radius","knn"}
+        Candidate selection mode.
+    target_k : int
+        Number of neighbours to keep in knn mode.
+    radius_factor : float
+        Scale factor applied to transformed sigmas in radius mode.
+    radius_shape : {"ball","ellipsoid","box"}
+        Exact geometric filter applied after cell lookup.
+    cell_width : float or sequence, optional
+        Per-dimension cell width in transformed space. If None, infer it from
+        the global density and ``target_cell_occupancy``.
+    target_cell_occupancy : int
+        Target average number of models per occupied cell when cell widths are
+        inferred automatically.
+    max_expand_steps : int
+        Maximum number of cell-ring expansions in knn mode.
+    """
+
+    dims: List[int]
+    transform: str = "standardize"
+    pca_variance: float = 1.0
+    select_mode: str = "knn"  # "radius" | "knn"
+    target_k: int = 100
+    radius_factor: float = 2.0
+    radius_shape: str = "ellipsoid"  # "ball" | "ellipsoid" | "box"
+    sigma_floor: float = 1e-12
+    cell_width: Optional[Sequence[float] | float] = None
+    target_cell_occupancy: int = 32
+    max_expand_steps: int = 8
+
+    _T: Dict[str, Any] = field(default_factory=dict)
+    _Xz: Optional[np.ndarray] = field(default=None)
+    _cells: Dict[Tuple[int, ...], np.ndarray] = field(default_factory=dict)
+    _origin: Optional[np.ndarray] = field(default=None)
+    _cell_width: Optional[np.ndarray] = field(default=None)
+    _coord_min: Optional[np.ndarray] = field(default=None)
+    _coord_max: Optional[np.ndarray] = field(default=None)
+
+    def __post_init__(self):
+        self.dims = list(self.dims)
+
+    @property
+    def dims(self) -> List[int]:
+        return self._dims
+
+    @dims.setter
+    def dims(self, value: Sequence[int]) -> None:
+        self._dims = list(value)
+
+    def _resolve_cell_width(self, Xz: np.ndarray) -> np.ndarray:
+        """Compute per-dimension cell widths in transformed space."""
+        D = Xz.shape[1]
+        if self.cell_width is not None:
+            cw = np.asarray(self.cell_width, dtype=float)
+            if cw.ndim == 0:
+                cw = np.full(D, float(cw))
+            elif cw.shape != (D,):
+                raise ValueError(
+                    f"cell_width must be scalar or shape ({D},); got {cw.shape}"
+                )
+            return np.maximum(cw, self.sigma_floor)
+
+        lo = np.nanmin(Xz, axis=0)
+        hi = np.nanmax(Xz, axis=0)
+        span = np.maximum(hi - lo, self.sigma_floor)
+        occ = max(1, int(self.target_cell_occupancy))
+        density = Xz.shape[0] / np.prod(span)
+        if not np.isfinite(density) or density <= 0:
+            return np.maximum(span / max(2.0, np.cbrt(Xz.shape[0])), self.sigma_floor)
+        volume = occ / density
+        base = volume ** (1.0 / D)
+        return np.maximum(np.full(D, base, dtype=float), self.sigma_floor)
+
+    def _coords_from_points(self, Xz: np.ndarray) -> np.ndarray:
+        """Map transformed points to integer cell coordinates."""
+        return np.floor((Xz - self._origin[None, :]) / self._cell_width[None, :]).astype(
+            np.int64
+        )
+
+    def fit(self, grid: ModelGrid) -> "HashedGridBinner":
+        X = np.asarray(grid.observables[:, self.dims], float)
+        self._T = _fit_transform(X, self.transform, pca_variance=self.pca_variance)
+        Xz = _apply_transform(X, self._T)
+        self._Xz = Xz
+        self._cell_width = self._resolve_cell_width(Xz)
+        self._origin = np.nanmin(Xz, axis=0) - 0.5 * self._cell_width
+
+        coords = self._coords_from_points(Xz)
+        self._coord_min = np.min(coords, axis=0)
+        self._coord_max = np.max(coords, axis=0)
+
+        cells: Dict[Tuple[int, ...], List[int]] = {}
+        for i, key in enumerate(map(tuple, coords)):
+            cells.setdefault(key, []).append(i)
+        self._cells = {k: np.asarray(v, dtype=np.int64) for k, v in cells.items()}
+        return self
+
+    def _sigma_to_cell_space(self, s_native: np.ndarray) -> np.ndarray:
+        s_z = _sigma_to_space(np.asarray(s_native[self.dims], float), self._T)
+        return np.maximum(s_z, self.sigma_floor)
+
+    def _keys_in_box(
+        self, lo: np.ndarray, hi: np.ndarray
+    ) -> List[Tuple[int, ...]]:
+        ranges = [
+            range(int(lo[d]), int(hi[d]) + 1)
+            for d in range(lo.size)
+        ]
+        return list(product(*ranges))
+
+    def _shell_keys(self, center: np.ndarray, radius: int) -> List[Tuple[int, ...]]:
+        if radius == 0:
+            key = tuple(int(v) for v in center)
+            return [key] if key in self._cells else []
+
+        lo = np.maximum(center - radius, self._coord_min)
+        hi = np.minimum(center + radius, self._coord_max)
+        keys = []
+        for key in product(*[range(int(lo[d]), int(hi[d]) + 1) for d in range(center.size)]):
+            if max(abs(key[d] - int(center[d])) for d in range(center.size)) != radius:
+                continue
+            if key in self._cells:
+                keys.append(key)
+        return keys
+
+    def _gather_from_keys(self, keys: Sequence[Tuple[int, ...]]) -> np.ndarray:
+        arrays = [self._cells[k] for k in keys if k in self._cells]
+        if not arrays:
+            return np.array([], dtype=np.int64)
+        if len(arrays) == 1:
+            return arrays[0].copy()
+        return np.unique(np.concatenate(arrays))
+
+    def _query_point(self, y_native: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        x = np.asarray(y_native[self.dims], float)
+        xz = _apply_transform(x[None, :], self._T)[0]
+        coord = self._coords_from_points(xz[None, :])[0]
+        return xz, coord
+
+    def candidates(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, Optional[int]]:
+        if self._Xz is None or self._origin is None or self._cell_width is None:
+            raise RuntimeError("fit must be called before candidates")
+
+        xz, center = self._query_point(y_native)
+
+        if self.select_mode == "knn":
+            target_k = max(1, min(int(self.target_k), self._Xz.shape[0]))
+            cand = np.array([], dtype=np.int64)
+            step = 0
+            while cand.size < target_k and step <= int(self.max_expand_steps):
+                shell = self._shell_keys(center, step)
+                if shell:
+                    cand = np.union1d(cand, self._gather_from_keys(shell))
+                step += 1
+
+            if cand.size == 0:
+                dist2 = np.sum((self._Xz - xz[None, :]) ** 2, axis=1)
+                best = np.argpartition(dist2, target_k - 1)[:target_k]
+                best = best[np.argsort(dist2[best])]
+                return best.astype(np.int64), target_k
+
+            if cand.size > target_k:
+                dist2 = np.sum((self._Xz[cand] - xz[None, :]) ** 2, axis=1)
+                best_local = np.argpartition(dist2, target_k - 1)[:target_k]
+                best_local = best_local[np.argsort(dist2[best_local])]
+                cand = cand[best_local]
+            else:
+                dist2 = np.sum((self._Xz[cand] - xz[None, :]) ** 2, axis=1)
+                cand = cand[np.argsort(dist2)]
+            return cand.astype(np.int64), target_k
+
+        if sigmas_native is None:
+            raise ValueError("sigmas_native required for select_mode='radius'")
+
+        s_z = self._sigma_to_cell_space(sigmas_native)
+        if self.radius_shape == "ball":
+            bound = np.full_like(s_z, self.radius_factor * np.linalg.norm(s_z, ord=2))
+        else:
+            bound = self.radius_factor * s_z
+
+        lo = np.floor((xz - bound - self._origin) / self._cell_width).astype(np.int64)
+        hi = np.floor((xz + bound - self._origin) / self._cell_width).astype(np.int64)
+        lo = np.maximum(lo, self._coord_min)
+        hi = np.minimum(hi, self._coord_max)
+        cand = self._gather_from_keys(self._keys_in_box(lo, hi))
+
+        if cand.size == 0:
+            dist2 = np.sum((self._Xz - xz[None, :]) ** 2, axis=1)
+            return np.asarray([int(np.argmin(dist2))], dtype=np.int64), None
+
+        dz = self._Xz[cand] - xz[None, :]
+        if self.radius_shape == "ball":
+            r = self.radius_factor * np.linalg.norm(s_z, ord=2)
+            ok = np.sum(dz * dz, axis=1) <= (r * r)
+        elif self.radius_shape == "ellipsoid":
+            ok = np.sum((dz / s_z[None, :]) ** 2, axis=1) <= (self.radius_factor**2)
+        elif self.radius_shape == "box":
+            ok = np.all(np.abs(dz) <= (self.radius_factor * s_z)[None, :], axis=1)
+        else:
+            raise ValueError(
+                f"Unknown radius_shape={self.radius_shape!r} "
+                f"(expected 'ball','ellipsoid','box')"
+            )
+
+        cand = cand[ok]
+        if cand.size == 0:
+            dist2 = np.sum((self._Xz - xz[None, :]) ** 2, axis=1)
+            return np.asarray([int(np.argmin(dist2))], dtype=np.int64), None
+
+        return cand.astype(np.int64), None
+
+    def info(self) -> Dict[str, Any]:
+        n = 0 if self._Xz is None else self._Xz.shape[0]
+        d = 0 if self._Xz is None else self._Xz.shape[1]
+        return {
+            "name": "HashedGridBinner",
+            "n": n,
+            "d": d,
+            "transform": self.transform,
+            "select_mode": self.select_mode,
+            "target_cell_occupancy": self.target_cell_occupancy,
+        }
+
+    def save(self, path: str) -> None:
+        if self._Xz is None or self._origin is None or self._cell_width is None:
+            raise RuntimeError("fit must be called before save")
+        dir_ = os.path.dirname(path)
+        if dir_:
+            os.makedirs(dir_, exist_ok=True)
+        blob = {
+            "cls": "HashedGridBinner",
+            "dims": self.dims,
+            "transform": self.transform,
+            "pca_variance": self.pca_variance,
+            "select_mode": self.select_mode,
+            "target_k": self.target_k,
+            "radius_factor": self.radius_factor,
+            "radius_shape": self.radius_shape,
+            "sigma_floor": self.sigma_floor,
+            "cell_width": None if self.cell_width is None else np.asarray(self.cell_width).tolist(),
+            "target_cell_occupancy": self.target_cell_occupancy,
+            "max_expand_steps": self.max_expand_steps,
+            "_T": {
+                k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                for k, v in self._T.items()
+            },
+            "_Xz": self._Xz.tolist(),
+            "_origin": self._origin.tolist(),
+            "_cell_width": self._cell_width.tolist(),
+            "_coord_min": self._coord_min.tolist(),
+            "_coord_max": self._coord_max.tolist(),
+            "_cells": {str(k): v.tolist() for k, v in self._cells.items()},
+        }
+        with open(path, "w") as f:
+            json.dump(blob, f)
+
+    @classmethod
+    def load(cls, path: str) -> "HashedGridBinner":
+        with open(path, "r") as f:
+            d = json.load(f)
+        obj = cls(
+            dims=list(d["dims"]),
+            transform=d["transform"],
+            pca_variance=float(d.get("pca_variance", 1.0)),
+            select_mode=d.get("select_mode", "knn"),
+            target_k=int(d.get("target_k", 100)),
+            radius_factor=float(d.get("radius_factor", 2.0)),
+            radius_shape=d.get("radius_shape", "ellipsoid"),
+            sigma_floor=float(d.get("sigma_floor", 1e-12)),
+            cell_width=d.get("cell_width", None),
+            target_cell_occupancy=int(d.get("target_cell_occupancy", 32)),
+            max_expand_steps=int(d.get("max_expand_steps", 8)),
+        )
+        T = d["_T"]
+        for k in ("mu", "sd", "W", "b"):
+            if k in T and T[k] is not None:
+                T[k] = np.asarray(T[k], float)
+        obj._T = T
+        obj._Xz = np.asarray(d["_Xz"], float)
+        obj._origin = np.asarray(d["_origin"], float)
+        obj._cell_width = np.asarray(d["_cell_width"], float)
+        obj._coord_min = np.asarray(d["_coord_min"], dtype=np.int64)
+        obj._coord_max = np.asarray(d["_coord_max"], dtype=np.int64)
+        cells = {}
+        for k_str, v in d["_cells"].items():
+            k_clean = k_str.strip().strip("()")
+            parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
+            key = tuple(int(p) for p in parts)
+            cells[key] = np.asarray(v, dtype=np.int64)
+        obj._cells = cells
+        return obj
+
+
+# ----------------------------
 # KDTree binner
 # ----------------------------
 @dataclass
@@ -864,7 +1175,7 @@ class KDTreeBinner(BaseBinner):
             kk = max(1, min(kk, self._Xz.shape[0]))
             d, ind = self._tree.query(xz, k=kk)
             ind = np.atleast_1d(ind).astype(np.int64)
-            return np.unique(ind), kk
+            return ind, kk
 
         # radius mode
         if sigmas_native is None:
@@ -873,7 +1184,7 @@ class KDTreeBinner(BaseBinner):
         s_z = self._sigma_to_tree_space(sigmas_native)
 
         if self.radius_shape == "ball":
-            r = float(self.radius_factor * np.linalg.norm(s_z, ord=2))
+            r = self.radius_factor * np.linalg.norm(s_z, ord=2)
             inds = self._tree.query_ball_point(xz, r=r)
 
         elif self.radius_shape == "ellipsoid":
@@ -913,7 +1224,7 @@ class KDTreeBinner(BaseBinner):
             # fallback to 1-NN
             _, ind2 = self._tree.query(xz, k=1)
             return np.asarray([int(ind2)], dtype=np.int64), None
-        return np.unique(inds), None
+        return inds, None
 
     def info(self) -> Dict[str, Any]:
         n = 0 if self._Xz is None else self._Xz.shape[0]
