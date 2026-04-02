@@ -136,15 +136,12 @@ def _truncate_posterior_mass(
         kept and discarded, the weight at the truncation cut, and effective
         sample sizes before and after truncation.
     """
-    cand_idx = np.asarray(cand_idx, dtype=np.int64)
-    w = np.asarray(w, dtype=float)
-
-    n_before = int(w.size)
+    n_before = w.size
     if n_before == 0:
         meta = {
             "n_before": 0,
             "n_after": 0,
-            "keep_mass": float(keep_mass),
+            "keep_mass": keep_mass,
             "mass_kept": 0.0,
             "mass_dropped": 1.0,
             "cut_weight": np.nan,
@@ -153,60 +150,78 @@ def _truncate_posterior_mass(
         }
         return cand_idx, w, meta
 
-    # TODO: remove once properly validated that w is always 1
-    s = np.sum(w)
-    if not np.isfinite(s) or s <= 0:
-        w = np.full_like(w, 1.0 / n_before, dtype=float)
-        s = 1.0
-    else:
-        w = w / s
-
     # Effective sample size
-    ess_before = 1.0 / np.sum(np.square(w)) if np.all(np.isfinite(w)) else 0.0
+    ess_before = 1.0 / np.sum(np.square(w))
+    keep_mass = np.clip(keep_mass, 0.0, 1.0)
+    min_candidates = max(0, min_candidates)
+    max_candidates = None if max_candidates is None else max(0, max_candidates)
 
-    # TODO: remove float enforcement to speed up
-    keep_mass = float(keep_mass)
-    keep_mass = max(0.0, min(1.0, keep_mass))
+    k_cap = n_before if max_candidates is None else min(n_before, max_candidates)
+    k_floor = min(k_cap, min_candidates)
 
-    # If keep_mass==1, we still may apply max_candidates
-    # TODO: if keep_mass==1, return all candidates
+    if k_cap == n_before and keep_mass >= 1.0 and not keep_ties:
+        meta = {
+            "n_before": n_before,
+            "n_after": n_before,
+            "keep_mass": keep_mass,
+            "mass_kept": 1.0,
+            "mass_dropped": 0.0,
+            "cut_weight": np.nan,
+            "ess_before": ess_before,
+            "ess_after": ess_before,
+        }
+        return cand_idx, w, meta
 
-    # Compute the cumulative weights from high to low
-    ord_desc = np.argsort(w)[::-1]
-    w_sorted = w[ord_desc]
-    cs = np.cumsum(w_sorted)
+    if k_cap == 0:
+        meta = {
+            "n_before": n_before,
+            "n_after": 0,
+            "keep_mass": keep_mass,
+            "mass_kept": 0.0,
+            "mass_dropped": 1.0,
+            "cut_weight": np.nan,
+            "ess_before": ess_before,
+            "ess_after": 0.0,
+        }
+        return cand_idx[:0], w[:0], meta
 
-    if keep_mass <= 0.0:
-        k = 0
+    if keep_mass <= 0.0 and k_floor == 0:
+        keep_local = np.empty(0, dtype=np.int64)
+        cut_weight = np.nan
     else:
-        k = int(np.searchsorted(cs, keep_mass, side="left") + 1)
+        probe = min(n_before, max(k_floor, 32))
+        w_sorted = None
+        ord_desc = None
+        cs = None
 
-    # Clip limits
-    k = max(k, min_candidates)
-    if max_candidates is not None:
-        k = min(k, max_candidates)
-    k = min(k, n_before)
+        while True:
+            if probe >= n_before:
+                ord_desc = np.argsort(w)[::-1]
+            else:
+                ord_desc = np.argpartition(w, n_before - probe)[-probe:]
+                ord_desc = ord_desc[np.argsort(w[ord_desc])[::-1]]
 
-    # Keep ties at boundary if requested (only if k>0 and k<n_before)
-    cut_weight = np.nan
-    if k > 0:
-        cut_weight = w_sorted[k - 1]
+            w_sorted = w[ord_desc]
+            cs = np.cumsum(w_sorted)
+            enough_mass = cs[-1] >= keep_mass if keep_mass > 0.0 else True
+            if enough_mass or probe >= k_cap:
+                break
+            probe = min(k_cap, max(probe * 2, k_floor, 1))
 
-    if keep_ties and (k > 0) and (k < n_before):
-        # Include all weights equal to boundary within tolerances
-        wk = w_sorted[k - 1]
-        tol = tie_atol + tie_rtol * abs(wk)
-        eq = np.abs(w_sorted - wk) <= tol
-        # Extend beyond k-1 only
-        if np.any(eq[k:]):
-            last = np.max(np.where(eq)[0])
-            k = int(last + 1)
-            # apply max cap if present
-            if max_candidates is not None:
-                k = min(k, int(max_candidates))
+        k = 0 if keep_mass <= 0.0 else np.searchsorted(cs, keep_mass, side="left") + 1
+        k = min(max(k, k_floor), k_cap, ord_desc.size)
 
-    # Select top-k subsample of candidates
-    keep_local = ord_desc[:k]
+        cut_weight = np.nan if k == 0 else w_sorted[k - 1]
+
+        if keep_ties and k > 0 and max_candidates is None:
+            tol = tie_atol + tie_rtol * abs(cut_weight)
+            keep_mask = np.abs(w - cut_weight) <= tol
+            keep_mask |= w > (cut_weight + tol)
+            keep_local = np.flatnonzero(keep_mask)
+            keep_local = keep_local[np.argsort(w[keep_local])[::-1]]
+        else:
+            keep_local = ord_desc[:k]
+
     cand_kept = cand_idx[keep_local]
     w_kept_raw = w[keep_local]
     mass_kept = np.sum(w_kept_raw)
@@ -299,6 +314,12 @@ class ModelGrid:
     )
     target_standardiser: LinearStandardiser = field(
         default_factory=LinearStandardiser, init=False, repr=False
+    )
+    _observables_standardized: Optional[np.ndarray] = field(
+        default=None, init=False, repr=False
+    )
+    _targets_standardized: Optional[np.ndarray] = field(
+        default=None, init=False, repr=False
     )
 
     _kdtree: Optional["cKDTree"] = field(default=None, init=False, repr=False)
@@ -407,11 +428,19 @@ class ModelGrid:
                 sub.observable_standardiser.sd = self.observable_standardiser.sd[
                     observables
                 ].copy()
+                if self._observables_standardized is not None:
+                    sub._observables_standardized = self._observables_standardized[
+                        idx
+                    ][:, observables].copy()
             if self.target_standardiser.is_fit:
                 sub.target_standardiser.mean = self.target_standardiser.mean[
                     targets
                 ].copy()
                 sub.target_standardiser.sd = self.target_standardiser.sd[targets].copy()
+                if self._targets_standardized is not None:
+                    sub._targets_standardized = self._targets_standardized[idx][
+                        :, targets
+                    ].copy()
 
         return sub
 
@@ -426,6 +455,8 @@ class ModelGrid:
         """
         X = self.targets if mask is None else self.targets[mask]
         self.target_standardiser.fit(X, ddof=0)
+        self._targets_standardized = self.target_standardiser.transform(self.targets)
+        self.invalidate_knn_index()
 
     def transform_targets(self, X: np.ndarray) -> np.ndarray:
         """
@@ -473,6 +504,33 @@ class ModelGrid:
         """
         X = self.observables if mask is None else self.observables[mask]
         self.observable_standardiser.fit(X, ddof=0)
+        self._observables_standardized = self.observable_standardiser.transform(
+            self.observables
+        )
+
+    def _ensure_standardized_observables(self) -> np.ndarray:
+        """Return cached standardized observables, computing them lazily if needed."""
+        if not self.observable_standardiser.is_fit:
+            raise RuntimeError(
+                "fit_standardiser must be called before using standardized observables"
+            )
+        if self._observables_standardized is None:
+            self._observables_standardized = self.observable_standardiser.transform(
+                self.observables
+            )
+        return self._observables_standardized
+
+    def _ensure_standardized_targets(self) -> np.ndarray:
+        """Return cached standardized targets, computing them lazily if needed."""
+        if not self.target_standardiser.is_fit:
+            raise RuntimeError(
+                "fit_target_standardiser must be called before using standardized targets"
+            )
+        if self._targets_standardized is None:
+            self._targets_standardized = self.target_standardiser.transform(
+                self.targets
+            )
+        return self._targets_standardized
 
     def transform_observables(self, X: np.ndarray) -> np.ndarray:
         """
@@ -545,7 +603,7 @@ class ModelGrid:
                     "target_standardiser is not fit. Call fit_target_standardiser() "
                     "before get_kdtree(standardize=True)."
                 )
-            Xn = self.target_standardiser.transform(X)
+            Xn = self._ensure_standardized_targets()
         else:
             Xn = X
 
@@ -639,20 +697,8 @@ class ModelGrid:
 
         neigh_obs = self.observables[idx]  # (Mgood, k, P)
         neigh_tgt = (
-            (self.targets[idx] if not standardize else self.targets_standardized[idx])
-            if hasattr(self, "targets_standardized")
-            else None
+            self._ensure_standardized_targets()[idx] if standardize else self.targets[idx]
         )
-
-        # Build standardized targets on the fly:
-        if neigh_tgt is None:
-            if standardize:
-                self.targets_standardized = self.target_standardiser.transform(
-                    self.targets
-                )
-                neigh_tgt = self.targets_standardized[idx]
-            else:
-                neigh_tgt = self.targets[idx]
 
         obs_q = np.empty((dists.shape[0], self.n_observables), dtype=float)
 
@@ -1600,21 +1646,25 @@ class GridFitter:
         posterior_over_models_fn : Backend routine that combines likelihood and prior.
         """
         # Select model candidates
-        idx = np.arange(self.grid.n_models) if candidate_idx is None else candidate_idx
-        x_models_native = self.grid.observables[idx]
-        Tc = self.grid.targets[idx]
-        wc = (
-            self.grid.weights[idx]
-            if getattr(self.grid, "weights", None) is not None
-            else None
+        idx = None if candidate_idx is None else np.asarray(candidate_idx)
+        x_models_native = (
+            self.grid.observables if idx is None else self.grid.observables[idx]
         )
+        Tc = self.grid.targets if idx is None else self.grid.targets[idx]
+        if getattr(self.grid, "weights", None) is None:
+            wc = None
+        elif idx is None:
+            wc = self.grid.weights
+        else:
+            wc = self.grid.weights[idx]
 
         # Map to evaluation space if requested
         if self.use_standardised and hasattr(self.grid, "transform_observables"):
             x_eval = self.grid.transform_observables(x_native)
-            x_models_eval = self.grid.transform_observables(x_models_native)
             if not self.grid.observable_standardiser.is_fit:
                 raise RuntimeError("standardiser is not fitted")
+            X_std = self.grid._ensure_standardized_observables()
+            x_models_eval = X_std if idx is None else X_std[idx]
             sigma_eval = sigma_native / self.grid.observable_standardiser.sd
             # Priors that depend on observables must see native observables
             prior_obs = x_models_native
@@ -2022,17 +2072,20 @@ class GridFitter:
                 )
 
                 # truncation
-                if posterior_keep_mass is not None:
+                should_truncate = (
+                    posterior_keep_mass is not None
+                    and (
+                        posterior_keep_mass < 0.9999
+                        or posterior_keep_max_candidates is not None
+                    )
+                )
+                if should_truncate:
                     cand_kept, w_kept, tmeta = _truncate_posterior_mass(
                         cand_idx,
                         w_full,
                         keep_mass=posterior_keep_mass,
                         min_candidates=posterior_keep_min_candidates,
-                        max_candidates=(
-                            None
-                            if posterior_keep_max_candidates is None
-                            else posterior_keep_max_candidates
-                        ),
+                        max_candidates=posterior_keep_max_candidates,
                         keep_ties=posterior_keep_ties,
                     )
                 else:
@@ -2183,8 +2236,6 @@ class GridFitter:
             try:
                 if n_jobs == 1:
                     for s, e in slices:
-                        if verbose:
-                            logger.info("  - slice %s:%s", s, e)
                         batch = _slice_worker(s, e)
                         for r in batch:
                             if writer is not None:
