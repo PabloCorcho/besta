@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from besta.grid.grid import ModelGrid, GridFitter, _truncate_posterior_mass
-from besta.grid.binning import RectBinner, KDTreeBinner
+from besta.grid.binning import RectBinner, KDTreeBinner, HashedGridBinner
 from besta.grid.transforms import LinearStandardiser, MagTransform
 from besta.grid.prob import (
     FlatPrior,
@@ -95,6 +95,30 @@ def test_modelgrid_standardiser_transform_roundtrip_and_runtime_errors():
     yo = grid.transform_targets(grid.targets)
     np.testing.assert_allclose(grid.inverse_transform_observables(xo), grid.observables)
     np.testing.assert_allclose(grid.inverse_transform_targets(yo), grid.targets)
+
+
+def test_modelgrid_standardiser_caches_follow_grid_and_subset():
+    grid = _make_grid(n_side=4)
+    grid.fit_standardiser()
+    grid.fit_target_standardiser()
+
+    np.testing.assert_allclose(
+        grid._observables_standardized, grid.transform_observables(grid.observables)
+    )
+    np.testing.assert_allclose(
+        grid._targets_standardized, grid.transform_targets(grid.targets)
+    )
+
+    idx = np.array([0, 3, 5])
+    sub = grid.select(idx, observables=[0, 2], targets=[1], standardisers=True)
+    np.testing.assert_allclose(
+        sub._observables_standardized,
+        grid._observables_standardized[idx][:, [0, 2]],
+    )
+    np.testing.assert_allclose(
+        sub._targets_standardized,
+        grid._targets_standardized[idx][:, [1]],
+    )
 
 
 def test_modelgrid_kdtree_requires_fit_when_standardized():
@@ -220,6 +244,38 @@ def test_kdtree_binner_modes_and_persistence(tmp_path):
     kb2 = KDTreeBinner.load(str(path))
     kb2.select_mode = "knn"
     idx2, _ = kb2.candidates(q)
+    assert idx2.size > 0
+
+
+def test_hashed_grid_binner_modes_and_persistence(tmp_path):
+    grid = _make_grid(n_side=6)
+    hb = HashedGridBinner(
+        dims=[0, 1, 2],
+        select_mode="knn",
+        target_k=10,
+        transform="pca_whiten",
+        target_cell_occupancy=6,
+        max_expand_steps=6,
+    )
+    hb.fit(grid)
+
+    q = grid.observables[7]
+    idx_knn, k = hb.candidates(q)
+    assert idx_knn.size == 10
+    assert k == 10
+    assert idx_knn[0] == 7
+
+    hb.select_mode = "radius"
+    hb.radius_shape = "ellipsoid"
+    idx_rad, aux = hb.candidates(q, np.full(grid.n_observables, 0.08))
+    assert idx_rad.size > 0
+    assert aux is None
+
+    path = tmp_path / "hashed_binner.json"
+    hb.save(str(path))
+    hb2 = HashedGridBinner.load(str(path))
+    hb2.select_mode = "knn"
+    idx2, _ = hb2.candidates(q)
     assert idx2.size > 0
 
 
@@ -351,6 +407,26 @@ def test_truncate_posterior_mass_behavior():
     assert meta["mass_kept"] >= 0.75
 
 
+def test_truncate_posterior_mass_fast_paths_preserve_limits_and_ties():
+    idx = np.arange(6)
+    w = np.array([0.4, 0.3, 0.15, 0.15, 0.0, 0.0])
+
+    kept_idx, kept_w, meta = _truncate_posterior_mass(
+        idx, w, keep_mass=1.0, max_candidates=2
+    )
+    assert kept_idx.tolist() == [0, 1]
+    np.testing.assert_allclose(kept_w.sum(), 1.0)
+    assert meta["n_after"] == 2
+
+    kept_idx, kept_w, meta = _truncate_posterior_mass(
+        idx, w, keep_mass=0.8, keep_ties=True
+    )
+    assert kept_idx.size == 4
+    assert set(kept_idx.tolist()) == {0, 1, 2, 3}
+    np.testing.assert_allclose(kept_w.sum(), 1.0)
+    assert meta["mass_kept"] >= 0.8
+
+
 def test_gridfitter_posterior_over_models_and_target():
     grid = _make_grid(n_side=6)
     fitter = GridFitter(grid, likelihood=GaussianProductLikelihood(bandwidth_floor=1e-3), prior=FlatPrior())
@@ -395,6 +471,17 @@ def test_gridfitter_fit_batch_iter_list_and_hdf5(tmp_path):
     )
     assert len(out_list) == X.shape[0]
     assert all("stats" in r for r in out_list)
+
+    capped = fitter.fit_batch(
+        X[:2],
+        S[:2],
+        binner=binner,
+        n_jobs=1,
+        return_mode="list",
+        posterior_keep_mass=1.0,
+        posterior_keep_max_candidates=3,
+    )
+    assert all(r["candidates"].size <= 3 for r in capped)
 
     out_iter = fitter.fit_batch(X, S, binner=binner, n_jobs=1, return_mode="iter")
     assert len(list(out_iter)) == X.shape[0]
