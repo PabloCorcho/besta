@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from besta.grid.grid import ModelGrid, GridFitter, _truncate_posterior_mass
-from besta.grid.binning import RectBinner, KDTreeBinner, HashedGridBinner
+from besta.grid.binning import RectBinner, KDTreeBinner, HashedGridBinner, NestedBinner
 from besta.grid.transforms import LinearStandardiser, MagTransform
 from besta.grid.prob import (
     FlatPrior,
@@ -277,6 +277,36 @@ def test_hashed_grid_binner_modes_and_persistence(tmp_path):
     hb2.select_mode = "knn"
     idx2, _ = hb2.candidates(q)
     assert idx2.size > 0
+
+
+def test_nested_binner_fit_candidates_and_persistence(tmp_path):
+    grid = _make_grid(n_side=7)
+    nb = NestedBinner(
+        primary_dims=[0],
+        secondary_dims=[1, 2],
+        primary_bins=6,
+        primary_edges_mode="quantile",
+        primary_radius_factor=2.0,
+        secondary_kind="kdtree",
+        secondary_params={"select_mode": "knn", "target_k": 8, "transform": "standardize"},
+        min_primary_count=4,
+        final_target_k=12,
+    )
+    nb.fit(grid)
+
+    q = grid.observables[10]
+    sig = np.full(grid.n_observables, 0.06)
+    idx, aux = nb.candidates(q, sig)
+    assert idx.size > 0
+    assert idx.size <= 12
+    assert isinstance(aux, int)
+
+    path = tmp_path / "nested_binner.json"
+    nb.save(str(path))
+    nb2 = NestedBinner.load(str(path))
+    idx2, aux2 = nb2.candidates(q, sig)
+    assert idx2.size > 0
+    assert isinstance(aux2, int)
 
 
 def test_flat_and_elementary_priors_shapes_and_support():
