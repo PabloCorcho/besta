@@ -1928,6 +1928,8 @@ class GridFitter:
                     )
                     for j in stats_j
                 ]
+            else:
+                logger.info("Using user-provided stats_bins.")
         else:
             stats_j, stats_key = [], []
 
@@ -2052,8 +2054,8 @@ class GridFitter:
             if binner is None:
                 return np.arange(self.grid.n_models, dtype=self.grid.grid_int), None
             idx, lev = binner.candidates(
-                y_native=X_native[m, binner.dims],
-                sigmas_native=SIG_native[m, binner.dims],
+                y_native=X_native[m],
+                sigmas_native=SIG_native[m],
             )
             if idx.size == 0:
                 idx = np.arange(self.grid.n_models, dtype=self.grid.grid_int)
