@@ -1277,3 +1277,530 @@ class KDTreeBinner(BaseBinner):
         obj._Xz = Xz
         obj._tree = KDTree(Xz, leafsize=obj.leafsize)
         return obj
+
+
+# ----------------------------
+# Nested binner
+# ----------------------------
+@dataclass
+class _GridObservablesView:
+    """Minimal grid-like view used to fit child binners on subsets."""
+
+    observables: np.ndarray
+    observable_names: List[str]
+
+    @property
+    def n_observables(self) -> int:
+        return self.observables.shape[1]
+
+
+@dataclass
+class NestedBinner(BaseBinner):
+    """
+    Two-stage candidate selector: primary partition then secondary refinement.
+
+    Typical usage is to partition first in redshift-like dimensions, then run a
+    color-space binner only within the selected primary bins.
+    """
+
+    primary_dims: List[int]
+    secondary_dims: List[int]
+    primary_bins: int = 16
+    primary_edges_mode: str = "quantile"  # "quantile" | "linear"
+    primary_radius_factor: float = 2.0
+    secondary_kind: str = "kdtree"  # "kdtree" | "hashed" | "rect"
+    secondary_params: Dict[str, Any] = field(default_factory=dict)
+    min_primary_count: int = 8
+    final_target_k: Optional[int] = None
+    use_global_fallback: bool = True
+
+    _primary_edges: List[np.ndarray] = field(default_factory=list)
+    _primary_cells: Dict[Tuple[int, ...], np.ndarray] = field(default_factory=dict)
+    _secondary_models: Dict[Tuple[int, ...], BaseBinner] = field(default_factory=dict)
+    _secondary_global_index: Dict[Tuple[int, ...], np.ndarray] = field(default_factory=dict)
+    _fallback_secondary: Optional[BaseBinner] = field(default=None)
+    _X: Optional[np.ndarray] = field(default=None)
+    _observable_names: List[str] = field(default_factory=list)
+    _grid_n: int = 0
+
+    def __post_init__(self):
+        self.primary_dims = list(self.primary_dims)
+        self.secondary_dims = list(self.secondary_dims)
+        if len(self.primary_dims) == 0:
+            raise ValueError("primary_dims must be non-empty")
+        if len(self.secondary_dims) == 0:
+            raise ValueError("secondary_dims must be non-empty")
+
+    @property
+    def dims(self) -> List[int]:
+        # Keep a deterministic, unique order for plotting/introspection.
+        return list(dict.fromkeys(self.primary_dims + self.secondary_dims))
+
+    @staticmethod
+    def _parse_tuple_key(key_str: str) -> Tuple[int, ...]:
+        k_clean = key_str.strip().strip("()")
+        if k_clean == "":
+            return tuple()
+        parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
+        return tuple(int(p) for p in parts)
+
+    @staticmethod
+    def _coords_for_edges(X: np.ndarray, edges_per_dim: List[np.ndarray]) -> np.ndarray:
+        return np.stack(
+            [
+                np.clip(np.digitize(X[:, d], ed) - 1, 0, len(ed) - 2)
+                for d, ed in enumerate(edges_per_dim)
+            ],
+            axis=1,
+        )
+
+    @staticmethod
+    def _build_edges(X: np.ndarray, n_bins: int, mode: str) -> List[np.ndarray]:
+        edges: List[np.ndarray] = []
+        q = np.linspace(0.0, 1.0, n_bins + 1)
+        for d in range(X.shape[1]):
+            xd = np.asarray(X[:, d], float)
+            if mode == "quantile":
+                ed = np.quantile(xd, q, method="linear")
+            elif mode == "linear":
+                lo = float(np.nanmin(xd))
+                hi = float(np.nanmax(xd))
+                if not np.isfinite(lo) or not np.isfinite(hi):
+                    lo, hi = 0.0, 1.0
+                if hi <= lo:
+                    hi = lo + 1.0
+                ed = np.linspace(lo, hi, n_bins + 1)
+            else:
+                raise ValueError("primary_edges_mode must be 'quantile' or 'linear'")
+
+            # Ensure strictly increasing edges for robust digitization.
+            ed = np.asarray(ed, float)
+            for i in range(1, ed.size):
+                if ed[i] <= ed[i - 1]:
+                    ed[i] = ed[i - 1] + 1e-12
+            span = ed[-1] - ed[0]
+            pad = 1e-6 * span if span > 0 else 1e-6
+            ed[0] -= pad
+            ed[-1] += pad
+            edges.append(ed)
+        return edges
+
+    def _new_secondary_binner(self) -> BaseBinner:
+        cfg = dict(self.secondary_params)
+        kind = (self.secondary_kind or "kdtree").lower()
+
+        if kind == "kdtree":
+            return KDTreeBinner(dims=self.secondary_dims, **cfg)
+        if kind == "hashed":
+            return HashedGridBinner(dims=self.secondary_dims, **cfg)
+        if kind == "rect":
+            return RectBinner(dims=self.secondary_dims, **cfg)
+        raise ValueError(
+            f"Unknown secondary_kind={self.secondary_kind!r} "
+            f"(expected 'kdtree','hashed','rect')"
+        )
+
+    @staticmethod
+    def _pack_binner(b: BaseBinner) -> Dict[str, Any]:
+        if isinstance(b, KDTreeBinner):
+            return {
+                "cls": "KDTreeBinner",
+                "dims": list(b.dims),
+                "transform": b.transform,
+                "pca_variance": b.pca_variance,
+                "leafsize": b.leafsize,
+                "select_mode": b.select_mode,
+                "target_k": b.target_k,
+                "radius_factor": b.radius_factor,
+                "radius_shape": b.radius_shape,
+                "sigma_floor": b.sigma_floor,
+                "_T": {
+                    k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                    for k, v in b._T.items()
+                },
+                "_Xz": None if b._Xz is None else b._Xz.tolist(),
+            }
+
+        if isinstance(b, HashedGridBinner):
+            return {
+                "cls": "HashedGridBinner",
+                "dims": list(b.dims),
+                "transform": b.transform,
+                "pca_variance": b.pca_variance,
+                "select_mode": b.select_mode,
+                "target_k": b.target_k,
+                "radius_factor": b.radius_factor,
+                "radius_shape": b.radius_shape,
+                "sigma_floor": b.sigma_floor,
+                "cell_width": None
+                if b.cell_width is None
+                else np.asarray(b.cell_width, float).tolist(),
+                "target_cell_occupancy": b.target_cell_occupancy,
+                "max_expand_steps": b.max_expand_steps,
+                "_T": {
+                    k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                    for k, v in b._T.items()
+                },
+                "_Xz": None if b._Xz is None else b._Xz.tolist(),
+                "_origin": None if b._origin is None else b._origin.tolist(),
+                "_cell_width": None if b._cell_width is None else b._cell_width.tolist(),
+                "_coord_min": None if b._coord_min is None else b._coord_min.tolist(),
+                "_coord_max": None if b._coord_max is None else b._coord_max.tolist(),
+                "_cells": {str(k): v.tolist() for k, v in b._cells.items()},
+            }
+
+        if isinstance(b, RectBinner):
+            return {
+                "cls": "RectBinner",
+                "dims": list(b.dims),
+                "levels": b.levels,
+                "base_bins": b.base_bins,
+                "transform": b.transform,
+                "pca_variance": b.pca_variance,
+                "edges_mode": b.edges_mode,
+                "mode": b.mode,
+                "target_factor": b.target_factor,
+                "expand_factor": b.expand_factor,
+                "target_k": b.target_k,
+                "k": b.k,
+                "max_expand_steps": b.max_expand_steps,
+                "_T": {
+                    k: (v.tolist() if isinstance(v, np.ndarray) else v)
+                    for k, v in b._T.items()
+                },
+                "_edges": [[e.tolist() for e in lev] for lev in b._edges],
+                "_layers": {
+                    str(li): {str(k): v.tolist() for k, v in layer.items()}
+                    for li, layer in enumerate(b._layers)
+                },
+                "_level_bin_size": b._level_bin_size.tolist(),
+                "_grid_n": b._grid_n,
+                "_D_eff": b._D_eff,
+            }
+
+        raise TypeError(f"Unsupported child binner type for serialization: {type(b)}")
+
+    @classmethod
+    def _unpack_binner(cls, d: Dict[str, Any]) -> BaseBinner:
+        name = d.get("cls", "")
+        if name == "KDTreeBinner":
+            obj = KDTreeBinner(
+                dims=list(d["dims"]),
+                transform=d.get("transform", "standardize"),
+                pca_variance=float(d.get("pca_variance", 1.0)),
+                leafsize=int(d.get("leafsize", 100)),
+                select_mode=d.get("select_mode", "knn"),
+                target_k=int(d.get("target_k", 100)),
+                radius_factor=float(d.get("radius_factor", 2.0)),
+                radius_shape=d.get("radius_shape", "ellipsoid"),
+                sigma_floor=float(d.get("sigma_floor", 1e-12)),
+            )
+            T = d.get("_T", {})
+            for k in ("mu", "sd", "W", "b"):
+                if k in T and T[k] is not None:
+                    T[k] = np.asarray(T[k], float)
+            obj._T = T
+            if d.get("_Xz") is not None:
+                obj._Xz = np.asarray(d["_Xz"], float)
+                obj._tree = KDTree(obj._Xz, leafsize=obj.leafsize)
+            return obj
+
+        if name == "HashedGridBinner":
+            obj = HashedGridBinner(
+                dims=list(d["dims"]),
+                transform=d.get("transform", "standardize"),
+                pca_variance=float(d.get("pca_variance", 1.0)),
+                select_mode=d.get("select_mode", "knn"),
+                target_k=int(d.get("target_k", 100)),
+                radius_factor=float(d.get("radius_factor", 2.0)),
+                radius_shape=d.get("radius_shape", "ellipsoid"),
+                sigma_floor=float(d.get("sigma_floor", 1e-12)),
+                cell_width=d.get("cell_width", None),
+                target_cell_occupancy=int(d.get("target_cell_occupancy", 32)),
+                max_expand_steps=int(d.get("max_expand_steps", 8)),
+            )
+            T = d.get("_T", {})
+            for k in ("mu", "sd", "W", "b"):
+                if k in T and T[k] is not None:
+                    T[k] = np.asarray(T[k], float)
+            obj._T = T
+            if d.get("_Xz") is not None:
+                obj._Xz = np.asarray(d["_Xz"], float)
+            if d.get("_origin") is not None:
+                obj._origin = np.asarray(d["_origin"], float)
+            if d.get("_cell_width") is not None:
+                obj._cell_width = np.asarray(d["_cell_width"], float)
+            if d.get("_coord_min") is not None:
+                obj._coord_min = np.asarray(d["_coord_min"], dtype=np.int64)
+            if d.get("_coord_max") is not None:
+                obj._coord_max = np.asarray(d["_coord_max"], dtype=np.int64)
+            cells = {}
+            for k_str, v in d.get("_cells", {}).items():
+                key = cls._parse_tuple_key(k_str)
+                cells[key] = np.asarray(v, dtype=np.int64)
+            obj._cells = cells
+            return obj
+
+        if name == "RectBinner":
+            obj = RectBinner(
+                dims=list(d["dims"]),
+                levels=int(d["levels"]),
+                base_bins=int(d["base_bins"]),
+                transform=d.get("transform", "standardize"),
+                pca_variance=float(d.get("pca_variance", 1.0)),
+                edges_mode=d.get("edges_mode", "quantile"),
+                mode=d.get("mode", "sigma"),
+                target_factor=float(d.get("target_factor", 2.0)),
+                expand_factor=float(d.get("expand_factor", 2.0)),
+                target_k=d.get("target_k", None),
+                k=d.get("k", None),
+                max_expand_steps=int(d.get("max_expand_steps", 4)),
+            )
+            T = d.get("_T", {})
+            for k in ("mu", "sd", "W", "b"):
+                if k in T and T[k] is not None:
+                    T[k] = np.asarray(T[k], float)
+            obj._T = T
+            obj._edges = [[np.asarray(e, float) for e in lev] for lev in d.get("_edges", [])]
+            layers = []
+            for li in range(len(obj._edges)):
+                layer_d = d["_layers"][str(li)]
+                layer: Dict[Tuple[int, ...], np.ndarray] = {}
+                for k_str, v in layer_d.items():
+                    key = cls._parse_tuple_key(k_str)
+                    layer[key] = np.asarray(v, dtype=np.int64)
+                layers.append(layer)
+            obj._layers = layers
+            obj._grid_n = int(d.get("_grid_n", 0))
+            obj._D_eff = int(d.get("_D_eff", 0))
+            obj._level_bin_size = np.asarray(d.get("_level_bin_size", []), float)
+            return obj
+
+        raise ValueError(f"Unknown child binner class in payload: {name}")
+
+    def fit(self, grid: ModelGrid) -> "NestedBinner":
+        X = np.asarray(grid.observables, float)
+        self._X = X
+        self._observable_names = list(grid.observable_names)
+        self._grid_n = X.shape[0]
+
+        Xp = X[:, self.primary_dims]
+        self._primary_edges = self._build_edges(
+            Xp,
+            n_bins=max(2, int(self.primary_bins)),
+            mode=(self.primary_edges_mode or "quantile").lower(),
+        )
+        coords = self._coords_for_edges(Xp, self._primary_edges)
+
+        cells: Dict[Tuple[int, ...], List[int]] = {}
+        for i, key in enumerate(map(tuple, coords)):
+            cells.setdefault(key, []).append(i)
+        self._primary_cells = {
+            k: np.asarray(v, dtype=np.int64) for k, v in cells.items() if len(v) > 0
+        }
+
+        self._secondary_models = {}
+        self._secondary_global_index = {}
+        for key, global_idx in self._primary_cells.items():
+            if global_idx.size < int(self.min_primary_count):
+                continue
+            binner = self._new_secondary_binner()
+            sub_grid = _GridObservablesView(
+                observables=X[global_idx],
+                observable_names=self._observable_names,
+            )
+            binner.fit(sub_grid)
+            self._secondary_models[key] = binner
+            self._secondary_global_index[key] = global_idx
+
+        if self.use_global_fallback:
+            fb = self._new_secondary_binner()
+            full_grid = _GridObservablesView(observables=X, observable_names=self._observable_names)
+            fb.fit(full_grid)
+            self._fallback_secondary = fb
+        else:
+            self._fallback_secondary = None
+
+        return self
+
+    def _primary_key_ranges(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray]
+    ) -> List[Tuple[int, ...]]:
+        x = np.asarray(y_native[self.primary_dims], float)
+        if sigmas_native is None:
+            sig = np.zeros_like(x)
+        else:
+            sig = np.asarray(sigmas_native[self.primary_dims], float)
+            sig = np.where(np.isfinite(sig), np.maximum(sig, 0.0), 0.0)
+
+        ranges = []
+        for d, ed in enumerate(self._primary_edges):
+            if sigmas_native is None or self.primary_radius_factor <= 0:
+                lo_v = hi_v = x[d]
+            else:
+                b = float(self.primary_radius_factor) * sig[d]
+                lo_v = x[d] - b
+                hi_v = x[d] + b
+
+            lo = int(np.searchsorted(ed, lo_v, side="right") - 1)
+            hi = int(np.searchsorted(ed, hi_v, side="right") - 1)
+            lo = max(0, min(lo, ed.size - 2))
+            hi = max(0, min(hi, ed.size - 2))
+            if hi < lo:
+                lo, hi = hi, lo
+            ranges.append(range(lo, hi + 1))
+
+        return list(product(*ranges))
+
+    def _rank_and_trim(
+        self,
+        idx: np.ndarray,
+        y_native: np.ndarray,
+        sigmas_native: Optional[np.ndarray],
+    ) -> np.ndarray:
+        if idx.size == 0:
+            return idx
+
+        if self.final_target_k is None or self.final_target_k > idx.size:
+            return idx
+
+        k = max(1, min(self.final_target_k, idx.size))
+        X = self._X[idx][:, self.secondary_dims]
+        y = y_native[self.secondary_dims]
+        dz = X - y[None, :]
+        if sigmas_native is not None:
+            s = sigmas_native[self.secondary_dims]
+            s = np.where(np.isfinite(s) & (s > 0), s, 1.0)
+            dz = dz / s[None, :]
+        dist2 = np.sum(dz * dz, axis=1)
+        best = np.argpartition(dist2, k - 1)[:k]
+        best = best[np.argsort(dist2[best])]
+        return idx[best].astype(np.int64)
+
+    def candidates(
+        self, y_native: np.ndarray, sigmas_native: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, Optional[int]]:
+        if self._X is None or not self._primary_edges:
+            raise RuntimeError("fit must be called before candidates")
+
+        keys = self._primary_key_ranges(y_native, sigmas_native)
+        primary_pool = [self._primary_cells[k] for k in keys if k in self._primary_cells]
+        if primary_pool:
+            primary_idx = np.unique(np.concatenate(primary_pool)).astype(np.int64)
+        else:
+            primary_idx = np.array([], dtype=np.int64)
+
+        refined = []
+        for k in keys:
+            b = self._secondary_models.get(k)
+            if b is None:
+                continue
+            local_idx, _ = b.candidates(y_native, sigmas_native)
+            if local_idx.size == 0:
+                continue
+            global_map = self._secondary_global_index[k]
+            refined.append(global_map[local_idx])
+
+        if refined:
+            out = np.unique(np.concatenate(refined)).astype(np.int64)
+        elif primary_idx.size > 0:
+            out = primary_idx
+        elif self._fallback_secondary is not None:
+            out, _ = self._fallback_secondary.candidates(y_native, sigmas_native)
+            out = np.unique(out).astype(np.int64)
+        else:
+            out = np.array([], dtype=np.int64)
+
+        out = self._rank_and_trim(out, y_native, sigmas_native)
+        aux = len(keys)
+        return out, aux
+
+    def info(self) -> Dict[str, Any]:
+        occ = np.array([v.size for v in self._primary_cells.values()], dtype=float)
+        return {
+            "name": "NestedBinner",
+            "n_models": self._grid_n,
+            "n_primary_cells": len(self._primary_cells),
+            "n_secondary_models": len(self._secondary_models),
+            "primary_bins": self.primary_bins,
+            "primary_edges_mode": self.primary_edges_mode,
+            "secondary_kind": self.secondary_kind,
+            "mean_primary_occupancy": float(np.mean(occ)) if occ.size else 0.0,
+            "median_primary_occupancy": float(np.median(occ)) if occ.size else 0.0,
+        }
+
+    def save(self, path: str) -> None:
+        if self._X is None:
+            raise RuntimeError("fit must be called before save")
+
+        dir_ = os.path.dirname(path)
+        if dir_:
+            os.makedirs(dir_, exist_ok=True)
+
+        payload = {
+            "cls": "NestedBinner",
+            "primary_dims": self.primary_dims,
+            "secondary_dims": self.secondary_dims,
+            "primary_bins": self.primary_bins,
+            "primary_edges_mode": self.primary_edges_mode,
+            "primary_radius_factor": self.primary_radius_factor,
+            "secondary_kind": self.secondary_kind,
+            "secondary_params": self.secondary_params,
+            "min_primary_count": self.min_primary_count,
+            "final_target_k": self.final_target_k,
+            "use_global_fallback": self.use_global_fallback,
+            "_primary_edges": [ed.tolist() for ed in self._primary_edges],
+            "_primary_cells": {str(k): v.tolist() for k, v in self._primary_cells.items()},
+            "_secondary_models": {
+                str(k): self._pack_binner(v) for k, v in self._secondary_models.items()
+            },
+            "_secondary_global_index": {
+                str(k): v.tolist() for k, v in self._secondary_global_index.items()
+            },
+            "_fallback_secondary": None
+            if self._fallback_secondary is None
+            else self._pack_binner(self._fallback_secondary),
+            "_X": self._X.tolist(),
+            "_observable_names": self._observable_names,
+            "_grid_n": self._grid_n,
+        }
+        with open(path, "w") as f:
+            json.dump(payload, f)
+
+    @classmethod
+    def load(cls, path: str) -> "NestedBinner":
+        with open(path, "r") as f:
+            d = json.load(f)
+
+        obj = cls(
+            primary_dims=list(d["primary_dims"]),
+            secondary_dims=list(d["secondary_dims"]),
+            primary_bins=int(d.get("primary_bins", 16)),
+            primary_edges_mode=d.get("primary_edges_mode", "quantile"),
+            primary_radius_factor=float(d.get("primary_radius_factor", 2.0)),
+            secondary_kind=d.get("secondary_kind", "kdtree"),
+            secondary_params=dict(d.get("secondary_params", {})),
+            min_primary_count=int(d.get("min_primary_count", 8)),
+            final_target_k=d.get("final_target_k", None),
+            use_global_fallback=bool(d.get("use_global_fallback", True)),
+        )
+
+        obj._primary_edges = [np.asarray(ed, float) for ed in d.get("_primary_edges", [])]
+        obj._primary_cells = {
+            cls._parse_tuple_key(k): np.asarray(v, dtype=np.int64)
+            for k, v in d.get("_primary_cells", {}).items()
+        }
+        obj._secondary_models = {
+            cls._parse_tuple_key(k): cls._unpack_binner(v)
+            for k, v in d.get("_secondary_models", {}).items()
+        }
+        obj._secondary_global_index = {
+            cls._parse_tuple_key(k): np.asarray(v, dtype=np.int64)
+            for k, v in d.get("_secondary_global_index", {}).items()
+        }
+        fbs = d.get("_fallback_secondary", None)
+        obj._fallback_secondary = None if fbs is None else cls._unpack_binner(fbs)
+        obj._X = np.asarray(d.get("_X", []), float)
+        obj._observable_names = list(d.get("_observable_names", []))
+        obj._grid_n = int(d.get("_grid_n", obj._X.shape[0] if obj._X is not None else 0))
+        return obj
