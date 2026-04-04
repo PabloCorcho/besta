@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree as KDTree
 
 from besta.grid.grid import ModelGrid
 
@@ -1324,12 +1324,47 @@ class NestedBinner(BaseBinner):
     _grid_n: int = 0
 
     def __post_init__(self):
-        self.primary_dims = list(self.primary_dims)
-        self.secondary_dims = list(self.secondary_dims)
+        self.primary_dims = [int(v) for v in self.primary_dims]
+        self.secondary_dims = [int(v) for v in self.secondary_dims]
         if len(self.primary_dims) == 0:
             raise ValueError("primary_dims must be non-empty")
         if len(self.secondary_dims) == 0:
             raise ValueError("secondary_dims must be non-empty")
+
+    @staticmethod
+    def _to_jsonable(obj: Any) -> Any:
+        """Recursively convert NumPy types to JSON-native Python objects."""
+        if isinstance(obj, slice):
+            return {
+                "__slice__": True,
+                "start": NestedBinner._to_jsonable(obj.start),
+                "stop": NestedBinner._to_jsonable(obj.stop),
+                "step": NestedBinner._to_jsonable(obj.step),
+            }
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+        if isinstance(obj, dict):
+            return {str(k): NestedBinner._to_jsonable(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [NestedBinner._to_jsonable(v) for v in obj]
+        return obj
+
+    @staticmethod
+    def _from_jsonable(obj: Any) -> Any:
+        """Recursively decode JSON-safe payload back to runtime Python objects."""
+        if isinstance(obj, dict):
+            if obj.get("__slice__", False):
+                return slice(
+                    NestedBinner._from_jsonable(obj.get("start", None)),
+                    NestedBinner._from_jsonable(obj.get("stop", None)),
+                    NestedBinner._from_jsonable(obj.get("step", None)),
+                )
+            return {k: NestedBinner._from_jsonable(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [NestedBinner._from_jsonable(v) for v in obj]
+        return obj
 
     @property
     def dims(self) -> List[int]:
@@ -1765,12 +1800,12 @@ class NestedBinner(BaseBinner):
             "_grid_n": self._grid_n,
         }
         with open(path, "w") as f:
-            json.dump(payload, f)
+            json.dump(self._to_jsonable(payload), f)
 
     @classmethod
     def load(cls, path: str) -> "NestedBinner":
         with open(path, "r") as f:
-            d = json.load(f)
+            d = cls._from_jsonable(json.load(f))
 
         obj = cls(
             primary_dims=list(d["primary_dims"]),
