@@ -79,10 +79,18 @@ class BaseModule(ClassModule):
                 logging_overwrite = True if "t" in logging_overwrite.lower() else False
         else:
             logging_overwrite = False
+        
+        if options.has_value("logging_console"):
+            logging_console = options["logging_console"]
+            if isinstance(logging_console, str):
+                logging_console = True if "t" in logging_console.lower() else False
+        else:
+            logging_console = False
 
         setup_logging(level=logging_level,
                       log_file=logging_file if logging_file.lower() != "none" else None,
-                      overwrite=logging_overwrite)
+                      overwrite=logging_overwrite,
+                      console=logging_console)
 
         self.config = {}
         # Likelihood name
