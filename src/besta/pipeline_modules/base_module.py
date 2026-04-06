@@ -39,7 +39,7 @@ from besta import io
 from besta import utils
 from besta.grid import ModelGrid
 from besta.config import cosmology, memory
-from besta.logging import get_logger
+from besta.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
@@ -66,7 +66,23 @@ class BaseModule(ClassModule):
             self.alias = self.name
         else:
             self.alias = alias
+
         options = self.parse_options(options)
+
+        logging_level = options.get_string("logging_level", default="INFO")
+        logging_file = options.get_string("logging_file", default=None)
+
+        # Handle bool or string values
+        if options.has_value("logging_overwrite"):
+            logging_overwrite = options["logging_overwrite"]
+            if isinstance(logging_overwrite, str):
+                logging_overwrite = True if "t" in logging_overwrite.lower() else False
+        else:
+            logging_overwrite = False
+
+        setup_logging(level=logging_level, log_file=logging_file,
+                      overwrite=logging_overwrite)
+
         self.config = {}
         # Likelihood name
         if options.has_value("like_name"):
@@ -110,6 +126,8 @@ class BaseModule(ClassModule):
         options : :class:`SectionOptions` or :class:`DataBlock`
         """
         if isinstance(options, dict):
+            logger.debug("Parsing input options from dict")
+            logger.debug("Input options: %s", options)
             options = DataBlock.from_dict(options)
             if options.has_section(option_section):
                 options._delete_section(option_section)
@@ -264,7 +282,7 @@ class BaseModule(ClassModule):
                 # Do a loop along metallicity axis to prevent memory overflows
                 _log("Insufficient RAM memory for full SSP SED convolution")
                 _log("Looping along metallicity axis")
-                io.check_array_memory(
+                utils.check_array_memory(
                 (ssp.L_lambda.shape[1], ssp.L_lambda.shape[2],
                  ssp.L_lambda.shape[2]),
                 dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
@@ -296,7 +314,7 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
-            _log("Saving photometry grid to ", options["SaveSSPModel"])
+            _log("Saving SSP model to ", options["SaveSSPModel"])
             with open(os.path.expandvars(options["SaveSSPModel"]), 'wb') as file:
                 pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
         _log("-> Configuration done.")
@@ -481,6 +499,7 @@ class SpectraFitModule(BaseModule):
             error = (error << flux_units).to(
                 "1e-16 erg / (s cm2 Angstrom)").value
         else:
+            quit()
             _log("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
             flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
 
