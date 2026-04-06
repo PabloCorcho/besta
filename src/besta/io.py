@@ -315,6 +315,7 @@ class Reader(object):
         if module_name not in self.modules:
             raise ValueError(f"Module {module_name} not found in the pipeline.")
         module = load_class_from_path(self.ini[module_name]["file"], "module")
+        logger.debug(f"Loaded module {module_name} from {self.ini[module_name]['file']}")
         return module(self.ini, alias=module_name)
         # if not hasattr(pipeline_modules, module_class):
         #     raise ValueError(
