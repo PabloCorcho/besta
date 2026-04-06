@@ -163,3 +163,4 @@ class MainPipeline(object):
                     )
                     pipeline_module.plot_solution(solution_datablock,
                                              figname=figname)
+        return 0
