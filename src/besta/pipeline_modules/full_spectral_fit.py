@@ -100,7 +100,8 @@ class FullSpectralFitModule(SpectraFitModule):
         """
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            logger.warning("Invalid sample")
+            # To track invalid samples users can set debug=T
+            # logger.warning("Invalid sample")
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
             block["extra", "stellar_mass"] = np.nan
             return 0
