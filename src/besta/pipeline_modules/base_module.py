@@ -70,7 +70,7 @@ class BaseModule(ClassModule):
         options = self.parse_options(options)
 
         logging_level = options.get_string("logging_level", default="INFO")
-        logging_file = options.get_string("logging_file", default=None)
+        logging_file = options.get_string("logging_file", default="none")
 
         # Handle bool or string values
         if options.has_value("logging_overwrite"):
@@ -80,7 +80,8 @@ class BaseModule(ClassModule):
         else:
             logging_overwrite = False
 
-        setup_logging(level=logging_level, log_file=logging_file,
+        setup_logging(level=logging_level,
+                      log_file=logging_file if logging_file.lower() != "none" else None,
                       overwrite=logging_overwrite)
 
         self.config = {}
@@ -499,7 +500,6 @@ class SpectraFitModule(BaseModule):
             error = (error << flux_units).to(
                 "1e-16 erg / (s cm2 Angstrom)").value
         else:
-            quit()
             _log("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
             flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
 
