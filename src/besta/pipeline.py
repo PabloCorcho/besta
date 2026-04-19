@@ -12,7 +12,9 @@ from cosmosis import DataBlock
 
 from besta import io
 from besta import pipeline_modules
+from besta.logging import get_logger
 
+logger = get_logger(__name__)
 
 class MainPipeline(object):
     """BESTA Pipeline manager.
@@ -21,7 +23,7 @@ class MainPipeline(object):
     ----------
     pipelines_config : list
         List of dictionaries containing the configuration parameters for each
-            subpipeplie.
+            subpipeline.
     n_cores_list : list, optional, default=None
         List containing the number of cores to be used on each run. If None,
         every subpipeline will use one single core during runtime.
@@ -58,7 +60,7 @@ class MainPipeline(object):
             self.ini_values_files = ini_values_files
 
     def run_command(self, command):
-        print(f"Running command >> {command} <<")
+        logger.info(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 
     def execute_pipeline(
@@ -72,7 +74,7 @@ class MainPipeline(object):
             Dictionary containing the configuration parameters for setting up
             the subpipeline.
         n_cores : int
-            Number of cores to used during runtime.
+            Number of cores to use during runtime.
         ini_filename : str, optional, default=None
             If provided, this file is used to run cosmosis.
         ini_values_filename : str, optional, default=None
@@ -102,15 +104,15 @@ class MainPipeline(object):
             command = f"cosmosis {ini_filename}"
         return_code = self.run_command(command)
         if return_code == 0:
-            print("Successful run, return code: ", return_code)
+            logger.info("Successful run, return code: %s", return_code)
             return ini_filename
         else:
-            print("Unsuccessful run, return code: ", return_code)
+            logger.error("Unsuccessful run, return code: %s", return_code)
             return None
 
     def execute_all(self, plot_result=False):
         """Execute all sub-pipelines."""
-        print("Executing all pipelines")
+        logger.info("Executing all pipelines")
         prev_solution = None
         for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
             self.pipelines_config,
@@ -119,7 +121,7 @@ class MainPipeline(object):
             self.ini_values_files,
         ):
             if prev_solution is not None:
-                print("Updating configuration file with previus run results")
+                logger.info("Updating configuration file with previous run results")
                 # Update the input values
                 subpipe_config[subpipe_config["pipeline"]["modules"]].update(
                     (k, v)
@@ -133,106 +135,32 @@ class MainPipeline(object):
                 ini_filename=ini_filename,
                 ini_values_filename=ini_values_filename,
             )
+
+            if ini_filename is None:
+                logger.error("Pipeline execution failed, stopping.")
+                return 1
+
             # Extract best solution
-            print("Extracting results from the run")
+            logger.info("Extracting results from the run")
             reader = io.Reader(ini_filename)
             reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
-            print("MaxLike solution: ", solution)
+            logger.info("MaxLike solution: %s", solution)
 
             if plot_result:
+                solution_datablock = reader.solution_to_datablock(
+                    prev_solution)
+                    
                 # Initialise the module to reconstruct the solution
-                pipeline_module = reader.last_module
-                solution_datablock = reader.solution_to_datablock(prev_solution)
-                self.plot_fit(
-                    pipeline_module, solution_datablock, pipe_config=subpipe_config
-                )
-
-    def plot_fit(self, module, solution: DataBlock, pipe_config):
-        """Plot the fit."""
-        flux_model = module.make_observable(solution, parse=True)
-        if isinstance(flux_model, tuple):
-            weights = flux_model[1]
-            flux_model = flux_model[0]
-        else:
-            weights = np.ones_like(flux_model)
-
-        fig, axs = plt.subplots(ncols=1, nrows=2, sharex=True, constrained_layout=True,
-                                figsize=(np.round(flux_model.size / 300, 0), 6))
-        plt.suptitle(f"Module: {module.name}")
-        ax = axs[0]
-        # Plot input spectra
-        ax.fill_between(
-            module.config["wavelength"].value,
-            module.config["flux"] - module.config["cov"] ** 0.5,
-            module.config["flux"] + module.config["cov"] ** 0.5,
-            color="k",
-            alpha=0.5,
-        )
-        ax.plot(
-            module.config["wavelength"], module.config["flux"], c="k", label="Observed",
-            lw=0.7)
-        # Show masked pixels
-        nan_mask = np.ones_like(module.config["flux"])
-        nan_mask[(weights * module.config["weights"]) == 0] = np.nan
-        ax.plot(
-            module.config["wavelength"],
-            module.config["flux"] * nan_mask,
-            c="r",
-            lw=0.7,
-            label="Masked",
-        )
-        # Plot model
-        ax.plot(module.config["wavelength"], flux_model, c="b", label="Model",
-                lw=0.7)
-        # Plot residuals
-        residuals = flux_model - module.config["flux"]
-        ax.plot(
-            module.config["wavelength"],
-            residuals,
-            c="orange",
-            label="Residuals",
-            lw=0.7
-        )
-        ax.axhline(0, ls="--", color="k", alpha=0.2)
-        ax.set_ylabel("Flux")
-        ax.legend()
-
-        p5, p95 = np.nanpercentile(module.config["flux"], [5, 95])
-        p_residuals = np.nanpercentile(residuals, 5) * 0.95
-        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
-
-        chi2 = (flux_model - module.config["flux"]) ** 2 / module.config["cov"]
-        ax = axs[1]
-        ax.plot(module.config["wavelength"], chi2, c="k", lw=0.7)
-        ax.grid(visible=True)
-        ax.set_ylabel(r"$\chi^2$")
-        ax.set_yscale("symlog", linthresh=1.0)
-        ax.set_xlabel("Wavelenth (AA)")
-        inax = ax.inset_axes((1.05, 0, 0.3, 1), sharey=ax)
-        inax.hist(
-            chi2,
-            bins=np.geomspace(0.01, 100),
-            orientation="horizontal",
-            color="k",
-            histtype="step"
-        )
-        inax.annotate(f"Median: {np.nanmedian(chi2):.1f}",
-                      xy=(0.05, 0.95), xycoords="axes fraction", va="top")
-
-        inax.set_xlabel("No. pixels")
-        inax.grid(visible=True)
-        inax.tick_params(labelleft=False)
-
-        figname = os.path.basename(
-            pipe_config["output"].get("figurename",
-                                      pipe_config["output"]["filename"]))
-        output_file = os.path.join(
-            os.path.dirname(pipe_config["output"]["filename"]),
-            f"{pipe_config['pipeline']['modules']}_{figname}_best_fit_spectra.png",
-            )
-
-        fig.savefig(os.path.expandvars(output_file), bbox_inches="tight")
-        print(f"Fit plot saved at: {output_file}")
-        plt.close()
+                for par_module in reader.modules:
+                    logger.info("Plotting results for module: %s", par_module)
+                    pipeline_module = reader.get_module(par_module)
+                    figname = subpipe_config["output"].get(
+                        "figurename",
+                        subpipe_config["output"]["filename"].replace(".txt", "")
+                        + f"_{par_module}_best_fit_solution.png",
+                    )
+                    pipeline_module.plot_solution(solution_datablock,
+                                             figname=figname)
+        return 0

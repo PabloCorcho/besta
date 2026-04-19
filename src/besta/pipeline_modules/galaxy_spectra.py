@@ -1,4 +1,4 @@
-"""Full spectral fitting pipeline module."""
+"""Spectroscopic galaxy-fitting pipeline module."""
 
 from besta.pipeline_modules.base_module import SpectraFitModule
 import numpy as np
@@ -11,49 +11,47 @@ from besta.logging import get_logger
 
 logger = get_logger(__name__)
 
-class FullSpectralFitModule(SpectraFitModule):
-    """Fit stellar populations and kinematics directly from galaxy spectra."""
+class GalaxySpectraModule(SpectraFitModule):
+    """Fit a galaxy emission model to observed spectra."""
 
-    name = "FullSpectralFit"
+    name = "GalaxySpectra"
 
     def __init__(self, options, **kwargs):
-        """
-        Set up the full spectral fit module.
+        """Set up the module from a CosmoSIS configuration block."""
 
-        Parameters
-        ----------
-        options : dict or DataBlock
-            Options from the startup configuration.
-        **kwargs : dict
-            Extra keyword arguments forwarded to ``SpectraFitModule``.
-        """
         super().__init__(options, **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_spectra(options)
-        self.prepare_ssp_model(options)
-        self.prepare_sfh_model(options)
-        self.prepare_extinction_law(options)
+        self.prepare_galaxy(options)
         self.prepare_legendre_polynomials(options)
+
+        # Set parameters fixed in this module
+        self.config["galaxy"].redshift.fixed = True
 
     @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
-        # Stellar population synthesis
-        sfh_model = self.config["sfh_model"]
         if parse:
-            sfh_model.parse_datablock(block)
-        luminosity_model = sfh_model.model.compute_SED(
-            self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
-        )
-        flux_model = 1e10 * luminosity_model.to_value("1e-16 erg / (s Angstrom)"
-        ) / self.config["dl_sq"]
+            # This updates the SFH parameters
+            self.config["sfh_model"].parse_datablock(block)
 
-        # Kinematics
+        # Update parameters for each remaining component
+        keys = block.keys()
+        values = [block[s, k] for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
+        keys = [".".join((s, k)) for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
+        parameters = dict(zip(keys, values))
+
+        galaxy = self.config["galaxy"]
+        galaxy.update_parameters(parameters, strict=False)
+        # Synthesis
+        flux_model = 1e10 * galaxy.emission_spectrum(
+            to_obs_frame=False).to_value("1e-16 erg / (s Angstrom)") / self.config["dl_sq"]
+
+        # Kinematics #TODO: this should be done by PST stars.kinematics
         velscale = self.config["velscale"]
-        # Kinematics
         sigma_pixel = block["kinematics", "los_sigma"] / velscale
         veloffset_pixel = block["kinematics", "los_vel"] / velscale
-        # Build the kernel. TOO SLOW? Initialise only once?
+
         kernel_model = kinematics.GaussHermite(
             4,
             mean=veloffset_pixel,
@@ -79,12 +77,6 @@ class FullSpectralFitModule(SpectraFitModule):
         flux_model = flux_model[pixels]
         mask = mask[pixels]
 
-        # Apply dust extinction
-        dust_model = self.config["extinction_law"]
-        flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "a_v"]
-        ).value
-
         weights = self.config["weights"] * mask
         normalization = np.nanmedian(
             self.config["flux"][weights > 0] / flux_model[weights > 0]
@@ -97,7 +89,7 @@ class FullSpectralFitModule(SpectraFitModule):
         This is the function that is executed many times by the sampler. The
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
-        """
+        """        
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
             # To track invalid samples users can set debug=T
@@ -126,7 +118,7 @@ def setup(options):
     """Create the CosmoSIS-facing module instance."""
 
     options = SectionOptions(options)
-    mod = FullSpectralFitModule(options)
+    mod = GalaxySpectraModule(options)
     return mod
 
 
@@ -142,4 +134,4 @@ def cleanup(mod):
 
     mod.cleanup()
 
-module = FullSpectralFitModule
+module = GalaxySpectraModule

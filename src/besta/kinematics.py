@@ -90,6 +90,8 @@ class GaussHermite(Fittable1DModel):
 
 # TODO : remove and homogeneize
 def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
+    """Evaluate a Gauss-Hermite line-of-sight velocity distribution kernel."""
+
     y = vel_pixel / sigma_pixel
     g = (
         np.exp(-(y**2) / 2)
@@ -127,10 +129,10 @@ def convolve_spectra_with_kernel(spectra, kernel):
 
     Parameters
     ----------
-    kernel_model : :class:`Model1DKernel`
-        Kernel model
     spectra : np.ndarray
-        Target spectra to convolve with the kernel
+        Target spectra to convolve with the kernel.
+    kernel : :class:`Model1DKernel`
+        Convolution kernel.
 
     Returns
     -------
@@ -172,10 +174,16 @@ def convolve_ssp_with_lsf(ssp, lsf_sigma_pixels):
         raise ArithmeticError("Dimensions of SSP and LSF do not match")
 
 def convolve_ssp(module_config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
+    """Convolve SSP spectra stored in a module configuration with LOS kinematics."""
+
     velscale = module_config["velscale"]
     extra_pixels = module_config["extra_pixels"]
     ssp_sed = module_config["ssp_sed"]
     flux = module_config["flux"]
+    if los_sigma <= 0:
+        raise ValueError("los_sigma must be positive for convolution.")
+    if np.abs(los_h3) > 0.5 or np.abs(los_h4) > 0.5:
+        raise ValueError("Gauss-Hermite coefficients h3/h4 are out of bounds (|h|<=0.5).")
     # Kinematics
     sigma_pixel = los_sigma / velscale
     veloffset_pixel = los_vel / velscale
@@ -198,10 +206,16 @@ def convolve_ssp(module_config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
 
 
 def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
+    """Convolve an SSP model instance in place with LOS kinematics."""
+
     velscale = module_config["velscale"]
     extra_pixels = int(module_config["extra_pixels"])
     ssp = module_config["ssp_model"]
     wl = module_config["wavelength"]
+    if los_sigma <= 0:
+        raise ValueError("los_sigma must be positive for convolution.")
+    if np.abs(h3) > 0.5 or np.abs(h4) > 0.5:
+        raise ValueError("Gauss-Hermite coefficients h3/h4 are out of bounds (|h|<=0.5).")
     # Kinematics
     sigma_pixel = los_sigma / velscale
     veloffset_pixel = los_vel / velscale
@@ -212,7 +226,7 @@ def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
         )
         - veloffset_pixel
     )
-    losvd_kernel = spectrum.losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
+    losvd_kernel = losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
     ssp.L_lambda = (
         fftconvolve(
             ssp.L_lambda.value,

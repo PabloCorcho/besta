@@ -1,28 +1,58 @@
 
+Pipeline Modules API
+====================
+
+.. automodule:: besta.pipeline_modules
+   :members:
+   :imported-members:
+
 .. _base_module:
 .. autoclass:: besta.pipeline_modules.base_module.BaseModule
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: besta.pipeline_modules.full_spectral_fit.FullSpectralFitModule
+Full Spectral Fit
+-----------------
+
+.. automodule:: besta.pipeline_modules.full_spectral_fit
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: module
 
+Galaxy Photometry
+-----------------
 
-.. autoclass:: besta.pipeline_modules.kin_dust.KinDustModule
+.. automodule:: besta.pipeline_modules.galaxy_photometry
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: module
 
+Galaxy Spectra
+--------------
 
-.. autoclass:: besta.pipeline_modules.sfh_photometry.SFHPhotometryModule
+.. automodule:: besta.pipeline_modules.galaxy_spectra
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: module
 
-.. autoclass:: besta.pipeline_modules.SFHSpectraModule
+SFH Photometry Grid
+-------------------
+
+.. automodule:: besta.pipeline_modules.sfh_photometry_grid
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: module
+
+SFH Photometry Emulator
+-----------------------
+
+.. automodule:: besta.pipeline_modules.sfh_photometry_emu
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: module

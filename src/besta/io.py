@@ -1,190 +1,102 @@
 """Module dedicated to read and manipulate the output products of BESTA."""
 import os
 import functools
+import re
+import importlib.util
+import sys
+from pathlib import Path
+
 import numpy as np
+
 import psutil
 import cosmosis
+from cosmosis import Inifile
+from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
+from besta.logging import get_logger
+from besta.utils import expand_env_vars
 
-def convert_bytes(size_bytes, to_unit):
-    to_unit = to_unit.upper()
-    if to_unit == 'B':
-        return size_bytes
-    elif to_unit == 'KB':
-        return size_bytes / 1024
-    elif to_unit == 'MB':
-        return size_bytes / (1024 ** 2)
-    elif to_unit == 'GB':
-        return size_bytes / (1024 ** 3)
-    else:
-        raise ValueError("Unit must be 'B', 'KB', 'MB', or 'GB'")
-
-def predict_array_memory(array_shape, dtype=np.float64, unit='MB'):
-    """
-    Predict the memory required for a NumPy array with given shape and data type.
-
-    Parameters
-    ----------
-    array_shape : tuple
-        Shape of the array (e.g., (1000, 1000) for a 1000x1000 array).
-    dtype : numpy.dtype, optional
-        NumPy data type (default is np.float64).
-    unit : {'B', 'KB', 'MB', 'GB'}, optional
-        Unit for the returned memory size (default is 'MB').
-
-    Returns
-    -------
-    float
-        Estimated memory requirement in the specified unit.
-
-    Raises
-    ------
-    ValueError
-        If invalid dtype or unit is provided.
-
-    Examples
-    --------
-    >>> predict_array_memory((1000, 1000))
-    7.63  # MB for float64 array
-
-    >>> predict_array_memory((500, 500, 500), np.float32, 'GB')
-    0.47  # GB for float32 array
-    """
-    try:
-        dtype_obj = np.dtype(dtype)
-        element_size = dtype_obj.itemsize
-    except:
-        raise ValueError("Invalid dtype provided")
-    
-    total_elements = np.prod(array_shape)
-    total_bytes = total_elements * element_size
-    return convert_bytes(total_bytes, unit)
-
-def check_array_memory(array_shape, dtype=np.float64, unit='MB', safety_margin=0.2):
-    """
-    Check if the current machine has enough RAM for creating a given array.
-
-    Parameters
-    ----------
-    array_shape : tuple
-        Shape of the array (e.g., (1000, 1000) for a 1000x1000 array).
-    dtype : numpy.dtype, optional
-        NumPy data type (default is np.float64).
-    unit : {'B', 'KB', 'MB', 'GB'}, optional
-        Unit for error message reporting (default is 'MB').
-    safety_margin : bool
-        Additional margin (fraction of the array size) for ensuring good performance.
-    Returns
-    -------
-    bool
-        True if sufficient memory is available.
-
-    Raises
-    ------
-    MemoryError
-        If insufficient memory is available for the array.
-    ValueError
-        If invalid dtype, shape, or unit is provided.
-
-    Examples
-    --------
-    >>> check_array_memory((10000, 10000))
-    True  # If 800MB+ available
-
-    >>> check_array_memory((50000, 50000))
-    MemoryError: Insufficient memory available...
-    """
-    # Calculate required memory
-    try:
-        required_mem = predict_array_memory(array_shape, dtype, 'B')
-    except ValueError as e:
-        raise ValueError(f"Invalid input parameters: {str(e)}")
-    
-    # Get available memory
-    available_mem = psutil.virtual_memory().available
-
-    # Add safety margin
-    total_needed = required_mem * (1 + safety_margin)
-
-    # Convert for error message
-
-    if total_needed > available_mem:
-        req_mem_display = convert_bytes(required_mem, unit)
-        avail_mem_display = convert_bytes(available_mem, unit)
-        needed_mem_display = convert_bytes(total_needed, unit)
-
-        raise MemoryError(
-            f"Insufficient memory available. "
-            f"Required: {req_mem_display:.2f} {unit} (plus safety margin), "
-            f"Available: {avail_mem_display:.2f} {unit}, "
-            f"Needed: {needed_mem_display:.2f} {unit}"
-        )
-    
-    return True
+logger = get_logger(__name__)
 
 
-def expand_env_vars(arg_spec=0):
-    """
-    Decorator that expands environment variables in a specified argument.
+_NUM_RE = re.compile(r"""
+    ^[+-]?
+    (?:
+        (?:\d+(?:\.\d*)?) | (?:\.\d+)
+    )
+    (?:[eE][+-]?\d+)?$
+""", re.VERBOSE)
 
-    The target argument can be specified either by position (int) or name (str).
-    If no argument is specified, expands the first positional argument (default).
+def _split_tokens(s: str) -> list[str]:
+    # Protect quoted strings with spaces
+    if s.startswith(("'", '"')) and s.endswith(("'", '"')) and s[0] == s[-1]:
+        return [s[1:-1]]
+    # split on whitespace and/or commas
+    if "," in s:
+        s = s.replace(",", " ")
+    return [t for t in s.split() if t]
 
-    Parameters
-    ----------
-    arg_spec : int or str, optional
-        Either the position (0-based index) or name of the argument to expand.
-        Default is 0 (first positional argument).
+def _parse_scalar(token: str):
+    low = token.lower()
+    if low in {"true", "yes", "on"}:
+        return True
+    if low in {"false", "no", "off"}:
+        return False
+    if low in {"none", "null"}:
+        return "none"
 
-    Returns
-    -------
-    callable
-        A decorator function that wraps the original function.
+    if _NUM_RE.match(token):
+        # choose int vs float
+        if any(c in token for c in ".eE"):
+            return float(token)
+        return int(token)
 
-    Examples
-    --------
-    # Expand first positional argument (default)
-    >>> @expand_env_vars()
-    ... def load_file(path):
-    ...     print(path)
-    >>> load_file("$HOME/test.txt")
+    # keep as string (unquote if it looks quoted)
+    if (len(token) >= 2) and ((token[0] == token[-1] == "'") or (token[0] == token[-1] == '"')):
+        return token[1:-1]
+    return token
 
-    # Expand named argument
-    >>> @expand_env_vars('filename')
-    ... def process_file(filename, mode='r'):
-    ...     print(filename, mode)
-    >>> process_file("${TMPDIR}/data.txt")
+def _parse_value(value: str):
+    if value == "":
+        return ""
 
-    # Expand argument at position 1
-    >>> @expand_env_vars(1)
-    ... def save_data(header, filepath):
-    ...     print(header, filepath)
-    >>> save_data("results", "$APPDIR/output.dat")
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # Handle different argument specifications
-            if isinstance(arg_spec, int):
-                # Positional argument expansion
-                if arg_spec < len(args):
-                    expanded = os.path.expandvars(args[arg_spec])
-                    args = args[:arg_spec] + (expanded,) + args[arg_spec+1:]
-            elif isinstance(arg_spec, str):
-                # Keyword argument expansion
-                if arg_spec in kwargs:
-                    kwargs[arg_spec] = os.path.expandvars(kwargs[arg_spec])
-            else:
-                raise TypeError("arg_spec must be int (position) or str (argument name)")
+    tokens = _split_tokens(value)
+    # If it's a single token, return a scalar
+    if len(tokens) == 1:
+        return _parse_scalar(tokens[0])
 
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
+    # Multi-token: try numeric array first; otherwise keep as list of scalars
+    scalars = [_parse_scalar(t) for t in tokens]
+    if all(isinstance(x, (int, float)) for x in scalars):
+        dtype = float if any(isinstance(x, float) for x in scalars) else int
+        return np.array(scalars, dtype=dtype)
+    return scalars
+
+def _ini_file_to_dict(path):
+    ini = Inifile(path)
+    ini_dict = {}
+    values = [ini.items(s) for s in ini.sections()]
+    for sec, params in zip(ini.sections(), values):
+        ini_dict[sec] = {}
+        for k, v in params:
+            ini_dict[sec][k] = _parse_value(v)
+    return ini_dict
+
+def _ini_string_to_dict(text):
+    ini = Inifile(None)
+    ini.read_string(text)
+    ini_dict = {}
+    values = [ini.items(s) for s in ini.sections()]
+    for sec, params in zip(ini.sections(), values):
+        ini_dict[sec] = {}
+        for k, v in params:
+            ini_dict[sec][k] = _parse_value(v)
+    return ini_dict
 
 @expand_env_vars()
-def make_ini_file(filename, config):
+def make_ini_file(filename, config, ignore_sec="values"):
     """Create a .ini file from an input configuration.
 
     Parameters
@@ -194,12 +106,12 @@ def make_ini_file(filename, config):
     config : dict
         Dictionary containing the configuration parameters.
     """
-    print(f"Writing .ini file: {filename}")
+    logger.info("Writing .ini file: %s", filename)
     with open(filename, "w") as f:
         f.write(f"; File generated automatically by BESTA\n")
         for section in config.keys():
             # Ignore the Values section
-            if section == "Values":
+            if section.lower() == ignore_sec.lower():
                 continue
             f.write(f"[{section}]\n")
             for key, value in config[section].items():
@@ -215,10 +127,10 @@ def make_ini_file(filename, config):
                 else:
                     content += str(value)
                 f.write(f"{content}\n")
-        f.write(f"; \(ﾟ▽ﾟ)/")
+        f.write(r"; \(ﾟ▽ﾟ)/")
 
 
-def make_values_file(config, overwrite=True):
+def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
 
     Parameters
@@ -227,25 +139,18 @@ def make_values_file(config, overwrite=True):
         Configuration parameters
     """
     values_filename = os.path.expandvars(config["pipeline"]["values"])
-    values_section = f"Values"
 
     if os.path.isfile(values_filename):
-        print(f"File containing the .ini priors already exists at {values_filename}")
+        logger.warning(
+            "File containing the .ini priors already exists at %s", values_filename
+        )
         if not overwrite:
             return
         else:
-            print("Overwritting file")
-    if values_section in config:
-        print(f"Creating values file: {values_filename}")
-        with open(values_filename, "w") as f:
-            f.write(f"; File generated automatically by BESTA\n")
-            f.write("[parameters]\n")
-            for name, lims in config[values_section].items():
-                if type(lims) is str:
-                    f.write(f"{name} = {lims}\n")
-                else:
-                    f.write(f"{name} = {lims[0]} {(lims[0] + lims[1]) / 2} {lims[1]}\n")
-            f.write(f"; \(ﾟ▽ﾟ)/")
+            logger.info("Overwriting file")
+    if values_sec in config:
+        logger.info("Writing values file to: %s", values_filename)
+        make_ini_file(values_filename, config[values_sec], ignore_sec=None)
 
 @expand_env_vars()
 def read_results_file(path):
@@ -271,6 +176,22 @@ def read_results_file(path):
             table.add_column(matrix.T[ith], name=c.lower())
     return table
 
+def load_class_from_path(file_path, class_name):
+    """Load a class object from a Python file path at runtime."""
+
+    file_path = Path(file_path)
+
+    # Create module spec
+    spec = importlib.util.spec_from_file_location(
+        file_path.stem,  # module name
+        file_path
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[file_path.stem] = module
+    spec.loader.exec_module(module)
+
+    return getattr(module, class_name)
 
 class Reader(object):
     r"""CosmoSIS run results reader.
@@ -308,14 +229,14 @@ class Reader(object):
     includes two methods that allow to pull a subset of the solutions:
 
     - Users can retrieve a fraction of the solutions with the highest posterior
-    by calling:
+      by calling:
         
         >>> reader.get_top_frac_solutions(frac=1)
 
     which will return the first top percent of all the solutions.
 
     - Users can retrieve a fraction of the solutions that accounts for a given
-    fraction of the cumulative posterior.
+      fraction of the cumulative posterior.
 
         >>> reader.get_pct_solutions(pct=99)
 
@@ -366,15 +287,46 @@ class Reader(object):
         self._values_file = value
 
     @property
-    def last_module_name(self) -> str:
-        """Name of the last module used in the pipeline."""
-        return self.ini["pipeline"]["modules"].split(" ")[-1].replace(" ", "")
+    def modules(self) -> list:
+        """List of modules used in the pipeline as specified in the ini file."""
+        m = self.ini["pipeline"]["modules"]
+        if isinstance(m, str):
+            return [m]
+        return m
 
+    @property
+    def module_names(self) -> list:
+        """List of module names used in the pipeline."""
+        return [mod.replace(" ", "").split("_")[0] + "Module" for mod in self.modules]
+
+    def get_module(self, module_name):
+        """Get a pipeline module by name.
+
+        Parameters
+        ----------
+        module_name : str
+            Name of the module to retrieve.
+
+        Returns
+        -------
+        module : instance
+            An instance of the requested pipeline module.
+        """
+        if module_name not in self.modules:
+            raise ValueError(f"Module {module_name} not found in the pipeline.")
+        module = load_class_from_path(self.ini[module_name]["file"], "module")
+        logger.debug(f"Loaded module {module_name} from {self.ini[module_name]['file']}")
+        return module(self.ini, alias=module_name)
+        # if not hasattr(pipeline_modules, module_class):
+        #     raise ValueError(
+        #         f"Module class {module_class} not found in besta.pipeline_modules.")
+        # return getattr(pipeline_modules, module_class)(options)
+
+    #TODO: deprecate
     @property
     def last_module(self):
         """An instance of the last pipeline module used in the run."""
-        return getattr(pipeline_modules, self.last_module_name + "Module")(
-            self.ini)
+        return self.get_module(self.modules[-1])
 
     @property
     def config(self) -> dict:
@@ -404,14 +356,28 @@ class Reader(object):
         self._results_file = value
 
     def __init__(self, ini_file=None, results_file=None):
+
         if ini_file is not None:
             self.ini_file = ini_file
             self.ini = self.read_ini_file(self.ini_file)
         elif results_file is not None:
             self.results_file = results_file
             self.ini = self.read_ini_file_from_results(self.results_file)
+        else:
+            raise ValueError("Must provide either ini or results file")
 
-        self.ini_values = self.read_ini_values_file(self.ini["pipeline"]["values"])
+        self.ini_values = self.read_ini_file(self.ini["pipeline"]["values"])
+        self.ini_values_free = {
+            (sect, key): val
+            for sect, params in self.ini_values.items()
+            for key, val in params.items() if not isinstance(val, (int, float))
+        }
+        self.ini_values_fixed = {
+            (sect, key): val
+            for sect, params in self.ini_values.items()
+            for key, val in params.items() if (sect, key) not in self.ini_values_free
+        }
+
         self.config = {}
 
     def load_results(self):
@@ -446,14 +412,14 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        maxlike_pos = np.nanargmax(self.results_table[good_sample][log_prob].value)
+        good_sample = np.isfinite(self.results_table[log_prob])
+        tab = self.results_table[good_sample]
+        maxlike_pos = np.nanargmax(tab[log_prob].value)
         solution = {}
-        for k, v in self.results_table.items():
-            if "parameters" in k:
-                solution[k.replace("parameters--", "")] = v[good_sample][maxlike_pos]
         if as_datablock:
-            solution = self.solution_to_datablock(solution, **kwargs)
+            return self.solution_to_datablock(tab[maxlike_pos], **kwargs)
+        for (sect, name) in self.ini_values_free.keys():
+            solution[f"{sect}--{name}"] = tab[f"{sect}--{name}"][maxlike_pos]
         return solution
 
     def get_top_frac_solutions(self, frac=1, log_prob="post", as_datablock=False,
@@ -466,8 +432,8 @@ class Reader(object):
         Parameters
         ----------
         frac : float, optional
-            Fraction of the solutions to return, e.g. ``pct=1`` will return
-            the top 1 per cent with the highest probability.
+            Percentage of the solutions to return, e.g. ``frac=10`` will return
+            the top 10 per cent with the highest probability.
         log_prob : str, optional
             Column name to use for computing the maximum likelihood. Default is
             ``post``.
@@ -485,13 +451,15 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        post_sort = np.argsort(self.results_table[log_prob][good_sample])
-        first_row = int(post_sort.size / 100 * frac)
-        solutions = self.results_table[post_sort][-first_row:]
+        assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
+        good_sample = np.isfinite(self.results_table[log_prob])
+        tab = self.results_table[good_sample]
+        post_sort = np.argsort(tab[log_prob])
+        # Select the top frac per cent
+        first_row = max(1, np.ceil(post_sort.size / 100 * frac))
+        solutions = tab[post_sort][-first_row:]
         if as_datablock:
-            all_solutions = [self.solution_to_datablock(
-                dict(zip(solutions.keys(), sol[:]))) for sol in solutions]
+            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
         else:
             all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
         return all_solutions
@@ -525,65 +493,63 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        good_sample = self.results_table[log_prob] != 0
-        maxlike_pos = np.argmax(self.results_table[log_prob][good_sample])
-        # Normalize the weights
-        weights = (
-            self.results_table[log_prob][good_sample]
-            - self.results_table[log_prob][good_sample][maxlike_pos]
-        )
-        weights = np.exp(weights)
-        weights /= np.nansum(weights)
-        # From the highest to the lowest weight
-        sort = np.argsort(weights)
-        cum_weights = np.cumsum(weights[sort][::-1])
-        last_sample = np.searchsorted(cum_weights, pct / 100)
-        print(f"Selecting solutions from {last_sample}")
-        all_solutions = []
-        for i in range(-last_sample, 0):
-            solution = {"weights": weights[sort][i]}
-            for k, v in self.results_table.items():
-                if "parameters" in k:
-                    solution[k.replace("parameters--", "")] = v[good_sample][sort][i]
-            if as_datablock:
-                solution = self.solution_to_datablock(solution, **kwargs)
-            all_solutions.append(solution)
-        return all_solutions
+        if not (0 < pct <= 100):
+            raise ValueError("pct must be in (0, 100].")
 
-    def solution_to_datablock(self, solution, section="parameters"):
+        lp = np.asarray(self.results_table[log_prob])
+        good = np.isfinite(lp)
+        tab = self.results_table[good]
+        if len(tab) == 0:
+            return []
+
+        lp = np.asarray(tab[log_prob], dtype=float)
+        # normalized weights
+        lp_shift = lp - np.max(lp)
+        w = np.exp(lp_shift)
+        w_sum = np.sum(w)
+        if not np.isfinite(w_sum) or w_sum <= 0:
+            # fallback: pick the max only
+            idx_sorted = np.array([np.argmax(lp)])
+            selected = tab[idx_sorted]
+        else:
+            w /= w_sum
+
+            # Sort by decreasing weight
+            idx_sorted = np.argsort(w)[::-1]
+            w_sorted = w[idx_sorted]
+            cum = np.cumsum(w_sorted)
+
+            target = pct / 100.0
+            # first index where cum >= target, inclusive
+            k = int(np.searchsorted(cum, target, side="left")) + 1
+            selected = tab[idx_sorted[:k]]
+
+        if as_datablock:
+            return [self.solution_to_datablock(dict(row), **kwargs) if not isinstance(row, dict)
+                    else self.solution_to_datablock(row, **kwargs)
+                    for row in selected]
+
+        colnames = list(selected.colnames)
+        return [{name: row[name] for name in colnames} for row in selected]
+
+    def solution_to_datablock(self, solution: dict):
         """Convert a solution into a DataBlock.
 
         Parameters
         ----------
-        solution : dict
-            A dictionary containing the parameter values.
-        section : str, optional
-            Name of the DataBlock section where to store the solution. Default
-            is ``parameters``.
+        solution : dict-like
+            A dictionary-like containing the parameter values.
 
         Returns
         -------
         datablock : DataBlock
             The DataBlock containing the input solution.
         """
-        keys = list(solution.keys())
-        values = list(solution.values())
-        strip_keys = []
-        for k in keys:
-            if section in k:
-                strip_keys.append(k.replace(f"{section}--", ""))
-            else:
-                strip_keys.append(k)
-        solution = {k: v for k, v in zip(strip_keys, values)}
-
-        for parameter in self.ini_values["parameters"].keys():
-            if parameter not in solution:
-                print(f"Parameter {parameter} was set constant, adding default value")
-                solution[parameter] = self.ini_values["parameters"][parameter]
-
         datablock = cosmosis.DataBlock()
-        for k, v in solution.items():
-            datablock[section, k] = v
+        for (sect, name) in self.ini_values_free.keys():
+            datablock[sect, name] = solution[f'{sect}--{name}']
+        for (sect, name), v in self.ini_values_fixed.items():
+            datablock[sect, name] = v
         return datablock
 
     @classmethod
@@ -601,10 +567,8 @@ class Reader(object):
         ini : dict
             Dictionary containing the information from the ini file.
         """
-        print("Reading ini file: ", path)
-        
-        with open(path, "r") as f:
-            return cls._parse_ini_lines(f.readlines())
+        logger.info("Reading ini file: %s", path)
+        return _ini_file_to_dict(path)
 
     @classmethod
     @expand_env_vars(1)
@@ -613,96 +577,8 @@ class Reader(object):
             file_lines = file.readlines()
             line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
                 "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
-            return cls._parse_ini_lines(file_lines[line_start + 1:line_end])
-
-    @staticmethod
-    def _parse_ini_lines(lines):
-        ini_info = {}
-        for line in lines:
-            line = line.strip("## ").replace("\n", "")
-            if (len(line) == 0) or (line[0] == ";"):
-                continue
-            if line[0] == "[":
-                module = line.strip("[]")
-                ini_info[module] = {}
-            else:
-                components = line.split("=")
-                name = components[0].strip(" ")
-                str_value = components[1].replace(" ", "")
-                str_value = str_value.replace(".", "")
-                str_value = str_value.replace("e", "")
-                str_value = str_value.replace("-", "")
-                if not str_value.isnumeric():
-                    ini_info[module][name] = components[1].strip(" ")
-                else:
-                    numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                    if len(numbers) == 1:
-                        if ("." in components[1]) or ("e" in components[1]):
-                            # Float number
-                            ini_info[module][name] = float(numbers[0])
-                        else:
-                            # int number
-                            ini_info[module][name] = int(numbers[0])
-                    else:
-                        if ("." in components[1]) or ("e" in components[1]):
-                            # Float number
-                            ini_info[module][name] = np.array(numbers, dtype=float)
-                        else:
-                            # int number
-                            ini_info[module][name] = np.array(numbers, dtype=int)
-        return ini_info
-
-    @staticmethod
-    @expand_env_vars()
-    def read_ini_values_file(path):
-        """Read the cosmosis configuration .ini file.
-
-        Parameters
-        ----------
-        path : str
-            Path to the file.
-
-        Returns
-        -------
-        ini_values : dict
-            Dictionary containing the ini_values information.
-        """
-        print("Reading ini values file: ", path)
-        ini_info = {}
-        with open(path, "r") as f:
-            for line in f.readlines():
-                line = line.replace("\n", "")
-                if (len(line) == 0) or (line[0] == ";"):
-                    continue
-                if line[0] == "[":
-                    module = line.strip("[]")
-                    ini_info[module] = {}
-                else:
-                    components = line.split("=")
-                    name = components[0].strip(" ")
-                    str_value = components[1].replace(" ", "")
-                    str_value = str_value.replace(".", "")
-                    str_value = str_value.replace("e", "")
-                    str_value = str_value.replace("-", "")
-                    if not str_value.isnumeric():
-                        ini_info[module][name] = components[1].strip(" ")
-                    else:
-                        numbers = [n for n in components[1].split(" ") if len(n) > 0]
-                        if len(numbers) == 1:
-                            if ("." in components[1]) or ("e" in components[1]):
-                                # Float number
-                                ini_info[module][name] = float(numbers[0])
-                            else:
-                                # int number
-                                ini_info[module][name] = int(numbers[0])
-                        else:
-                            if ("." in components[1]) or ("e" in components[1]):
-                                # Float number
-                                ini_info[module][name] = np.array(numbers, dtype=float)
-                            else:
-                                # int number
-                                ini_info[module][name] = np.array(numbers, dtype=int)
-        return ini_info
+            content = "".join([l.replace("## ", "") for l in file_lines[line_start + 1:line_end]])
+            return _ini_string_to_dict(content)
 
     @classmethod
     def from_ini_file(cls, path_to_ini):
