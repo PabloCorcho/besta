@@ -15,6 +15,9 @@ from astropy.convolution import convolve, convolve_fft
 from besta import spectrum
 from besta import config as CONFIG
 
+# TODO: implement split Gaussian model
+# This model is much more stable and never
+# produces negative densities
 
 class GaussHermite(Fittable1DModel):
     """Gauss-Hermite model."""
@@ -121,10 +124,11 @@ def get_losvd_kernel(kernel_model, x_size):
     kernel : :class:`Model1DKernel`
         Kernel model
     """
-    return Model1DKernel(kernel_model, x_size=x_size, mode="center")
+    ker = Model1DKernel(kernel_model, x_size=x_size, mode="center")
+    return ker
 
 
-def convolve_spectra_with_kernel(spectra, kernel):
+def convolve_spectra_with_kernel(spectra, kernel, use_fft=False):
     """Convolve an input spectra with a given kernel.
 
     Parameters
@@ -139,9 +143,24 @@ def convolve_spectra_with_kernel(spectra, kernel):
     convolved_spectra : np.ndarray
         Spectra convolved with the input kernel.
     """
-    return convolve(
+    # TODO: use np.convolve to increase performance when using
+    # synthetic observations that do not contain nan
+
+    try:
+        if use_fft:
+            return convolve_fft(
         spectra, kernel, boundary="fill", fill_value=0.0, normalize_kernel=True
     )
+
+        else:
+            return convolve(
+        spectra, kernel, boundary="fill", fill_value=0.0, normalize_kernel=True
+    )
+
+    except ValueError as e:
+        print("THERE WAS AN ERROR: ", e)
+        return np.full(spectra.size, np.nan)
+        
 
 def convolve_ssp_with_lsf(ssp, lsf_sigma_pixels):
     """Convolve a given SSP model with an LSF.
