@@ -415,12 +415,12 @@ class Reader(object):
         good_sample = np.isfinite(self.results_table[log_prob])
         tab = self.results_table[good_sample]
         maxlike_pos = np.nanargmax(tab[log_prob].value)
-        solution = {}
+
         if as_datablock:
             return self.solution_to_datablock(tab[maxlike_pos], **kwargs)
-        for (sect, name) in self.ini_values_free.keys():
-            solution[f"{sect}--{name}"] = tab[f"{sect}--{name}"][maxlike_pos]
-        return solution
+
+        else:
+            return self.solution_to_dict(tab[maxlike_pos], **kwargs)
 
     def get_top_frac_solutions(self, frac=1, log_prob="post", as_datablock=False,
                           **kwargs):
@@ -459,9 +459,9 @@ class Reader(object):
         first_row = max(1, np.ceil(post_sort.size / 100 * frac))
         solutions = tab[post_sort][-first_row:]
         if as_datablock:
-            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
+            all_solutions = [self.solution_to_datablock(sol, **kwargs) for sol in solutions]
         else:
-            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
+            all_solutions = [self.solution_to_dict(sol, **kwargs) for sol in solutions]
         return all_solutions
 
     def get_pct_solutions(self, pct=99, log_prob="post", as_datablock=False,
@@ -529,16 +529,40 @@ class Reader(object):
                     else self.solution_to_datablock(row, **kwargs)
                     for row in selected]
 
-        colnames = list(selected.colnames)
-        return [{name: row[name] for name in colnames} for row in selected]
+        return [self.solution_to_dict(row) for row in selected]
 
-    def solution_to_datablock(self, solution: dict):
+    def solution_to_dict(self, sample, *, add_fixed=True, extra_params=None):
+        """TODO"""
+
+        solution = {}
+
+        for (sect, name) in self.ini_values_free.keys():
+            solution[f"{sect}--{name}"] = sample[f"{sect}--{name}"]
+
+        if add_fixed:
+            for (sect, name), v in self.ini_values_fixed.items():
+                solution[f"{sect}--{name}"] = v
+        
+        if extra_params is not None:
+            for sect, name in extra_params:
+                solution[f"{sect}--{name}"] = sample[f'{sect}--{name}']
+
+        return solution
+
+        
+    def solution_to_datablock(self, solution: dict, add_fixed=True, extra_params=None):
         """Convert a solution into a DataBlock.
 
         Parameters
         ----------
         solution : dict-like
             A dictionary-like containing the parameter values.
+        add_fixed : bool, optional
+            If True, add the default values of the fixed parameters from the ini
+            values config file. Default is True.
+        extra_params : iterable, optional
+            An iterable containing pairs (section, name) of additional parameters
+            contained in ```solution```to be included in the datablock.
 
         Returns
         -------
@@ -548,8 +572,15 @@ class Reader(object):
         datablock = cosmosis.DataBlock()
         for (sect, name) in self.ini_values_free.keys():
             datablock[sect, name] = solution[f'{sect}--{name}']
-        for (sect, name), v in self.ini_values_fixed.items():
-            datablock[sect, name] = v
+        
+        if add_fixed:
+            for (sect, name), v in self.ini_values_fixed.items():
+                datablock[sect, name] = v
+        
+        if extra_params is not None:
+            for sect, name in extra_params:
+                datablock[sect, name] = solution[f'{sect}--{name}']
+
         return datablock
 
     @classmethod
