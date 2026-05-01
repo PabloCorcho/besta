@@ -6,7 +6,7 @@ Pipeline Manager
 BESTA provides a small orchestration layer to chain several pipeline modules and run them through CosmoSIS. The key entrypoint is :class:`besta.pipeline.MainPipeline`, which:
 
 - builds or reuses CosmoSIS ``.ini`` and ``values`` files for each sub-pipeline,
-- executes CosmoSIS (optionally with MPI) and collects the output,
+- executes CosmoSIS (optionally with MPI for parallelisation) and collects the output,
 - propagates best-fit parameters between stages, and
 - can plot best-fit spectra/photometry for each module.
 
