@@ -53,8 +53,8 @@ Acknowledgements
 If you use BESTA in your research, please cite the following papers:
 
 - BESTA itself, including the package version used for the analysis.
+- The Population Synthesis Toolkit (PST) [PSTPaper]_.
 - CosmoSIS for sampler-based inference workflows [Zunt+15]_.
-- The Population Synthesis Toolkit (PST) when using the associated stellar-population models and utilities [PSTDocs]_.
 
 
 
@@ -82,3 +82,4 @@ Indices and tables
 
 .. [Zunt+15] `CosmoSIS: Modular cosmological parameter estimation <https://ui.adsabs.harvard.edu/abs/2015A%26C....12...45Z/abstract>`_
 .. [PSTDocs] `Population Synthesis Toolkit documentation <https://population-synthesis-toolkit.readthedocs.io/en/latest/>`_
+.. [PSTPaper] `Population Synthesis Toolkit: A Python package for stellar population synthesis modelling <https://ui.adsabs.harvard.edu/abs/2025JOSS...10.8203C/abstract>`_
