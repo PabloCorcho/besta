@@ -12,3 +12,11 @@ src/besta.egg-info
 docs/build
 .vscode/
 .codex/
+
+tutorials/fit_sdss_spectra/mask.txt
+tutorials/fit_sdss_spectra/mask_spec-2240-53823-0178.txt
+tutorials/fit_sdss_spectra/results_sdss_tutorial.maxlike.txt
+tutorials/fit_sdss_spectra/results_sdss_tutorial.txt
+tutorials/fit_sdss_spectra/sdss_spectrum.txt
+tutorials/fit_sdss_spectra/spec-2240-53823-0178.txt
+
