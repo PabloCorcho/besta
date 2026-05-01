@@ -436,6 +436,7 @@ class BaseModule(ClassModule):
                 raise ValueError("weights must be non-negative.")
             normalize = True
 
+        # TODO: to avoid this step the pipeline should store sigma
         sigma = np.sqrt(var)
 
         logp = np.empty_like(data, dtype=float)
@@ -463,7 +464,10 @@ class BaseModule(ClassModule):
         if normalize:
             wsum = np.sum(weights)
             if wsum <= 0:
-                raise ValueError("Sum of weights must be > 0.")
+                if np.all(weights == 0):
+                    raise ValueError("All weights are zero.")
+                else:
+                    raise ValueError("Sum of weights must be > 0 for normalization.")
             return np.sum(logp * weights) / wsum
 
         return np.sum(logp * weights)
