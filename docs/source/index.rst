@@ -43,7 +43,7 @@ different Monte Carlo sampling methods (e.g. emcee, multinest, pocoMC, etc.).
 - **Direct grid-based inference** (no sampler runtime required), documented in :ref:`grid_inference`.
 
 This method is useful when inferring properties from coarse SEDs and large datasets (e.g. Euclid).
-The main strategy is to use pre-computed grids of models in combination with dimensionality reduction tools (see #TODO section to binners) to allow the inference of physical properties for thousands of galaxies in seconds.
+The main strategy is to use pre-computed grids of models in combination with candidate-selection tools from :mod:`besta.grid.binning` to allow the inference of physical properties for thousands of galaxies in seconds.
 
 For more information, you can read the section listed below.
 
@@ -52,6 +52,10 @@ Acknowledgements
 
 If you use BESTA in your research, please cite the following papers:
 
+- BESTA itself, including the package version used for the analysis.
+- CosmoSIS for sampler-based inference workflows [Zunt+15]_.
+- The Population Synthesis Toolkit (PST) when using the associated stellar-population models and utilities [PSTDocs]_.
+
 
 
 
@@ -59,6 +63,7 @@ If you use BESTA in your research, please cite the following papers:
    :maxdepth: 1
    :caption: Contents
 
+   quick_guide
    installation
    modules
    configuration
@@ -76,5 +81,4 @@ Indices and tables
 * :ref:`search`
 
 .. [Zunt+15] `CosmoSIS: Modular cosmological parameter estimation <https://ui.adsabs.harvard.edu/abs/2015A%26C....12...45Z/abstract>`_
-.. [Corcho-Caballero+25a] `Euclidd Quick Data Release (Q1): A probabilistic classification of quenched galaxies ##TODO: include URL`_
-.. [Corcho-Caballero+25b] `The Population Synthesis Toolkit (PST) ##TODO: include URL`_
+.. [PSTDocs] `Population Synthesis Toolkit documentation <https://population-synthesis-toolkit.readthedocs.io/en/latest/>`_

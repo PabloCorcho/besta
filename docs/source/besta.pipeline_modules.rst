@@ -12,6 +12,26 @@ Pipeline Modules API
    :undoc-members:
    :show-inheritance:
 
+.. autoclass:: besta.pipeline_modules.base_module.SpectraFitModule
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: besta.pipeline_modules.base_module.PhotometryFitModule
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: besta.pipeline_modules.base_module.GridFitMixin
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: besta.pipeline_modules.base_module.EmulatorMixin
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Full Spectral Fit
 -----------------
 

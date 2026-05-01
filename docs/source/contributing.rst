@@ -9,8 +9,14 @@ Share feedback, request features, or report bugs by opening a new `issue <https:
 
 - **Contribute Code**
 
+If you’d like to contribute code, use the standard GitHub fork-and-pull-request workflow:
 
-If you’d like to contribute code, please follow #TODO find some GIthub link with instructions for forking and PRs
+1. Fork the repository on `GitHub <https://github.com/pablocorcho/besta>`_.
+2. Create a feature branch for your change.
+3. Add or update tests and documentation when relevant.
+4. Open a pull request against the main repository and describe the motivation for the change.
+
+For documentation changes, please keep the Sphinx pages in ``docs/source`` synchronized with the public API and tutorial workflow.
 
 
 - **Contact**
