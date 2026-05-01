@@ -269,7 +269,7 @@ class BaseModule(ClassModule):
             # Assume both LSF are Gaussian
             effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
 
-            if (effective_lsf_disp <= 0).any():
+            if (effective_lsf_disp < 0).any():
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)
@@ -519,6 +519,7 @@ class SpectraFitModule(BaseModule):
             wl_range = wavelength[[0, -1]]
         # Wavelength range to renormalize the spectra
         if options.has_value("wlNormRange"):
+            logger.warning("Input option 'wlNormRange' is deprecated and will be removed in future versions. ")
             wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
             ).to("Angstrom").value
         else:
@@ -553,22 +554,26 @@ class SpectraFitModule(BaseModule):
             telluric_pad = options.get_double("telluric_pad", default=0.0)
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
             _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
-            weights, tell_mask = spectrum.mask_telluric_regions(
+            weights_tell, tell_mask = spectrum.mask_telluric_regions(
                 wavelength, weight=weights,
                 pad=telluric_pad,
                 return_mask=True)
-            _log("Number of masked pixels: ", np.count_nonzero(tell_mask))
+            _log("Number of telluric-absorption masked pixels: ",
+                 np.count_nonzero(tell_mask))
+            weights *= weights_tell
             self.config["telluric_mask"] = tell_mask
 
         # Optional masking of emission lines
         if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
-            weights, line_mask = spectrum.mask_strong_emission_lines(
+            weights_el, line_mask = spectrum.mask_strong_emission_lines(
                 wavelength, flux, error, weights,
                 redshift=redshift,
                 # line_list=emission_line_list,
                 # half_width=line_half_width,
                 return_mask=True)
-            _log("Number of masked pixels: ", np.count_nonzero(line_mask))
+            weights *= weights_el
+            _log("Number of emission-line masked pixels: ",
+                 np.count_nonzero(line_mask))
             self.config["emission_lines_mask"] = line_mask
 
         # Apply redshift
