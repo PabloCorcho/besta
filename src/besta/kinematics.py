@@ -124,11 +124,11 @@ def get_losvd_kernel(kernel_model, x_size):
     kernel : :class:`Model1DKernel`
         Kernel model
     """
-    ker = Model1DKernel(kernel_model, x_size=x_size, mode="center")
+    ker = Model1DKernel(kernel_model, x_size=x_size, mode="integrate")
     return ker
 
 
-def convolve_spectra_with_kernel(spectra, kernel, use_fft=False):
+def convolve_spectra_with_kernel(spectra, kernel, use_fft=True):
     """Convolve an input spectra with a given kernel.
 
     Parameters
@@ -158,7 +158,7 @@ def convolve_spectra_with_kernel(spectra, kernel, use_fft=False):
     )
 
     except ValueError as e:
-        print("THERE WAS AN ERROR: ", e)
+        logging.error(f"Error during convolution: {e}")
         return np.full(spectra.size, np.nan)
         
 
