@@ -233,7 +233,7 @@ class BaseModule(ClassModule):
 
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
-        extra_offset_pixel = np.ceil(velocity_buffer / velscale)
+        extra_offset_pixel = int(np.ceil(velocity_buffer / velscale))
         _log(
             "Log-binning SSP spectra to velocity scale: ",
             velscale,
@@ -345,25 +345,26 @@ class BaseModule(ClassModule):
         _log("\n-> Configuring SFH model")
         sfh_model_name = options["SFHModel"]
         sfh_args = []
-        key = "SFHArgs1"
-        i = 1
-        while options.has_value(f"SFHArgs{i}"):
-            key = f"SFHArgs{i}"
-            i += 1
-            value = options[key]
-            if isinstance(value, str):
-                if "," in value:
-                    value = np.array(value.split(","), dtype=float)
-            sfh_args.append(value)
+        sfh_kwargs = {}
+
+        if options.has_value("SFHArgs"):
+            sfh_all_args = options["SFHArgs"]
+
+            sfh_args, sfh_kwargs = io.string_to_func_args(sfh_all_args)
+
+        logger.info("SFH Model extra arguments: %s", sfh_args)
+        logger.info("SFH Model extra keyword arguments: %s", sfh_kwargs)
+
         # Optional: enable parameter transforms inside SFH models
         self.config["use_transforms"] = False
         if options.has_value("use_transforms"):
             self.config["use_transforms"] = bool(options["use_transforms"])
         if self.config["use_transforms"]:
             _log("Enabling parameter transforms inside SFH model")
+
         _log("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
-        sfh_model = sfh_model(*sfh_args, **self.config)
+        sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
         _log("-> Configuration done")
 
@@ -547,31 +548,52 @@ class SpectraFitModule(BaseModule):
             telluric_pad = options.get_double("telluric_pad", default=0.0)
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
             _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
-            weights_tell, tell_mask = spectrum.mask_telluric_regions(
+            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
                 wavelength, weight=weights,
+                redshift=0.0,
                 pad=telluric_pad,
                 return_mask=True)
             _log("Number of telluric-absorption masked pixels: ",
                  np.count_nonzero(tell_mask))
             weights *= weights_tell
             self.config["telluric_mask"] = tell_mask
+            self.config["telluric_bands_used"] = bands_used
+
+        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
+            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
+            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
+            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
+            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
+                wavelength,
+                flux=flux, uncertainty=error,
+                weight=weights,
+                redshift=0.0,  # Mask in observed frame
+                pad=sky_line_pad,
+                return_mask=True, return_lines_masked=True)
+            _log("Number of sky-line masked pixels: ",
+                 np.count_nonzero(sky_mask))
+            weights *= weights_sky
+            self.config["sky_line_mask"] = sky_mask
+            self.config["sky_lines_used"] = lines_used
 
         # Optional masking of emission lines
         if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
-            weights_el, line_mask = spectrum.mask_strong_emission_lines(
+            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
                 wavelength, flux, error, weights,
                 redshift=redshift,
                 # line_list=emission_line_list,
                 # half_width=line_half_width,
-                return_mask=True)
+                return_mask=True, return_lines_masked=True)
             weights *= weights_el
             _log("Number of emission-line masked pixels: ",
                  np.count_nonzero(line_mask))
             self.config["emission_lines_mask"] = line_mask
+            self.config["emission_lines_used"] = lines_used
 
         # Apply redshift
         _log(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
+
         _log("Constraining fit to wavelength range: ", wl_range)
         good_idx = np.where(
             (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
@@ -734,7 +756,7 @@ class SpectraFitModule(BaseModule):
             _log(f"Not using multiplicative Legendre polynomials")
         _log("-> Configuration done")
 
-    def plot_solution(self, solution: DataBlock, figname=None):
+    def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
         if isinstance(flux_model, tuple):
@@ -788,6 +810,7 @@ class SpectraFitModule(BaseModule):
         ax.axis("off")
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
+        # SNR information
         snr = np.nanpercentile(
             self.config["flux"] / np.sqrt(self.config["var"]),
             (16, 50, 84)
@@ -844,6 +867,45 @@ class SpectraFitModule(BaseModule):
         p_residuals = np.nanpercentile(residuals, 5) * 0.95
         ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
 
+        # Plot masked emission lines and telluric regions
+        if plot_lines:
+            if "emission_lines_used" in self.config:
+                for line in self.config["emission_lines_used"]:
+                    ax.axvline(line.rest_wavelength, ls="--",
+                               lw=0.7, color="red", alpha=0.5)
+                    ax.annotate(line.name,
+                                xy=(line.rest_wavelength, ax.get_ylim()[1]),
+                                xytext=(0, -5),
+                                textcoords="offset points", ha="center", va="top",
+                                fontsize=6, color="red")
+            if "sky_lines_used" in self.config:
+                for line in self.config["sky_lines_used"]:
+                    ax.axvline(
+                        line.rest_wavelength / (1 + self.config.get("redshift", 0.0)),
+                        ls="--", lw=0.7, color="cyan", alpha=0.5)
+                    ax.annotate(
+                        line.name,
+                        xy=(line.rest_wavelength / (1 + self.config.get("redshift", 0.0)),
+                            ax.get_ylim()[1]),
+                        xytext=(0, -5),
+                        textcoords="offset points", ha="center", va="top",
+                        fontsize=6, color="cyan")
+
+            if "telluric_bands_used" in self.config:
+                for band in self.config["telluric_bands_used"]:
+                    ax.axvspan(
+                        band.wmin / (1 + self.config.get("redshift", 0.0)),
+                        band.wmax / (1 + self.config.get("redshift", 0.0)),
+                        color="orange", alpha=0.5)
+                    ax.annotate(
+                        band.name,
+                        xy=((band.wmin + band.wmax) / 2 / (1 + self.config.get("redshift", 0.0)),
+                        ax.get_ylim()[1]),
+                        xytext=(0, -5),
+                        textcoords="offset points", ha="center", va="top",
+                        fontsize=6, color="orange")
+        ax.legend()
+        ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
         chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["var"]
