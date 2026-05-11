@@ -12,7 +12,7 @@ from cosmosis import DataBlock
 
 from besta import io
 from besta import pipeline_modules
-from besta.logging import get_logger
+from besta.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
@@ -40,6 +40,7 @@ class MainPipeline(object):
         ini_files=None,
         ini_values_files=None,
     ):
+        self._parse_logger(pipeline_configuration_list)
         self.pipelines_config = pipeline_configuration_list
 
         if n_cores_list is None:
@@ -58,6 +59,19 @@ class MainPipeline(object):
             )
         else:
             self.ini_values_files = ini_values_files
+
+    def _parse_logger(self, pipeline_configuration_list):
+        for config in pipeline_configuration_list:
+            # select the first module in the pipeline to configure logging (if any)
+            module = config["pipeline"]["modules"].replace(",", " ").split(" ")[0]
+            logging_console = config[module].get("logging_console", False)
+            logging_level = config[module].get("logging_level", "INFO").upper()
+            logging_overwrite = config[module].get("logging_overwrite", False)
+            logging_file = config[module].get("logging_file", None)
+
+            setup_logging(level=logging_level, log_file=logging_file,
+                          overwrite=logging_overwrite, console=logging_console)
+            break
 
     def run_command(self, command):
         logger.info(f"Running command >> {command} <<")
