@@ -787,8 +787,6 @@ class SpectraFitModule(BaseModule):
         wavelength = self.config["wavelength"].to_value("Angstrom")
         flux = self.config["flux"]
         flux_error = np.sqrt(self.config["var"])
-
-        self.config["ssp_model"]
         flux_model, _ = self.make_observable(solution, parse=True)
         # Build a new weights array that only includes the masking of the sky
         weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
@@ -799,7 +797,7 @@ class SpectraFitModule(BaseModule):
             continuum=flux_model, continuum_error=flux_model / 100,
             **kwargs)
 
-        return line_table, flux - flux_model, weights
+        return line_table, flux - flux_model, flux_model, weights
 
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
