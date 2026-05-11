@@ -768,6 +768,39 @@ class SpectraFitModule(BaseModule):
             _log(f"Not using multiplicative Legendre polynomials")
         _log("-> Configuration done")
 
+    def measure_emission_lines(self, solution: DataBlock, **kwargs):
+        """Measure emission line fluxes and EWs from the best-fit solution.
+
+        Parameters
+        ----------
+        solution : :class:`DataBlock`
+            Best-fit solution containing the model parameters.
+
+        Returns
+        -------
+        line_fluxes : dict
+            Dictionary with emission line names as keys and measured fluxes as values.
+        line_ews : dict
+            Dictionary with emission line names as keys and measured equivalent widths as values.
+        """
+        _log("Measuring emission line fluxes from input solution")
+        wavelength = self.config["wavelength"].to_value("Angstrom")
+        flux = self.config["flux"]
+        flux_error = np.sqrt(self.config["var"])
+
+        self.config["ssp_model"]
+        flux_model, _ = self.make_observable(solution, parse=True)
+        # Build a new weights array that only includes the masking of the sky
+        weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
+        weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
+
+        line_table, _ = spectrum.find_emission_lines(
+            wavelength, flux, flux_error, flux_model,
+            continuum=flux_model, continuum_error=flux_model / 100,
+            **kwargs)
+
+        return line_table, flux - flux_model, weights
+
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
