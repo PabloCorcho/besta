@@ -7,13 +7,8 @@ import sys
 from typing import Optional
 
 
-DEFAULT_FORMAT = (
-    "[%(name)s | %(asctime)s] "
-    "(%(levelname)s) "
-    "%(message)s"
-)
-
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+DEFAULT_FORMAT = '\x1b[33;20m %(asctime)s|%(levelname)s\x1b[0m \x1b[1;32m[%(name)s]\x1b[0m: %(message)s'
+DATE_FORMAT = '%H:%M/%d-%m-%Y'
 
 
 def setup_logging(
