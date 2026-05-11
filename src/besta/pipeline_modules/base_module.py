@@ -238,7 +238,7 @@ class BaseModule(ClassModule):
             "Log-binning SSP spectra to velocity scale: ",
             velscale,
             " km/s per pixel",
-            f"\nKeeping {extra_offset_pixel} extra pixels at both edges",
+            f"Keeping {extra_offset_pixel} extra pixels at both edges",
         )
 
         if "ln_wave" in self.config:
@@ -349,8 +349,20 @@ class BaseModule(ClassModule):
 
         if options.has_value("SFHArgs"):
             sfh_all_args = options["SFHArgs"]
-
-            sfh_args, sfh_kwargs = io.string_to_func_args(sfh_all_args)
+            if isinstance(sfh_all_args, str):
+                sfh_args, sfh_kwargs = io.string_to_func_args(sfh_all_args)
+            elif isinstance(sfh_all_args, list):
+                for arg in sfh_all_args:
+                    if isinstance(arg, str):
+                        a, ka = io.string_to_func_args(arg)
+                        sfh_args.extend(a)
+                        sfh_kwargs.update(ka)
+                    elif isinstance(arg, dict):
+                        sfh_kwargs.update(arg)
+                    else:
+                        sfh_args.append(arg)
+            else:
+                sfh_args.append(sfh_all_args)
 
         logger.info("SFH Model extra arguments: %s", sfh_args)
         logger.info("SFH Model extra keyword arguments: %s", sfh_kwargs)
@@ -896,7 +908,7 @@ class SpectraFitModule(BaseModule):
                     ax.axvspan(
                         band.wmin / (1 + self.config.get("redshift", 0.0)),
                         band.wmax / (1 + self.config.get("redshift", 0.0)),
-                        color="orange", alpha=0.5)
+                        color="orange", alpha=0.2)
                     ax.annotate(
                         band.name,
                         xy=((band.wmin + band.wmax) / 2 / (1 + self.config.get("redshift", 0.0)),
