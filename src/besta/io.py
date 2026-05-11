@@ -29,14 +29,122 @@ _NUM_RE = re.compile(r"""
     (?:[eE][+-]?\d+)?$
 """, re.VERBOSE)
 
+def _split_top_level(s: str, *, split_on_whitespace=True) -> list[str]:
+    """Split a string into top-level tokens, respecting quotes and nested parentheses/brackets."""
+    s = s.strip()
+    if not s:
+        return []
+
+    tokens = []
+    current = []
+    quote = None
+    escape = False
+    paren_depth = 0
+    bracket_depth = 0
+
+    def flush_current():
+        token = "".join(current).strip()
+        if token:
+            tokens.append(token)
+        current.clear()
+
+    for char in s:
+        if quote is not None:
+            current.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+        elif char == "(":
+            paren_depth += 1
+            current.append(char)
+        elif char == ")":
+            paren_depth = max(0, paren_depth - 1)
+            current.append(char)
+        elif char == "[":
+            bracket_depth += 1
+            current.append(char)
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+            current.append(char)
+        elif paren_depth == 0 and bracket_depth == 0 and (
+            char == "," or (split_on_whitespace and char.isspace())
+        ):
+            flush_current()
+        else:
+            current.append(char)
+
+    flush_current()
+    return tokens
+
 def _split_tokens(s: str) -> list[str]:
-    # Protect quoted strings with spaces
-    if s.startswith(("'", '"')) and s.endswith(("'", '"')) and s[0] == s[-1]:
-        return [s[1:-1]]
-    # split on whitespace and/or commas
-    if "," in s:
-        s = s.replace(",", " ")
-    return [t for t in s.split() if t]
+    """Split a string into tokens, respecting quotes and nested parentheses/brackets."""
+    return _split_top_level(s, split_on_whitespace=True)
+
+def _is_wrapped_group(token: str) -> bool:
+    """Check if a token is a wrapped group like (1, 2, 3) or [1, 2, 3]."""
+    token = token.strip()
+    if len(token) < 2:
+        return False
+
+    pairs = {"(": ")", "[": "]"}
+    opening = token[0]
+    closing = pairs.get(opening)
+    if closing is None or token[-1] != closing:
+        return False
+
+    quote = None
+    escape = False
+    depth = 0
+    for index, char in enumerate(token):
+        if quote is not None:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+        elif char == opening:
+            depth += 1
+        elif char == closing:
+            depth -= 1
+            if depth == 0 and index != len(token) - 1:
+                return False
+
+    return depth == 0 and quote is None
+
+
+def _sequence_to_numpy(values, *, force_sequence=False):
+    """Coerce a list of values into a numpy array if all elements are numeric, otherwise keep as list."""
+    if not values:
+        return []
+    if len(values) == 1 and not force_sequence:
+        return values[0]
+
+    if all(isinstance(x, (int, float)) for x in values):
+        dtype = float if any(isinstance(x, float) for x in values) else int
+        return np.array(values, dtype=dtype)
+    return values
+
+
+def _parse_group(token: str):
+    inner = token[1:-1].strip()
+    if not inner:
+        return []
+
+    values = [_parse_token(part) for part in _split_tokens(inner)]
+    return _sequence_to_numpy(values, force_sequence=True)
 
 def _parse_scalar(token: str):
     low = token.lower()
@@ -58,21 +166,90 @@ def _parse_scalar(token: str):
         return token[1:-1]
     return token
 
+def _parse_token(token: str):
+    token = token.strip()
+    if _is_wrapped_group(token):
+        return _parse_group(token)
+    return _parse_scalar(token)
+
+
+def _split_keyword_arg(token: str):
+    quote = None
+    escape = False
+    paren_depth = 0
+    bracket_depth = 0
+
+    for index, char in enumerate(token):
+        if quote is not None:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+        elif char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth = max(0, paren_depth - 1)
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+        elif char == "=" and paren_depth == 0 and bracket_depth == 0:
+            key = token[:index].strip()
+            value = token[index + 1 :].strip()
+            if not key:
+                raise ValueError(f"Invalid keyword argument: {token!r}")
+            return key, value
+
+    return None
+
 def _parse_value(value: str):
     if value == "":
         return ""
 
     tokens = _split_tokens(value)
-    # If it's a single token, return a scalar
-    if len(tokens) == 1:
-        return _parse_scalar(tokens[0])
+    parsed = [_parse_token(token) for token in tokens]
+    return _sequence_to_numpy(parsed)
 
-    # Multi-token: try numeric array first; otherwise keep as list of scalars
-    scalars = [_parse_scalar(t) for t in tokens]
-    if all(isinstance(x, (int, float)) for x in scalars):
-        dtype = float if any(isinstance(x, float) for x in scalars) else int
-        return np.array(scalars, dtype=dtype)
-    return scalars
+def string_to_func_args(text: str):
+    """Parse a string of the form 'arg1, arg2, key=value' into separate args and kwargs.
+    
+    Parameters
+    ----------
+    text : str
+        Input string containing positional and keyword arguments.
+    
+    Returns
+    -------
+    args : list
+        List of positional arguments.
+    kwargs : dict
+        Dictionary of keyword arguments.
+    """
+    args = []
+    kwargs = {}
+    seen_keyword = False
+
+    for token in _split_top_level(text, split_on_whitespace=False):
+        key_value = _split_keyword_arg(token)
+        if key_value is None:
+            if seen_keyword:
+                raise ValueError(
+                    "Positional arguments cannot appear after keyword arguments."
+                )
+            args.append(_parse_value(token))
+            continue
+
+        seen_keyword = True
+        key, value = key_value
+        kwargs[key] = _parse_value(value)
+
+    return args, kwargs
 
 def _ini_file_to_dict(path):
     ini = Inifile(path)
@@ -128,7 +305,6 @@ def make_ini_file(filename, config, ignore_sec="values"):
                     content += str(value)
                 f.write(f"{content}\n")
         f.write(r"; \(ﾟ▽ﾟ)/")
-
 
 def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
