@@ -130,7 +130,7 @@ def mask_telluric_regions(
     bands: Optional[Sequence[Tuple[float, float]]] = None,
     pad: float = 0.0,
     return_mask: bool = False,
-) -> tuple[np.ndarray, np.ndarray] | np.ndarray:
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, list[TelluricBand]]:
     """
     Mask regions affected by telluric absorption by setting weights to 0.
 
@@ -157,6 +157,7 @@ def mask_telluric_regions(
     mask : ndarray of bool, optional
         If ``return_mask`` is True, also return the boolean mask of where weights were set to 0.
     """
+    logger.info("Masking telluric regions with pad=%.1f Angstrom", pad)
     w = np.asanyarray(wavelength)
     if weight is None:
         wt = np.ones_like(w)
@@ -171,23 +172,26 @@ def mask_telluric_regions(
     # Build list of bands in the same units as wavelength array (i.e. input units)
     if bands is None:
         # Defaults are in microns; convert to input units by dividing by to_um
-        bands_in_input_units = [
-            (b.wmin, b.wmax) for b in DEFAULT_TELLURIC_BANDS_AA]
-    else:
-        bands_in_input_units = list(bands)
+        logger.info("Using default telluric bands with %d bands.", len(DEFAULT_TELLURIC_BANDS_AA))
+        bands = DEFAULT_TELLURIC_BANDS_AA
 
     # Combine masks across all bands
     tell_mask = np.zeros_like(w, dtype=bool)
-    for (wmin, wmax) in bands_in_input_units:
-        a = min(wmin, wmax) - pad
-        b = max(wmin, wmax) + pad
-        tell_mask |= (w >= a) & (w <= b)
+    bands_used = []
+    for band in bands:
+        a = min(band.wmin, band.wmax) - pad
+        b = max(band.wmin, band.wmax) + pad
+        overlap = (w >= a) & (w <= b)
+        if overlap.any():
+            tell_mask |= overlap
+            bands_used.append(band)
 
+    logger.info("Masked %d pixels in %d telluric bands", tell_mask.sum(), len(bands_used))
     new_weight = np.array(wt, copy=True)
     new_weight[tell_mask] = 0.0
 
     if return_mask:
-        return new_weight, tell_mask
+        return new_weight, tell_mask, bands_used
     return new_weight
 
 # Emission lines
@@ -205,10 +209,10 @@ class EmissionLine:
 DEFAULT_EMISSION_LINES_A: Tuple[EmissionLine, ...] = (
     EmissionLine("[OII]3726", 3726.03, 8.0),
     EmissionLine("[OII]3729", 3728.82, 8.0),
-    EmissionLine("Hδ",        4101.74, 10.0),
-    EmissionLine("Hγ",        4340.47, 10.0),
+    EmissionLine("Hd",        4101.74, 10.0),
+    EmissionLine("Hg",        4340.47, 10.0),
     EmissionLine("[OIII]4363",4363.21, 8.0),
-    EmissionLine("Hβ",        4861.33, 12.0),
+    EmissionLine("Hb",        4861.33, 12.0),
     EmissionLine("[OIII]4959",4958.91, 10.0),
     EmissionLine("[OIII]5007",5006.84, 10.0),
     EmissionLine("[NI]5200",  5199.0,  10.0),
@@ -216,13 +220,20 @@ DEFAULT_EMISSION_LINES_A: Tuple[EmissionLine, ...] = (
     EmissionLine("[OI]6300",  6300.30, 10.0),
     EmissionLine("[OI]6364",  6363.78, 10.0),
     EmissionLine("[NII]6548", 6548.05, 12.0),
-    EmissionLine("Hα",        6562.80, 14.0),
+    EmissionLine("Ha",        6562.80, 14.0),
     EmissionLine("[NII]6583", 6583.45, 12.0),
     EmissionLine("[SII]6716", 6716.44, 12.0),
     EmissionLine("[SII]6731", 6730.82, 12.0),
     EmissionLine("[ArIII]7136",7135.79, 12.0),
 )
 
+DEFAULT_SKY_EMISSION_LINES_A: Tuple[EmissionLine, ...] = (
+    EmissionLine("NaI 5890", 5890.0, 10.0),
+    EmissionLine("NaI 5896", 5896.0, 10.0),
+    EmissionLine("OI 5577",   5577.34, 10.0),
+    EmissionLine("OI 6300",   6300.30, 10.0),
+    EmissionLine("OI 6364",   6363.78, 10.0),
+)
 
 def mask_strong_emission_lines(
     wavelength: np.ndarray,
@@ -250,7 +261,7 @@ def mask_strong_emission_lines(
 ) -> (
     np.ndarray
     | tuple[np.ndarray, np.ndarray]
-    | tuple[np.ndarray, np.ndarray, list[str]]
+    | tuple[np.ndarray, np.ndarray, list[EmissionLine]]
 ):
     """
     Identify strong emission lines and mask them by setting weight=0.
@@ -330,6 +341,8 @@ def mask_strong_emission_lines(
     - If you already have a model continuum, you can replace the continuum
       estimation with that for even more robustness.
     """
+    logger.info(
+        "Masking strong emission lines with redshift z=%.3f and snr_threshold=%.1f", redshift, snr_threshold)
     w = np.asanyarray(wavelength)
     f = np.asanyarray(flux)
     s = np.asanyarray(uncertainty)
@@ -340,6 +353,7 @@ def mask_strong_emission_lines(
     if not (w.size == f.size == s.size == wt.size):
         raise ValueError("All inputs must have the same length.")
     if w.size < 5:
+        logger.warning("Input arrays have less than 5 pixels; skipping emission line masking.")
         new_weight = np.array(wt, copy=True)
         if return_mask and return_lines_masked:
             return new_weight, np.zeros_like(w, dtype=bool), []
@@ -359,6 +373,8 @@ def mask_strong_emission_lines(
     wt_s = wt[order]
 
     if lines is None:
+        logger.info("Using default emission line list with %d lines.",
+                    len(DEFAULT_EMISSION_LINES_A))
         lines = DEFAULT_EMISSION_LINES_A
 
     # Precompute pixel dispersion (delta-lambda), robust median for local conversion
@@ -367,14 +383,13 @@ def mask_strong_emission_lines(
     dw = np.where(dw > 0, dw, np.nan)
 
     masked = np.zeros_like(w_s, dtype=bool)
-    lines_masked: list[str] = []
+    lines_masked: list[EmissionLine] = []
 
     # Helper: continuum estimate around a given index window
     def _local_continuum(i0: int, i1: int) -> float:
         # simple robust median with sigma-clip on residuals
         seg_f = f_s[i0:i1]
         seg_s = s_s[i0:i1]
-        # ignore already-zero-weight points for continuum
         seg_wt = wt_s[i0:i1]
         good = (seg_wt > 0) & np.isfinite(seg_f) & np.isfinite(seg_s) & (seg_s > 0)
         if good.sum() < 5:
@@ -467,7 +482,7 @@ def mask_strong_emission_lines(
 
         if np.isfinite(peak_snr) and peak_snr >= snr_threshold:
             masked[k0:k1] = True
-            lines_masked.append(line.name)
+            lines_masked.append(line)
 
     new_wt_s = np.array(wt_s, copy=True)
     new_wt_s[masked] = 0.0
@@ -476,8 +491,41 @@ def mask_strong_emission_lines(
     new_weight = new_wt_s[inv_order]
     mask = masked[inv_order]
 
+    logger.info("Masked %d pixels in %d lines", mask.sum(), len(lines_masked))
+    logger.debug("Lines used: %s", ", ".join(line.name for line in lines_masked))
     if return_mask and return_lines_masked:
         return new_weight, mask, lines_masked
     if return_mask:
         return new_weight, mask
     return new_weight
+
+def mask_sky_emission_lines(*args, **kwargs) -> np.ndarray | tuple[np.ndarray, np.ndarray, list[EmissionLine]]:
+    """
+    Specialized wrapper around mask_strong_emission_lines to target sky lines.
+
+     This is a robust, low-assumption approach:
+      1) For each expected line center (rest -> observed using `z`), estimate
+         a local continuum with a running median in a window around the line.
+      2) Compute line "excess" = flux - continuum and its S/N using uncertainty.
+      3) If peak S/N within the line window exceeds `snr_threshold` (and the
+         continuum is not completely noise-dominated), mask the line region.
+    Parameters
+    ----------
+    See `mask_strong_emission_lines` for details. The only difference is that if
+    `lines` is None, a default set of common sky emission lines (mostly OH) is used.
+    Notes
+    -----
+    - This targets *strong, narrow-ish* features near known lines. It will not
+      detect arbitrary lines at unknown wavelengths unless you expand the line list.
+
+    - The default line list is focused on common sky lines in the optical/NIR, but
+        you can provide your own list for other regimes.
+
+    """
+    if kwargs.get("lines") is None:
+        logger.info("Using default sky emission line list with %d lines.",
+                    len(DEFAULT_SKY_EMISSION_LINES_A))
+        kwargs["lines"] = DEFAULT_SKY_EMISSION_LINES_A
+    if kwargs.get("redshift") != 0.0:
+        logger.warning("Redshift is non-zero (z=%.3f); sky lines will be shifted accordingly. Make sure this is intended.", kwargs.get("redshift"))
+    return mask_strong_emission_lines(*args, **kwargs)
