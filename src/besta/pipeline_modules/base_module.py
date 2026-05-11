@@ -47,7 +47,6 @@ logger = get_logger(__name__)
 def _log(*args):
     logger.info(" ".join(str(arg) for arg in args))
 
-
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
@@ -173,9 +172,8 @@ class BaseModule(ClassModule):
                     f"Input pickle file {options['SSPModelFromPickle']} not found")
 
             # Load the SSP model
-            with open(
-                os.path.expandvars(options["SSPModelFromPickle"]), 'rb') as file:
-                ssp = pickle.load(file)
+            ssp = SSP.SSPBase.from_pickle(
+                os.path.expandvars(options["SSPModelFromPickle"]))
 
             self.config["ssp_model"] = ssp
             self.config["ssp_sed"] = ssp.L_lambda.value.reshape(
@@ -201,14 +199,29 @@ class BaseModule(ClassModule):
 
         # Additional arguments to be passed to the SSP model
         if options.has_value("SSPModelArgs"):
-            ssp_args = options["SSPModelArgs"]
-            if isinstance(ssp_args, str):
-                ssp_args = ssp_args.split(",")
-            _log("SSP Model extra arguments: ", ssp_args)
+            ssp_all_args = options["SSPModelArgs"]
+
+            if isinstance(ssp_all_args, str):
+                ssp_all_args = ssp_all_args.split(",")
+
+            ssp_args = []
+            ssp_kwargs = {}
+            for i, arg in enumerate(ssp_all_args):
+                if "=" in arg:
+                    key, value = arg.split("=", 1)
+                    value = io._parse_value(value)
+                    ssp_kwargs[key.strip()] = value
+                else:
+                    value = io._parse_value(arg)
+                    ssp_args.append(value)
+            _log("SSP Model extra arguments: ", ssp_args, ssp_kwargs)
         else:
             ssp_args = []
+            ssp_kwargs = {}
 
-        ssp = getattr(SSP, ssp_name)(*ssp_args, path=ssp_dir)
+        ssp_kwargs["path"] = ssp_dir
+
+        ssp = getattr(SSP, ssp_name)(*ssp_args, **ssp_kwargs)
 
         # For photometric analyses stop here
         #TODO: loose check
@@ -218,24 +231,18 @@ class BaseModule(ClassModule):
         # Parameters to format the templates to the input spectra
         velscale = options["velscale"]
 
-        if options.has_value("SSP-NMF-N"):
-            n_nmf = options.get_int("SSP-NMF-N")
-        else:
-            n_nmf = None
-
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
-        extra_offset_pixel = int(velocity_buffer / velscale)
+        extra_offset_pixel = np.ceil(velocity_buffer / velscale)
         _log(
             "Log-binning SSP spectra to velocity scale: ",
             velscale,
-            " km/s",
+            " km/s per pixel",
             f"\nKeeping {extra_offset_pixel} extra pixels at both edges",
         )
 
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
-            # Add extra pixels at the edges to prevent corruption during convolution
         else:
             ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
             extra_offset_pixel = 0
@@ -250,7 +257,6 @@ class BaseModule(ClassModule):
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
         _log("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
-
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
@@ -301,22 +307,6 @@ class BaseModule(ClassModule):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda[ith], lsf_sigma_pixels)
 
-        # Reshape the SSP model from (metal, age, wave) -> (metal * age, wave)
-        ssp_sed = ssp.L_lambda.value.reshape(
-            (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
-        )
-        # Apply Non-negative Matrix Factorisation for reducing dimensionality
-        if n_nmf is not None:
-            _log(
-                "Reducing SSP model dimensionality with Non-negative Matrix Factorisation",
-                "\nNo. of components: ",
-                n_nmf,
-            )
-            # TODO: hard-coded parameters
-            pca = NMF(n_components=n_nmf, alpha_H=1.0, max_iter=n_nmf * 1000)
-            pca.fit(ssp_sed)
-            ssp_sed = pca.components_
-
         self.config["ssp_model"] = ssp
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
         # Grid parameters
@@ -324,8 +314,7 @@ class BaseModule(ClassModule):
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
             _log("Saving SSP model to ", options["SaveSSPModel"])
-            with open(os.path.expandvars(options["SaveSSPModel"]), 'wb') as file:
-                pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
+            ssp.to_pickle(os.path.expandvars(options["SaveSSPModel"]))
         _log("-> Configuration done.")
         return
 
