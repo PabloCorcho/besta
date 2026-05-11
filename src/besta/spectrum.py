@@ -12,8 +12,15 @@ import numpy as np
 import scipy
 from scipy import ndimage
 from scipy.special import legendre
+from scipy.signal import find_peaks
+from scipy.ndimage import median_filter, label
+from scipy.interpolate import make_smoothing_spline
+from scipy.optimize import curve_fit
+
+from astropy.table import Table
 from astropy import constants
 from astropy import units as u
+
 from besta.logging import get_logger
 
 logger = get_logger(__name__)
@@ -129,6 +136,7 @@ def mask_telluric_regions(
     weight: Optional[np.ndarray] = None,
     bands: Optional[Sequence[Tuple[float, float]]] = None,
     pad: float = 0.0,
+    redshift: float = 0.0,
     return_mask: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray, list[TelluricBand]]:
     """
@@ -158,6 +166,8 @@ def mask_telluric_regions(
         If ``return_mask`` is True, also return the boolean mask of where weights were set to 0.
     """
     logger.info("Masking telluric regions with pad=%.1f Angstrom", pad)
+    if redshift != 0.0:
+        logger.warning("Redshift is non-zero (z=%.3f); telluric bands will be shifted accordingly. Make sure this is intended.", redshift)
     w = np.asanyarray(wavelength)
     if weight is None:
         wt = np.ones_like(w)
@@ -179,8 +189,8 @@ def mask_telluric_regions(
     tell_mask = np.zeros_like(w, dtype=bool)
     bands_used = []
     for band in bands:
-        a = min(band.wmin, band.wmax) - pad
-        b = max(band.wmin, band.wmax) + pad
+        a = band.wmin - pad
+        b = band.wmax + pad
         overlap = (w >= a) & (w <= b)
         if overlap.any():
             tell_mask |= overlap
@@ -529,3 +539,131 @@ def mask_sky_emission_lines(*args, **kwargs) -> np.ndarray | tuple[np.ndarray, n
     if kwargs.get("redshift") != 0.0:
         logger.warning("Redshift is non-zero (z=%.3f); sky lines will be shifted accordingly. Make sure this is intended.", kwargs.get("redshift"))
     return mask_strong_emission_lines(*args, **kwargs)
+
+def estimate_continuum(wl, flux, err, weight, knot_spacing=100.0, sigma_clip=3.0):
+
+    knots = np.arange(wl.min() + knot_spacing / 2, wl.max(), knot_spacing)
+    knots_idx = np.searchsorted(wl, knots)
+    knots_idx = np.insert(knots_idx, 0, 0)
+    knots_idx[-1] = len(wl) - 1
+
+    log_flux = np.where(flux > 0, np.log(flux), np.nan)
+    log_flux_err = np.where(flux > 0, err / flux, np.nan)
+    weights = np.where((flux > 0) & (err > 0), weight / log_flux_err**2, 0.0)
+    # Initial fit using weighted median in each knot region
+    knot_flux = np.array(
+        [np.nanmedian(
+            log_flux[idx[0]:idx[1]][weights[idx[0]:idx[1]] > 0]
+            ) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for idx in zip(knots_idx[:-1], knots_idx[1:])])
+    knot_flux_nmad = np.array(
+        [1.48 * np.nanmedian(
+            np.abs(log_flux[idx[0]:idx[1]][weights[idx[0]:idx[1]] > 0] - knot_flux[i])
+            ) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))])
+
+    log_flux_model = np.interp(wl, knots, knot_flux)
+    log_flux_nmad_model = np.interp(wl, knots, knot_flux_nmad)
+    residuals = log_flux - log_flux_model
+    mask = np.abs(residuals) > sigma_clip * log_flux_nmad_model
+    weights[mask] = 0.0
+
+    knot_flux = np.array(
+        [np.nansum(
+            log_flux[idx[0]:idx[1]] * weights[idx[0]:idx[1]]
+            ) / np.nansum(weights[idx[0]:idx[1]]) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for idx in zip(knots_idx[:-1], knots_idx[1:])])
+    
+    knot_flux_var = np.array(
+        [np.nansum(
+            (log_flux[idx[0]:idx[1]] - knot_flux[i])**2 * weights[idx[0]:idx[1]]
+            ) / np.nansum(weights[idx[0]:idx[1]]) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))])
+
+    knot_weights = np.array(
+        [np.nansum(weights[idx[0]:idx[1]]) for idx in zip(knots_idx[:-1], knots_idx[1:])])
+    
+    good_knots = knot_weights > 0
+    if good_knots.sum() < 4:
+        logger.warning("Not enough good knots to fit continuum; returning median flux as flat continuum.")
+        median_flux = np.nanmedian(flux[weight > 0]) if np.any(weight > 0) else 1.0
+        return np.full_like(wl, median_flux), np.full_like(wl, median_flux)
+
+    # Sigma-clip residuals and refit
+    spline = make_smoothing_spline(
+        knots[good_knots], knot_flux[good_knots], w=knot_weights[good_knots])
+    continuum = np.exp(spline(wl))
+    continuum_var = np.exp(spline(wl))**2 * np.interp(wl, knots, knot_flux_var)
+    return continuum, continuum_var**0.5
+
+def _gaussian(wl, line_flux, center, sigma):
+    return line_flux / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((wl - center) / sigma)**2)
+
+def _gaussian_fit(wl, flux, err, weight, line_id, lines_mask):
+
+    mask = (lines_mask == line_id) & np.isfinite(flux) & np.isfinite(err) & (err > 0) & (weight > 0)
+
+    n_valid = np.count_nonzero(mask)
+    if not n_valid:
+        return dict(line_flux=0.0, line_flux_err=0.0, center=np.nan, sigma=np.nan, npixels=0, flag=1)
+    elif n_valid < 3:
+        print("Not enough pixels to fit Gaussian for line_id=%d; using peak and width estimates instead.", line_id)
+        peak = np.argmax(flux[mask])
+        wl_peak = wl[mask][peak]
+        sigma = np.clip(wl[mask].ptp() / 2.355, (wl[1] - wl[0]) / 10, None)
+        return dict(line_flux=flux[mask][peak], line_flux_err=0.0,
+                    center=wl_peak, sigma=sigma, npixels=n_valid, flag=2)
+
+    mean = np.sum(wl[mask] * flux[mask] * weight[mask]) / np.sum(flux[mask] * weight[mask])
+    sigma = np.sqrt(np.sum(weight[mask] * flux[mask] * (wl[mask] - mean)**2) / np.sum(weight[mask] * flux[mask]))
+    line_flux = np.sum(weight[mask] * flux[mask]) / np.sum(weight[mask])
+
+    try:
+        popt, pcov = curve_fit(_gaussian, wl[mask], flux[mask],
+                  p0=[line_flux, mean, sigma],
+                  bounds=([0, wl[mask].min(), wl[mask].ptp() / 2.355 / 10],
+                          [np.inf, wl[mask].max(), wl[mask].ptp() * 2]),
+                  sigma=err[mask], absolute_sigma=True)
+    except:
+        print("something went wrong with the Gaussian fit; using MLE estimates instead.")
+        logger.warning("Gaussian fit failed for line_id=%s; using MLE estimates instead.", line_id)
+        return dict(line_flux=line_flux, line_flux_err=line_flux, center=mean,
+                    sigma=sigma, npixels=n_valid, flag=3)
+
+    return dict(line_flux=line_flux, line_flux_err=np.sqrt(np.diag(pcov)[0]),
+                center=mean, sigma=sigma, npixels=n_valid, flag=0)
+
+def find_emission_lines(wl, flux, err, weight=None,
+                        continuum=None, continuum_err=None,
+                        snr_threshold=3.0,
+                        min_continuum_snr=1.0,
+                        cont_sigma_clip=1.5,
+                        knot_spacing=100.0):
+
+    if weight is None:
+        weight = np.ones_like(wl)
+
+    # Estimate continuum
+    if continuum is None and continuum_err is None:
+        continuum, continuum_err = estimate_continuum(
+            wl, flux, err, weight, knot_spacing=knot_spacing,
+            sigma_clip=cont_sigma_clip)
+    
+    # Continuum-free flux and SNR
+    clean_flux = flux - continuum
+    clean_flux_err = np.sqrt(err**2 + continuum_err**2)
+    clean_snr = np.where(clean_flux_err > 0, clean_flux / clean_flux_err, 0.0)
+    # Mask regions where continuum is not well constrained
+    cont_snr = np.where(continuum_err > 0, continuum / continuum_err, 0.0)
+    clean_snr[cont_snr < min_continuum_snr] = 0.0
+
+    bright_pixels = clean_snr > snr_threshold
+    line_ids, nlines = label(bright_pixels)
+    # TODO: line de-blending
+
+    output_table = Table(
+        names=["line_flux", "line_flux_err", "center", "sigma", "npixels", "flag"],
+        dtype=[float, float, float, float, int, int])
+
+    for line_id in range(1, nlines + 1):
+        fit_params = _gaussian_fit(wl, flux, err, weight, line_id, line_ids)
+        output_table.add_row(fit_params)
+
+    return output_table, (continuum, continuum_err)
+
