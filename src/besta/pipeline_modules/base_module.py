@@ -778,10 +778,10 @@ class SpectraFitModule(BaseModule):
 
         Returns
         -------
-        line_fluxes : dict
-            Dictionary with emission line names as keys and measured fluxes as values.
-        line_ews : dict
-            Dictionary with emission line names as keys and measured equivalent widths as values.
+        line_table : :class:`astropy.table.Table`
+            Table containing the measured emission line fluxes.
+        line_segm_map : :class:`besta.spectrum.LineSegmentationMap`
+            Map containing the segmentation information for the emission lines.
         """
         _log("Measuring emission line fluxes from input solution")
         wavelength = self.config["wavelength"].to_value("Angstrom")
@@ -792,12 +792,12 @@ class SpectraFitModule(BaseModule):
         weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
         weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
 
-        line_table, _ = spectrum.find_emission_lines(
+        line_table, line_segm_map = spectrum.find_emission_lines(
             wavelength, flux, flux_error, flux_model,
             continuum=flux_model, continuum_error=flux_model / 100,
             **kwargs)
 
-        return line_table, flux - flux_model, flux_model, weights
+        return line_table, line_segm_map
 
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
