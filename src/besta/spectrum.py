@@ -971,32 +971,23 @@ class LineSegmentationMap:
                         center=wl_peak, sigma=sigma, npixels=n_valid, flag=2)
 
         weighted_flux = np.sum(flux[mask] * weights[mask])
-        if weighted_flux <= 0:
-            mean = float(np.median(wl[mask]))
-            sigma = max(float(np.std(wl[mask])), (wl[1] - wl[0]) / 10)
-            line_flux = 0.0
-        else:
-            mean = np.sum(wl[mask] * flux[mask] * weights[mask]) / weighted_flux
-            mean = float(np.clip(mean, wl[mask].min(), wl[mask].max()))
-            sigma = np.sqrt(
-                np.sum(weights[mask] * flux[mask] * (wl[mask] - mean)**2) / weighted_flux)
-            sigma = np.clip(sigma, (wl[1] - wl[0]) / 10, None)
-            line_flux = np.sum(weights[mask] * flux[mask])
-            line_flux = max(line_flux, 0.0)
+        mean = np.median(wl[mask])
+        sigma = max(np.std(wl[mask]), (wl[1] - wl[0]) / 10)
+        line_flux = np.nanmax(flux[mask])
 
         try:
             popt, pcov, infodict, messg, ier = curve_fit(
                     _gaussian, wl[mask], flux[mask],
                     p0=[line_flux, mean, sigma],
                     bounds=([0, wl[mask].min(), (wl[1] - wl[0]) / 10],
-                            [10 * line_flux, wl[mask].max(), 100]),
-                    # sigma=err[mask], absolute_sigma=True,
+                            [10 * line_flux, max(wl[mask].min() + wl[1] - wl[0], wl[mask].max()), 100]),
+                    sigma=err[mask], absolute_sigma=True,
                     full_output=True, ftol=1e-9, maxfev=1000)
             line_flux, mean, sigma = popt
 
         except Exception as e:
-            logger.warning("Gaussian fit failed for line_id=%s; using MLE estimates instead.",
-                        line_id)
+            logger.warning("Gaussian fit failed (%s) for line_id=%s; using MLE estimates instead.",
+                           str(e), line_id)
             return dict(id=line_id, line_flux=line_flux, line_flux_err=line_flux, center=mean,
                         sigma=sigma, npixels=n_valid, flag=3)
 
@@ -1019,7 +1010,9 @@ class LineSegmentationMap:
         """Fit all lines in the segmentation map and return a table of results."""
         output_table = Table(
             names=["id", "line_flux", "center", "line_flux_err", "sigma", "npixels", "flag"],
-            dtype=[int, float, float, float, float, int, int]
+            dtype=[int, float, float, float, float, int, int],
+            meta={"description": "Fitted parameters for each emission line segment",
+                  "flags": "0=good fit, 1=no valid pixels, 2=not enough pixels for fit, 3=fit failed, used MLE estimates" }
         )
         measured_lines = []
         for line_id in range(1, self.nlines + 1):
@@ -1129,11 +1122,13 @@ def find_emission_lines(wl, flux, err, weights=None,
     bright_pixels = clean_snr > snr_threshold
     line_ids, nlines = label(bright_pixels)
     slices = find_objects(line_ids)  # just to log the line regions
+    logger.info("Initial detection found %d candidate lines with SNR > %.1f", nlines, snr_threshold)
     # Get number of pixels in each line and filter by min_npixels
     line_pixel_counts = np.array([s[0].stop - s[0].start for s in slices])
     valid_line_ids = np.where(line_pixel_counts >= min_npixels)[0] + 1
     line_ids = np.where(np.isin(line_ids, valid_line_ids), line_ids, 0)
     nlines = len(valid_line_ids)
+    logger.info("%d candidate lines have at least %d pixels above the SNR threshold.", nlines, min_npixels)
     # re-map line ids to 1..nlines
     unique_ids = np.unique(line_ids)
     new_id_map = {old_id: new_id for new_id, old_id in enumerate(
