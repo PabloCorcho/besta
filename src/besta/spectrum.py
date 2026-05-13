@@ -1041,6 +1041,66 @@ class LineSegmentationMap:
         self.eline_flux = eline_flux
         return output_table
 
+
+def _watershed_1d(signal: np.ndarray, markers: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    1D watershed segmentation for deblending overlapping emission lines.
+
+    Starting from labeled seed regions (markers), flood outward following
+    descending signal gradient until regions meet or the mask boundary is reached.
+
+    Parameters
+    ----------
+    signal : ndarray
+        1D array used to guide the flooding (typically SNR).
+        Higher values are flooded first.
+    markers : ndarray
+        Integer label array with seed pixels (>0) already identified.
+        0 means unlabeled; will be filled by watershed.
+    mask : ndarray of bool
+        Only pixels where mask is True are eligible for flooding.
+
+    Returns
+    -------
+    labels : ndarray of int
+        Label array after watershed. Pixels outside the mask remain 0.
+    """
+    from heapq import heappush, heappop
+
+    labels = np.array(markers, dtype=int, copy=True)
+    in_queue = np.zeros(len(signal), dtype=bool)
+
+    # Priority queue: (-signal_value, pixel_index, label)
+    # Negative because heapq is a min-heap; we want to process highest signal first
+    heap = []
+
+    # Seed the queue with all boundary pixels of each marker region
+    for i in range(len(signal)):
+        if labels[i] > 0 and mask[i]:
+            for di in (-1, 1):
+                nb = i + di
+                if 0 <= nb < len(signal) and mask[nb] and labels[nb] == 0 and not in_queue[nb]:
+                    heappush(heap, (-signal[nb], nb, labels[i]))
+                    in_queue[nb] = True
+
+    while heap:
+        neg_val, idx, lbl = heappop(heap)
+
+        # Skip if already labeled by a previous (higher-priority) flood
+        if labels[idx] != 0:
+            continue
+
+        labels[idx] = lbl
+
+        # Expand to unlabeled neighbours
+        for di in (-1, 1):
+            nb = idx + di
+            if 0 <= nb < len(signal) and mask[nb] and labels[nb] == 0 and not in_queue[nb]:
+                heappush(heap, (-signal[nb], nb, lbl))
+                in_queue[nb] = True
+
+    return labels
+
 @_parse_lines_param_decorator
 def find_emission_lines(wl, flux, err, weights=None,
                         continuum=None, continuum_error=None,
@@ -1052,7 +1112,8 @@ def find_emission_lines(wl, flux, err, weights=None,
                         cont_sigma_clip=1.5,
                         knot_spacing=100.0,
                         min_npixels: int =3,
-                        pad_detection_pix: int = 10):
+                        pad_detection_pix: int = 10,
+                        deblend_lines: bool = True):
     """Find and fit emission lines in a spectrum.
 
     Parameters
@@ -1084,7 +1145,10 @@ def find_emission_lines(wl, flux, err, weights=None,
         Minimum number of contiguous pixels above the SNR threshold to consider a valid line detection.
     pad_detection_pix : int, optional
         Number of pixels to pad on either side of detected line regions to ensure the full line is captured, especially for broad lines.
-
+    deblend_lines : bool, optional
+        If True, apply 1D watershed deblending to separate overlapping line detections.
+        Each local SNR maximum seeds its own region and regions are grown by flooding
+        in descending SNR order until they meet. Default is True.
     Returns
     -------
     output_table : astropy.table.Table
@@ -1123,6 +1187,39 @@ def find_emission_lines(wl, flux, err, weights=None,
     line_ids, nlines = label(bright_pixels)
     slices = find_objects(line_ids)  # just to log the line regions
     logger.info("Initial detection found %d candidate lines with SNR > %.1f", nlines, snr_threshold)
+
+    # Deblend lines
+    if deblend_lines:
+        # Find local SNR maxima within each labeled region to use as seeds
+        peak_markers = np.zeros_like(line_ids)
+        next_marker_id = 1
+        for seg_id in range(1, nlines + 1):
+            seg_indices = np.where(line_ids == seg_id)[0]
+            if len(seg_indices) == 0:
+                continue
+            seg_snr = clean_snr[seg_indices]
+            # Find local peaks within this segment
+            local_peaks, _ = find_peaks(seg_snr)
+            if len(local_peaks) == 0:
+                # No local peak found; use the global maximum as the single seed
+                local_peaks = [int(np.argmax(seg_snr))]
+            for peak_pix in local_peaks:
+                global_idx = seg_indices[peak_pix]
+                peak_markers[global_idx] = next_marker_id
+                next_marker_id += 1
+
+        n_seeds = next_marker_id - 1
+        logger.info("Watershed deblending: found %d peak seeds across %d initial regions.", n_seeds, nlines)
+
+        if n_seeds > nlines:
+            # Only run watershed if we actually found sub-peaks worth splitting
+            line_ids = _watershed_1d(clean_snr, peak_markers, bright_pixels)
+            nlines = np.unique(line_ids[line_ids > 0]).size
+            slices = find_objects(line_ids)
+            logger.info("After watershed deblending, found %d candidate lines.", nlines)
+        else:
+            logger.info("No additional peaks found; skipping watershed split.")
+
     # Get number of pixels in each line and filter by min_npixels
     line_pixel_counts = np.array([s[0].stop - s[0].start for s in slices])
     valid_line_ids = np.where(line_pixel_counts >= min_npixels)[0] + 1
@@ -1140,8 +1237,21 @@ def find_emission_lines(wl, flux, err, weights=None,
         for i, s in enumerate(slices, start=1):
             if s is None:
                 continue
-            start = max(0, s[0].start - pad_detection_pix)
-            stop = min(len(wl), s[0].stop + pad_detection_pix)
+            # avoid overlap with neighboring lines by only padding within the current line segment
+            if i > 1 and s[0].start - pad_detection_pix < slices[i - 2][0].stop:
+                dist_to_prev = s[0].start - slices[i - 2][0].stop
+                pad_left = min(pad_detection_pix, dist_to_prev)
+            else:
+                pad_left = pad_detection_pix
+            
+            if i < len(slices) and s[0].stop + pad_detection_pix > slices[i][0].start:
+                dist_to_next = slices[i][0].start - s[0].stop
+                pad_right = min(pad_detection_pix, dist_to_next)
+            else:
+                pad_right = pad_detection_pix
+
+            start = max(0, s[0].start - pad_left)
+            stop = min(len(wl), s[0].stop + pad_right)
             line_ids[start:stop] = i
 
     logger.info("Found %d candidate emission lines with SNR > %.1f", nlines,
