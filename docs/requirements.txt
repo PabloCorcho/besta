@@ -11,4 +11,5 @@ scipy>=1.10
 requests>=2.30
 synphot
 population-synthesis-toolkit
+psutil
 #yaml
