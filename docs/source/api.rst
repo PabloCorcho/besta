@@ -92,7 +92,6 @@ Candidate selection
 
 .. automodule:: besta.grid.prob
    :members:
-   :no-index:
    :show-inheritance:
 
 .. automodule:: besta.grid.transforms

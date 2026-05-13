@@ -24,13 +24,13 @@ Pipeline modules configuration
 ******************************
 
 This sections describes the configuration parameters used by BESTA fitting
-modules (see :class:`besta.pipeline.base.BaseModule` and its specialised subclasses).
+modules (see :class:`besta.pipeline_modules.base_module.BaseModule` and its specialised subclasses).
 
 Single Stellar Population models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 These options control how the SSP templates are loaded and prepared in
-:meth:`besta.pipeline.base.BaseModule.prepare_ssp_model`.
+:meth:`besta.pipeline_modules.base_module.BaseModule.prepare_ssp_model`.
 
 - ``SSPModel``
 
@@ -113,7 +113,7 @@ Spectral data preparation
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 These options are used by
-:meth:`besta.pipeline.base.SpectraFitModule.prepare_observed_spectra`.
+:meth:`besta.pipeline_modules.base_module.SpectraFitModule.prepare_observed_spectra`.
 
 - ``inputSpectrum``
 
@@ -166,7 +166,7 @@ Photometric data preparation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 These options are used by
-:meth:`besta.pipeline.base.PhotometryFitModule.prepare_observed_photometry`.
+:meth:`besta.pipeline_modules.base_module.PhotometryFitModule.prepare_observed_photometry`.
 
 - ``inputPhotometry``
 
@@ -198,7 +198,7 @@ These options are used by
 Star formation history models
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-These options are used by :meth:`besta.pipeline.base.BaseModule.prepare_sfh_model`.
+These options are used by :meth:`besta.pipeline_modules.base_module.BaseModule.prepare_sfh_model`.
 
 - ``SFHModel``
 
@@ -255,7 +255,7 @@ If ``use_transforms=True`` for your SFH, set priors on the latent variables:
 - exp/delta latents: symmetric ranges around 0 (e.g. ``t_at_frac_0.5 = -3 0 3``).
 
 CosmoSIS will treat single numbers as fixed parameters; missing parameters are
-back-filled with fixed values when converting solutions to :class:`cosmosis.DataBlock`
+back-filled with fixed values when converting solutions to CosmoSIS ``DataBlock``
 objects for plotting or post-processing.
 
 Configuration examples
@@ -373,7 +373,7 @@ spectra of the same galaxy simultaneously with shared parameters:
    pipeline = MainPipeline([cfg], n_cores_list=[1])
    pipeline.execute_all(plot_result=True)
 
-Not that, while using the same SSP model, the resolution and wavelength range
+Note that, while using the same SSP model, the resolution and wavelength range
 can differ between spectra.
 
 .. note::
@@ -385,12 +385,12 @@ can differ between spectra.
 Dust extinction law
 ^^^^^^^^^^^^^^^^^^^
 
-These options are used by :meth:`besta.pipeline.base.BaseModule.prepare_extinction_law`.
+These options are used by :meth:`besta.pipeline_modules.base_module.BaseModule.prepare_extinction_law`.
 
 - ``ExtinctionLaw`` *(optional)*
 
   Name of the dust attenuation/extinction law passed to
-  :class:`pst.dust.DustScreen`. If not provided, no extinction law is applied.
+  ``pst.dust.DustScreen``. If not provided, no extinction law is applied.
 
 
 Multiplicative polynomials
@@ -399,7 +399,7 @@ Multiplicative polynomials
 When fitting spectra, a multiplicative polynomial can be included in the model to
 absorb smooth flux-calibration residuals and/or large-scale continuum mismatches.
 This is configured in
-:meth:`besta.pipeline.base.SpectraFitModule.prepare_legendre_polynomials`.
+:meth:`besta.pipeline_modules.base_module.SpectraFitModule.prepare_legendre_polynomials`.
 
 To enable the polynomial, set:
 

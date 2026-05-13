@@ -145,6 +145,7 @@ class PieceWiseSFHMixin:
 
     @sfh_bin_keys.setter
     def sfh_bin_keys(self, value):
+        """Set the parameter keys associated with the SFH bins."""
         self._sfh_bin_keys = value
 
     def get_sfh_parameters_array(self, datablock: DataBlock, dtype=float):
@@ -181,7 +182,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising FixedTimeSFH model")
+        logger.info("Initialising FixedTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
@@ -195,11 +196,11 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         self.time = self.today - self.lookback_time
         if (self.time < 0).any():
-            logger.warning("[SFH] lookback time bin larger than the age of the Universe")
+            logger.warning("lookback time bin larger than the age of the Universe")
 
         logm_min = kwargs.get("logmass_min", -6)
-        logger.info("[SFH] Setting up free parameters")
-        logger.info("[SFH] Minimum log(M/Msun)=%s", logm_min)
+        logger.info("Setting up free parameters")
+        logger.info("Minimum log(M/Msun)=%s", logm_min)
         self.sfh_bin_keys = []
         for lbt in self.lookback_time[1:-1].to_value("Gyr"):
             # Initialise parameters assuming a constant star formation history
@@ -219,6 +220,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-time SFH model from a CosmoSIS DataBlock."""
         logm_formed = self.get_sfh_parameters_array(datablock)
         if self.use_transforms:
             # Enforce fractions that sum to one
@@ -274,7 +276,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising FixedGrid-sSFR-SFH model")
+        logger.info("Initialising FixedGrid-sSFR-SFH model")
         self.lookback_time = check_unit(np.sort(lookback_time)[::-1], u.Gyr)
 
         # Initialise the PST model
@@ -309,6 +311,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-time sSFR model from a CosmoSIS DataBlock."""
         ssfr_over_last = self.get_sfh_parameters_array(datablock)
 
         if self.use_transforms:
@@ -386,16 +389,16 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, mass_fraction, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising FixedMassFracSFH model")
+        logger.info("Initialising FixedMassFracSFH model")
         mass_fraction = np.sort(mass_fraction)
         self.sfh_bin_keys = []
         for frc in mass_fraction:
             k = f"t_at_frac_{frc:.4f}"
             self.sfh_bin_keys.append(k)
             self.free_params[k] = [
-                0,
+                1e-3,
                 frc * self.today.to_value("Gyr"),
-                self.today.to_value("Gyr"),
+                self.today.to_value("Gyr") * 0.999,
             ]
 
         self.model = cem.TabularMassFracCEM(
@@ -409,6 +412,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-mass-fraction SFH model from a CosmoSIS DataBlock."""
         times = self.get_sfh_parameters_array(datablock)
         if self.use_transforms:
             # Enforce strictly increasing times within [0, today]
@@ -470,7 +474,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising ExponentialSFH model")
+        logger.info("Initialising ExponentialSFH model")
         self.time = kwargs.get("time")
         if self.time is None:
             self.time = self.today - np.geomspace(1e-5, 1, 200) * self.today
@@ -490,6 +494,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the exponential SFH model from a CosmoSIS DataBlock."""
         tau = 10 ** datablock[self.sect_name, "logtau"]
         mass = 1 - np.exp(-self.time.to_value("Gyr") / tau)
         self.model.table_mass = mass / mass[-1] << u.Msun
@@ -518,7 +523,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising DelayedTauSFH model")
+        logger.info("Initialising DelayedTauSFH model")
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
@@ -532,6 +537,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the delayed-tau SFH model from a CosmoSIS DataBlock."""
         self.model = cem.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -565,7 +571,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising DelayedTauQuenchedSFH model")
+        logger.info("Initialising DelayedTauQuenchedSFH model")
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
         self.free_params["quenching_time"] = kwargs.get(
@@ -583,6 +589,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the quenched delayed-tau SFH model from a CosmoSIS DataBlock."""
         self.model = cem.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -619,7 +626,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising LogNormalSFH model")
+        logger.info("Initialising LogNormalSFH model")
         self.model = cem.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -631,6 +638,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the log-normal SFH model from a CosmoSIS DataBlock."""
         self.model = cem.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -662,7 +670,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info("[SFH] Initialising LogNormalQuenched model")
+        logger.info("Initialising LogNormalQuenched model")
         self.time = kwargs.get("time")
         if self.time is None:
             self.time = self.today - np.geomspace(1e-5, 1, 200) * self.today
@@ -689,6 +697,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the quenched log-normal SFH model from a CosmoSIS DataBlock."""
         self.model = cem.LogNormalQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,

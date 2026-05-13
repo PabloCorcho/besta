@@ -47,7 +47,6 @@ logger = get_logger(__name__)
 def _log(*args):
     logger.info(" ".join(str(arg) for arg in args))
 
-
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
@@ -173,9 +172,8 @@ class BaseModule(ClassModule):
                     f"Input pickle file {options['SSPModelFromPickle']} not found")
 
             # Load the SSP model
-            with open(
-                os.path.expandvars(options["SSPModelFromPickle"]), 'rb') as file:
-                ssp = pickle.load(file)
+            ssp = SSP.SSPBase.from_pickle(
+                os.path.expandvars(options["SSPModelFromPickle"]))
 
             self.config["ssp_model"] = ssp
             self.config["ssp_sed"] = ssp.L_lambda.value.reshape(
@@ -201,14 +199,29 @@ class BaseModule(ClassModule):
 
         # Additional arguments to be passed to the SSP model
         if options.has_value("SSPModelArgs"):
-            ssp_args = options["SSPModelArgs"]
-            if isinstance(ssp_args, str):
-                ssp_args = ssp_args.split(",")
-            _log("SSP Model extra arguments: ", ssp_args)
+            ssp_all_args = options["SSPModelArgs"]
+
+            if isinstance(ssp_all_args, str):
+                ssp_all_args = ssp_all_args.split(",")
+
+            ssp_args = []
+            ssp_kwargs = {}
+            for i, arg in enumerate(ssp_all_args):
+                if "=" in arg:
+                    key, value = arg.split("=", 1)
+                    value = io._parse_value(value)
+                    ssp_kwargs[key.strip()] = value
+                else:
+                    value = io._parse_value(arg)
+                    ssp_args.append(value)
+            _log("SSP Model extra arguments: ", ssp_args, ssp_kwargs)
         else:
             ssp_args = []
+            ssp_kwargs = {}
 
-        ssp = getattr(SSP, ssp_name)(*ssp_args, path=ssp_dir)
+        ssp_kwargs["path"] = ssp_dir
+
+        ssp = getattr(SSP, ssp_name)(*ssp_args, **ssp_kwargs)
 
         # For photometric analyses stop here
         #TODO: loose check
@@ -218,24 +231,18 @@ class BaseModule(ClassModule):
         # Parameters to format the templates to the input spectra
         velscale = options["velscale"]
 
-        if options.has_value("SSP-NMF-N"):
-            n_nmf = options.get_int("SSP-NMF-N")
-        else:
-            n_nmf = None
-
         # Rebin the spectra
         dlnlam = velscale / spectrum.constants.c.to("km/s").value
-        extra_offset_pixel = int(velocity_buffer / velscale)
+        extra_offset_pixel = int(np.ceil(velocity_buffer / velscale))
         _log(
             "Log-binning SSP spectra to velocity scale: ",
             velscale,
-            " km/s",
-            f"\nKeeping {extra_offset_pixel} extra pixels at both edges",
+            " km/s per pixel",
+            f"Keeping {extra_offset_pixel} extra pixels at both edges",
         )
 
         if "ln_wave" in self.config:
             ln_wl_edges = self.config["ln_wave"][[0, -1]]
-            # Add extra pixels at the edges to prevent corruption during convolution
         else:
             ln_wl_edges = np.log(ssp.wavelength[[0, -1]].to_value("angstrom"))
             extra_offset_pixel = 0
@@ -250,7 +257,6 @@ class BaseModule(ClassModule):
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
         _log("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
-
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
@@ -269,7 +275,7 @@ class BaseModule(ClassModule):
             # Assume both LSF are Gaussian
             effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
 
-            if (effective_lsf_disp <= 0).any():
+            if (effective_lsf_disp < 0).any():
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)
@@ -301,22 +307,6 @@ class BaseModule(ClassModule):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda[ith], lsf_sigma_pixels)
 
-        # Reshape the SSP model from (metal, age, wave) -> (metal * age, wave)
-        ssp_sed = ssp.L_lambda.value.reshape(
-            (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1], ssp.L_lambda.shape[2])
-        )
-        # Apply Non-negative Matrix Factorisation for reducing dimensionality
-        if n_nmf is not None:
-            _log(
-                "Reducing SSP model dimensionality with Non-negative Matrix Factorisation",
-                "\nNo. of components: ",
-                n_nmf,
-            )
-            # TODO: hard-coded parameters
-            pca = NMF(n_components=n_nmf, alpha_H=1.0, max_iter=n_nmf * 1000)
-            pca.fit(ssp_sed)
-            ssp_sed = pca.components_
-
         self.config["ssp_model"] = ssp
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
         # Grid parameters
@@ -324,8 +314,7 @@ class BaseModule(ClassModule):
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
             _log("Saving SSP model to ", options["SaveSSPModel"])
-            with open(os.path.expandvars(options["SaveSSPModel"]), 'wb') as file:
-                pickle.dump(ssp, file, pickle.HIGHEST_PROTOCOL)
+            ssp.to_pickle(os.path.expandvars(options["SaveSSPModel"]))
         _log("-> Configuration done.")
         return
 
@@ -356,25 +345,38 @@ class BaseModule(ClassModule):
         _log("\n-> Configuring SFH model")
         sfh_model_name = options["SFHModel"]
         sfh_args = []
-        key = "SFHArgs1"
-        i = 1
-        while options.has_value(f"SFHArgs{i}"):
-            key = f"SFHArgs{i}"
-            i += 1
-            value = options[key]
-            if isinstance(value, str):
-                if "," in value:
-                    value = np.array(value.split(","), dtype=float)
-            sfh_args.append(value)
+        sfh_kwargs = {}
+
+        if options.has_value("SFHArgs"):
+            sfh_all_args = options["SFHArgs"]
+            if isinstance(sfh_all_args, str):
+                sfh_args, sfh_kwargs = io.string_to_func_args(sfh_all_args)
+            elif isinstance(sfh_all_args, list):
+                for arg in sfh_all_args:
+                    if isinstance(arg, str):
+                        a, ka = io.string_to_func_args(arg)
+                        sfh_args.extend(a)
+                        sfh_kwargs.update(ka)
+                    elif isinstance(arg, dict):
+                        sfh_kwargs.update(arg)
+                    else:
+                        sfh_args.append(arg)
+            else:
+                sfh_args.append(sfh_all_args)
+
+        logger.info("SFH Model extra arguments: %s", sfh_args)
+        logger.info("SFH Model extra keyword arguments: %s", sfh_kwargs)
+
         # Optional: enable parameter transforms inside SFH models
         self.config["use_transforms"] = False
         if options.has_value("use_transforms"):
             self.config["use_transforms"] = bool(options["use_transforms"])
         if self.config["use_transforms"]:
             _log("Enabling parameter transforms inside SFH model")
+
         _log("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
-        sfh_model = sfh_model(*sfh_args, **self.config)
+        sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
         _log("-> Configuration done")
 
@@ -436,6 +438,7 @@ class BaseModule(ClassModule):
                 raise ValueError("weights must be non-negative.")
             normalize = True
 
+        # TODO: to avoid this step the pipeline should store sigma
         sigma = np.sqrt(var)
 
         logp = np.empty_like(data, dtype=float)
@@ -463,7 +466,10 @@ class BaseModule(ClassModule):
         if normalize:
             wsum = np.sum(weights)
             if wsum <= 0:
-                raise ValueError("Sum of weights must be > 0.")
+                if np.all(weights == 0):
+                    raise ValueError("All weights are zero.")
+                else:
+                    raise ValueError("Sum of weights must be > 0 for normalization.")
             return np.sum(logp * weights) / wsum
 
         return np.sum(logp * weights)
@@ -519,6 +525,7 @@ class SpectraFitModule(BaseModule):
             wl_range = wavelength[[0, -1]]
         # Wavelength range to renormalize the spectra
         if options.has_value("wlNormRange"):
+            logger.warning("Input option 'wlNormRange' is deprecated and will be removed in future versions. ")
             wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
             ).to("Angstrom").value
         else:
@@ -553,27 +560,52 @@ class SpectraFitModule(BaseModule):
             telluric_pad = options.get_double("telluric_pad", default=0.0)
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
             _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
-            weights, tell_mask = spectrum.mask_telluric_regions(
+            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
                 wavelength, weight=weights,
+                redshift=0.0,
                 pad=telluric_pad,
                 return_mask=True)
-            _log("Number of masked pixels: ", np.count_nonzero(tell_mask))
+            _log("Number of telluric-absorption masked pixels: ",
+                 np.count_nonzero(tell_mask))
+            weights *= weights_tell
             self.config["telluric_mask"] = tell_mask
+            self.config["telluric_bands_used"] = bands_used
+
+        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
+            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
+            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
+            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
+            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
+                wavelength,
+                flux=flux, uncertainty=error,
+                weight=weights,
+                redshift=0.0,  # Mask in observed frame
+                pad=sky_line_pad,
+                return_mask=True, return_lines_masked=True)
+            _log("Number of sky-line masked pixels: ",
+                 np.count_nonzero(sky_mask))
+            weights *= weights_sky
+            self.config["sky_line_mask"] = sky_mask
+            self.config["sky_lines_used"] = lines_used
 
         # Optional masking of emission lines
         if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
-            weights, line_mask = spectrum.mask_strong_emission_lines(
+            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
                 wavelength, flux, error, weights,
                 redshift=redshift,
                 # line_list=emission_line_list,
                 # half_width=line_half_width,
-                return_mask=True)
-            _log("Number of masked pixels: ", np.count_nonzero(line_mask))
+                return_mask=True, return_lines_masked=True)
+            weights *= weights_el
+            _log("Number of emission-line masked pixels: ",
+                 np.count_nonzero(line_mask))
             self.config["emission_lines_mask"] = line_mask
+            self.config["emission_lines_used"] = lines_used
 
         # Apply redshift
         _log(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
+
         _log("Constraining fit to wavelength range: ", wl_range)
         good_idx = np.where(
             (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
@@ -736,7 +768,38 @@ class SpectraFitModule(BaseModule):
             _log(f"Not using multiplicative Legendre polynomials")
         _log("-> Configuration done")
 
-    def plot_solution(self, solution: DataBlock, figname=None):
+    def measure_emission_lines(self, solution: DataBlock, **kwargs):
+        """Measure emission line fluxes and EWs from the best-fit solution.
+
+        Parameters
+        ----------
+        solution : :class:`DataBlock`
+            Best-fit solution containing the model parameters.
+
+        Returns
+        -------
+        line_table : :class:`astropy.table.Table`
+            Table containing the measured emission line fluxes.
+        line_segm_map : :class:`besta.spectrum.LineSegmentationMap`
+            Map containing the segmentation information for the emission lines.
+        """
+        _log("Measuring emission line fluxes from input solution")
+        wavelength = self.config["wavelength"].to_value("Angstrom")
+        flux = self.config["flux"]
+        flux_error = np.sqrt(self.config["var"])
+        flux_model, _ = self.make_observable(solution, parse=True)
+        # Build a new weights array that only includes the masking of the sky
+        weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
+        weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
+
+        line_table, line_segm_map = spectrum.find_emission_lines(
+            wavelength, flux, flux_error, flux_model,
+            continuum=flux_model, continuum_error=flux_model / 100,
+            **kwargs)
+
+        return line_table, line_segm_map
+
+    def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
         if isinstance(flux_model, tuple):
@@ -768,8 +831,10 @@ class SpectraFitModule(BaseModule):
         # Pixel masking information
         mask_info = {"Total pixels": self.config["flux"].size,
                      "Masked pixels (w=0)": np.sum(weights <= 0),
-                     " - Telluric": np.sum(
+                     " - Telluric abs.": np.sum(
                         self.config.get("telluric_mask", 0)),
+                    " - Sky lines": np.sum(
+                        self.config.get("sky_line_mask", 0)),
                      " - Emission lines": np.sum(
                         self.config.get("emission_lines_mask", 0))}
         
@@ -790,6 +855,7 @@ class SpectraFitModule(BaseModule):
         ax.axis("off")
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
+        # SNR information
         snr = np.nanpercentile(
             self.config["flux"] / np.sqrt(self.config["var"]),
             (16, 50, 84)
@@ -846,6 +912,45 @@ class SpectraFitModule(BaseModule):
         p_residuals = np.nanpercentile(residuals, 5) * 0.95
         ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
 
+        # Plot masked emission lines and telluric regions
+        if plot_lines:
+            if "emission_lines_used" in self.config:
+                for line in self.config["emission_lines_used"]:
+                    ax.axvline(line.rest_wavelength, ls="--",
+                               lw=0.7, color="red", alpha=0.5)
+                    ax.annotate(line.name,
+                                xy=(line.rest_wavelength, ax.get_ylim()[1]),
+                                xytext=(0, -5),
+                                textcoords="offset points", ha="center", va="top",
+                                fontsize=6, color="red")
+            if "sky_lines_used" in self.config:
+                for line in self.config["sky_lines_used"]:
+                    ax.axvline(
+                        line.rest_wavelength / (1 + self.config.get("redshift", 0.0)),
+                        ls="--", lw=0.7, color="cyan", alpha=0.5)
+                    ax.annotate(
+                        line.name,
+                        xy=(line.rest_wavelength / (1 + self.config.get("redshift", 0.0)),
+                            ax.get_ylim()[1] * 0.95),
+                        xytext=(0, -5),
+                        textcoords="offset points", ha="center", va="top",
+                        fontsize=6, color="cyan")
+
+            if "telluric_bands_used" in self.config:
+                for band in self.config["telluric_bands_used"]:
+                    ax.axvspan(
+                        band.wmin / (1 + self.config.get("redshift", 0.0)),
+                        band.wmax / (1 + self.config.get("redshift", 0.0)),
+                        color="orange", alpha=0.2)
+                    ax.annotate(
+                        band.name,
+                        xy=((band.wmin + band.wmax) / 2 / (1 + self.config.get("redshift", 0.0)),
+                        ax.get_ylim()[1] * 0.9),
+                        xytext=(0, -5),
+                        textcoords="offset points", ha="center", va="top",
+                        fontsize=6, color="orange")
+        ax.legend()
+        ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
         chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["var"]
@@ -1172,6 +1277,10 @@ class EquivalentWidthFitModule(BaseModule):
     pass
 
     def plot_solution(self, solution: DataBlock, figname=None):
+        """Plot an equivalent-width fit solution.
+
+        This placeholder is implemented by concrete equivalent-width modules.
+        """
         pass
 
 class GridFitMixin:

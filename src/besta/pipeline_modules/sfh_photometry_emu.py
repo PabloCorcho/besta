@@ -27,6 +27,21 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
         self.prepare_emulator(options)
 
     def make_observable(self, block, parse=False):
+        """Create the photometric model and emulator uncertainty.
+
+        Parameters
+        ----------
+        block : DataBlock
+            Current CosmoSIS parameter block.
+        parse : bool, optional
+            Kept for API compatibility; parameters are read directly from
+            ``block``.
+
+        Returns
+        -------
+        tuple of ndarray
+            Model fluxes and model-flux uncertainties after normalization.
+        """
         targets = [block["parameters", k] for k in self.config["emulator"].target_names]
         # microJy / Msun at 10 parsec
         flux_model, flux_model_err = self.config["emulator"].predict_with_error(
@@ -38,6 +53,7 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
         return flux_model * normalization, flux_model_err * normalization
 
     def execute(self, block):
+        """Evaluate the emulator-backed photometric likelihood."""
         flux_model, flux_model_err = self.make_observable(block)
         if not np.all(np.isfinite(flux_model)):
             logger.warning(
@@ -56,6 +72,7 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
         return 0
 
     def cleanup(self):
+        """Release resources after an emulator-backed photometry fit run."""
         pass
 
 def setup(options):

@@ -15,7 +15,7 @@ from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
-from besta.logging import get_logger
+from besta.logging import get_logger, setup_logging
 from besta.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -29,14 +29,122 @@ _NUM_RE = re.compile(r"""
     (?:[eE][+-]?\d+)?$
 """, re.VERBOSE)
 
+def _split_top_level(s: str, *, split_on_whitespace=True) -> list[str]:
+    """Split a string into top-level tokens, respecting quotes and nested parentheses/brackets."""
+    s = s.strip()
+    if not s:
+        return []
+
+    tokens = []
+    current = []
+    quote = None
+    escape = False
+    paren_depth = 0
+    bracket_depth = 0
+
+    def flush_current():
+        token = "".join(current).strip()
+        if token:
+            tokens.append(token)
+        current.clear()
+
+    for char in s:
+        if quote is not None:
+            current.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+        elif char == "(":
+            paren_depth += 1
+            current.append(char)
+        elif char == ")":
+            paren_depth = max(0, paren_depth - 1)
+            current.append(char)
+        elif char == "[":
+            bracket_depth += 1
+            current.append(char)
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+            current.append(char)
+        elif paren_depth == 0 and bracket_depth == 0 and (
+            char == "," or (split_on_whitespace and char.isspace())
+        ):
+            flush_current()
+        else:
+            current.append(char)
+
+    flush_current()
+    return tokens
+
 def _split_tokens(s: str) -> list[str]:
-    # Protect quoted strings with spaces
-    if s.startswith(("'", '"')) and s.endswith(("'", '"')) and s[0] == s[-1]:
-        return [s[1:-1]]
-    # split on whitespace and/or commas
-    if "," in s:
-        s = s.replace(",", " ")
-    return [t for t in s.split() if t]
+    """Split a string into tokens, respecting quotes and nested parentheses/brackets."""
+    return _split_top_level(s, split_on_whitespace=True)
+
+def _is_wrapped_group(token: str) -> bool:
+    """Check if a token is a wrapped group like (1, 2, 3) or [1, 2, 3]."""
+    token = token.strip()
+    if len(token) < 2:
+        return False
+
+    pairs = {"(": ")", "[": "]"}
+    opening = token[0]
+    closing = pairs.get(opening)
+    if closing is None or token[-1] != closing:
+        return False
+
+    quote = None
+    escape = False
+    depth = 0
+    for index, char in enumerate(token):
+        if quote is not None:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+        elif char == opening:
+            depth += 1
+        elif char == closing:
+            depth -= 1
+            if depth == 0 and index != len(token) - 1:
+                return False
+
+    return depth == 0 and quote is None
+
+
+def _sequence_to_numpy(values, *, force_sequence=False):
+    """Coerce a list of values into a numpy array if all elements are numeric, otherwise keep as list."""
+    if not values:
+        return []
+    if len(values) == 1 and not force_sequence:
+        return values[0]
+
+    if all(isinstance(x, (int, float)) for x in values):
+        dtype = float if any(isinstance(x, float) for x in values) else int
+        return np.array(values, dtype=dtype)
+    return values
+
+
+def _parse_group(token: str):
+    inner = token[1:-1].strip()
+    if not inner:
+        return []
+
+    values = [_parse_token(part) for part in _split_tokens(inner)]
+    return _sequence_to_numpy(values, force_sequence=True)
 
 def _parse_scalar(token: str):
     low = token.lower()
@@ -58,21 +166,90 @@ def _parse_scalar(token: str):
         return token[1:-1]
     return token
 
+def _parse_token(token: str):
+    token = token.strip()
+    if _is_wrapped_group(token):
+        return _parse_group(token)
+    return _parse_scalar(token)
+
+
+def _split_keyword_arg(token: str):
+    quote = None
+    escape = False
+    paren_depth = 0
+    bracket_depth = 0
+
+    for index, char in enumerate(token):
+        if quote is not None:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+        elif char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth = max(0, paren_depth - 1)
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+        elif char == "=" and paren_depth == 0 and bracket_depth == 0:
+            key = token[:index].strip()
+            value = token[index + 1 :].strip()
+            if not key:
+                raise ValueError(f"Invalid keyword argument: {token!r}")
+            return key, value
+
+    return None
+
 def _parse_value(value: str):
     if value == "":
         return ""
 
     tokens = _split_tokens(value)
-    # If it's a single token, return a scalar
-    if len(tokens) == 1:
-        return _parse_scalar(tokens[0])
+    parsed = [_parse_token(token) for token in tokens]
+    return _sequence_to_numpy(parsed)
 
-    # Multi-token: try numeric array first; otherwise keep as list of scalars
-    scalars = [_parse_scalar(t) for t in tokens]
-    if all(isinstance(x, (int, float)) for x in scalars):
-        dtype = float if any(isinstance(x, float) for x in scalars) else int
-        return np.array(scalars, dtype=dtype)
-    return scalars
+def string_to_func_args(text: str):
+    """Parse a string of the form 'arg1, arg2, key=value' into separate args and kwargs.
+    
+    Parameters
+    ----------
+    text : str
+        Input string containing positional and keyword arguments.
+    
+    Returns
+    -------
+    args : list
+        List of positional arguments.
+    kwargs : dict
+        Dictionary of keyword arguments.
+    """
+    args = []
+    kwargs = {}
+    seen_keyword = False
+
+    for token in _split_top_level(text, split_on_whitespace=False):
+        key_value = _split_keyword_arg(token)
+        if key_value is None:
+            if seen_keyword:
+                raise ValueError(
+                    "Positional arguments cannot appear after keyword arguments."
+                )
+            args.append(_parse_value(token))
+            continue
+
+        seen_keyword = True
+        key, value = key_value
+        kwargs[key] = _parse_value(value)
+
+    return args, kwargs
 
 def _ini_file_to_dict(path):
     ini = Inifile(path)
@@ -128,7 +305,6 @@ def make_ini_file(filename, config, ignore_sec="values"):
                     content += str(value)
                 f.write(f"{content}\n")
         f.write(r"; \(ﾟ▽ﾟ)/")
-
 
 def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
@@ -257,6 +433,7 @@ class Reader(object):
 
     @ini.setter
     def ini(self, value):
+        """Set the parsed CosmoSIS configuration dictionary."""
         self._ini = value
 
     @property
@@ -266,6 +443,7 @@ class Reader(object):
 
     @ini_file.setter
     def ini_file(self, value):
+        """Set the path to the CosmoSIS configuration file."""
         self._ini_file = value
 
     @property
@@ -275,6 +453,7 @@ class Reader(object):
 
     @ini_values.setter
     def ini_values(self, value):
+        """Set the parsed CosmoSIS values dictionary."""
         self._ini_values = value
 
     @property
@@ -284,6 +463,7 @@ class Reader(object):
 
     @values_file.setter
     def values_file(self, value):
+        """Set the path to the CosmoSIS values file."""
         self._values_file = value
 
     @property
@@ -335,6 +515,7 @@ class Reader(object):
 
     @config.setter
     def config(self, value):
+        """Set the cached pipeline-module configuration."""
         self._config = value
 
     @property
@@ -344,6 +525,7 @@ class Reader(object):
 
     @results_table.setter
     def results_table(self, value):
+        """Set the table containing CosmoSIS run results."""
         self._results_table = value
 
     @property
@@ -353,6 +535,7 @@ class Reader(object):
 
     @results_file.setter
     def results_file(self, value):
+        """Set the path to the CosmoSIS results file."""
         self._results_file = value
 
     def __init__(self, ini_file=None, results_file=None):
@@ -379,6 +562,17 @@ class Reader(object):
         }
 
         self.config = {}
+        
+        # setup logging based on the first module in the pipeline (if any)
+        if self.modules:
+            logging_console = self.ini[self.modules[0]].get("logging_console")
+            logging_level = self.ini[self.modules[0]].get("logging_level", "INFO").upper()
+            logging_overwrite = self.ini[self.modules[0]].get("logging_overwrite", False)
+            logging_file = self.ini[self.modules[0]].get("logging_file", None)
+
+            setup_logging(level=logging_level, log_file=logging_file,
+                          overwrite=logging_overwrite, console=logging_console)
+
 
     def load_results(self):
         """Load the cosmosis run results associated to the ``ini`` file."""
@@ -415,12 +609,12 @@ class Reader(object):
         good_sample = np.isfinite(self.results_table[log_prob])
         tab = self.results_table[good_sample]
         maxlike_pos = np.nanargmax(tab[log_prob].value)
-        solution = {}
+
         if as_datablock:
             return self.solution_to_datablock(tab[maxlike_pos], **kwargs)
-        for (sect, name) in self.ini_values_free.keys():
-            solution[f"{sect}--{name}"] = tab[f"{sect}--{name}"][maxlike_pos]
-        return solution
+
+        else:
+            return self.solution_to_dict(tab[maxlike_pos], **kwargs)
 
     def get_top_frac_solutions(self, frac=1, log_prob="post", as_datablock=False,
                           **kwargs):
@@ -459,9 +653,9 @@ class Reader(object):
         first_row = max(1, np.ceil(post_sort.size / 100 * frac))
         solutions = tab[post_sort][-first_row:]
         if as_datablock:
-            all_solutions = [self.solution_to_datablock(sol) for sol in solutions]
+            all_solutions = [self.solution_to_datablock(sol, **kwargs) for sol in solutions]
         else:
-            all_solutions = [dict(zip(solutions.keys(), sol[:])) for sol in solutions]
+            all_solutions = [self.solution_to_dict(sol, **kwargs) for sol in solutions]
         return all_solutions
 
     def get_pct_solutions(self, pct=99, log_prob="post", as_datablock=False,
@@ -529,16 +723,40 @@ class Reader(object):
                     else self.solution_to_datablock(row, **kwargs)
                     for row in selected]
 
-        colnames = list(selected.colnames)
-        return [{name: row[name] for name in colnames} for row in selected]
+        return [self.solution_to_dict(row) for row in selected]
 
-    def solution_to_datablock(self, solution: dict):
+    def solution_to_dict(self, sample, *, add_fixed=True, extra_params=None):
+        """TODO"""
+
+        solution = {}
+
+        for (sect, name) in self.ini_values_free.keys():
+            solution[f"{sect}--{name}"] = sample[f"{sect}--{name}"]
+
+        if add_fixed:
+            for (sect, name), v in self.ini_values_fixed.items():
+                solution[f"{sect}--{name}"] = v
+        
+        if extra_params is not None:
+            for sect, name in extra_params:
+                solution[f"{sect}--{name}"] = sample[f'{sect}--{name}']
+
+        return solution
+
+        
+    def solution_to_datablock(self, solution: dict, add_fixed=True, extra_params=None):
         """Convert a solution into a DataBlock.
 
         Parameters
         ----------
         solution : dict-like
             A dictionary-like containing the parameter values.
+        add_fixed : bool, optional
+            If True, add the default values of the fixed parameters from the ini
+            values config file. Default is True.
+        extra_params : iterable, optional
+            An iterable containing pairs (section, name) of additional parameters
+            contained in ``solution`` to be included in the datablock.
 
         Returns
         -------
@@ -548,8 +766,15 @@ class Reader(object):
         datablock = cosmosis.DataBlock()
         for (sect, name) in self.ini_values_free.keys():
             datablock[sect, name] = solution[f'{sect}--{name}']
-        for (sect, name), v in self.ini_values_fixed.items():
-            datablock[sect, name] = v
+        
+        if add_fixed:
+            for (sect, name), v in self.ini_values_fixed.items():
+                datablock[sect, name] = v
+        
+        if extra_params is not None:
+            for sect, name in extra_params:
+                datablock[sect, name] = solution[f'{sect}--{name}']
+
         return datablock
 
     @classmethod
@@ -573,6 +798,18 @@ class Reader(object):
     @classmethod
     @expand_env_vars(1)
     def read_ini_file_from_results(cls, path):
+        """Read the embedded CosmoSIS ini block from a results file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the results file containing the ini block.
+
+        Returns
+        -------
+        dict
+            Parsed ini configuration stored in the results header.
+        """
         with open(path, "r") as file:
             file_lines = file.readlines()
             line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
@@ -582,8 +819,10 @@ class Reader(object):
 
     @classmethod
     def from_ini_file(cls, path_to_ini):
+        """Create a reader from a CosmoSIS ini file."""
         return cls(ini_file=path_to_ini)
 
     @classmethod
     def from_results_file(cls, path_to_results):
+        """Create a reader from a CosmoSIS results file."""
         return cls(results_file=path_to_results)

@@ -1,3 +1,5 @@
+.. _postprocessing:
+
 Post-processing and Posterior Analysis
 ======================================
 

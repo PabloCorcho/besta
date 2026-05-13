@@ -92,6 +92,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         return 0
 
     def cleanup(self):
+        """Release resources after a galaxy photometry fit run."""
         pass
 
 

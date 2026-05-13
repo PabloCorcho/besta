@@ -29,6 +29,11 @@ class FullSpectralFitModule(SpectraFitModule):
         """
         super().__init__(options, **kwargs)
         options = self.parse_options(options)
+
+        # Check for the necessary options and prepare the models
+        if not options.has_value("velscale"):
+            raise ValueError("Option 'velscale' is required for setting up FullSpectralFitModule.")
+
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
         self.prepare_sfh_model(options)
@@ -119,6 +124,7 @@ class FullSpectralFitModule(SpectraFitModule):
         return 0
 
     def cleanup(self):
+        """Release resources after a full spectral fit run."""
         pass
 
 
