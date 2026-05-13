@@ -113,6 +113,10 @@ intersphinx_mapping = {'python': ('https://docs.python.org/3/', None),
 todo_include_todos = False
 autodoc_member_order = 'bysource'
 
+# CosmoSIS modules expose a public ``module`` class alias for runtime loading.
+# It is not a separate API object and should not count against coverage.
+coverage_ignore_classes = [r"module"]
+
 # Napoleon settings
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True

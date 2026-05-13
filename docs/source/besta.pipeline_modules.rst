@@ -31,6 +31,15 @@ Full Spectral Fit
    :show-inheritance:
    :exclude-members: module
 
+Spectra Redshift Fit
+--------------------
+
+.. automodule:: besta.pipeline_modules.spectra_redshift_fit
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: module
+
 Galaxy Photometry
 -----------------
 

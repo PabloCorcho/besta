@@ -15,18 +15,22 @@ In essence, any pipeline module includes:
 Available modules
 *****************
 
-kin_dust
-^^^^^^^^
-Module devoted for the inference of the stellar kinematics from spectroscopic data
-
-sfh_spectra
-^^^^^^^^^^^
-Inference of parameters of a given Chemical Evolution Model using spectroscopic data.
-
 full_spectral_fit
 ^^^^^^^^^^^^^^^^^
 Kinematics and CEM model properties using spectroscopic data. 
 
-sfh_photometry
+spectra_redshift_fit
+^^^^^^^^^^^^^^^^^^^^
+Measure spectroscopic redshifts.
+
+galaxy_spectra
 ^^^^^^^^^^^^^^
-Inference of parameters of a given Chemical Evolution Model using photometric data.
+Spectroscopic fitting with a galaxy (multi-component) emission model.
+
+galaxy_photometry
+^^^^^^^^^^^^^^^^^
+Photometric fitting with a galaxy (multi-component) emission model.
+
+sfh_photometry_grid
+^^^^^^^^^^^^^^^^^^^
+SFH parameter inference from photometry using direct grid interpolation.
