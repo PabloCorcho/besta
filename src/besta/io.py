@@ -433,6 +433,7 @@ class Reader(object):
 
     @ini.setter
     def ini(self, value):
+        """Set the parsed CosmoSIS configuration dictionary."""
         self._ini = value
 
     @property
@@ -442,6 +443,7 @@ class Reader(object):
 
     @ini_file.setter
     def ini_file(self, value):
+        """Set the path to the CosmoSIS configuration file."""
         self._ini_file = value
 
     @property
@@ -451,6 +453,7 @@ class Reader(object):
 
     @ini_values.setter
     def ini_values(self, value):
+        """Set the parsed CosmoSIS values dictionary."""
         self._ini_values = value
 
     @property
@@ -460,6 +463,7 @@ class Reader(object):
 
     @values_file.setter
     def values_file(self, value):
+        """Set the path to the CosmoSIS values file."""
         self._values_file = value
 
     @property
@@ -511,6 +515,7 @@ class Reader(object):
 
     @config.setter
     def config(self, value):
+        """Set the cached pipeline-module configuration."""
         self._config = value
 
     @property
@@ -520,6 +525,7 @@ class Reader(object):
 
     @results_table.setter
     def results_table(self, value):
+        """Set the table containing CosmoSIS run results."""
         self._results_table = value
 
     @property
@@ -529,6 +535,7 @@ class Reader(object):
 
     @results_file.setter
     def results_file(self, value):
+        """Set the path to the CosmoSIS results file."""
         self._results_file = value
 
     def __init__(self, ini_file=None, results_file=None):
@@ -749,7 +756,7 @@ class Reader(object):
             values config file. Default is True.
         extra_params : iterable, optional
             An iterable containing pairs (section, name) of additional parameters
-            contained in ```solution```to be included in the datablock.
+            contained in ``solution`` to be included in the datablock.
 
         Returns
         -------
@@ -791,6 +798,18 @@ class Reader(object):
     @classmethod
     @expand_env_vars(1)
     def read_ini_file_from_results(cls, path):
+        """Read the embedded CosmoSIS ini block from a results file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the results file containing the ini block.
+
+        Returns
+        -------
+        dict
+            Parsed ini configuration stored in the results header.
+        """
         with open(path, "r") as file:
             file_lines = file.readlines()
             line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
@@ -800,8 +819,10 @@ class Reader(object):
 
     @classmethod
     def from_ini_file(cls, path_to_ini):
+        """Create a reader from a CosmoSIS ini file."""
         return cls(ini_file=path_to_ini)
 
     @classmethod
     def from_results_file(cls, path_to_results):
+        """Create a reader from a CosmoSIS results file."""
         return cls(results_file=path_to_results)
