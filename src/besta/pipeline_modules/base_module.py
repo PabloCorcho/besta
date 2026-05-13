@@ -1277,6 +1277,10 @@ class EquivalentWidthFitModule(BaseModule):
     pass
 
     def plot_solution(self, solution: DataBlock, figname=None):
+        """Plot an equivalent-width fit solution.
+
+        This placeholder is implemented by concrete equivalent-width modules.
+        """
         pass
 
 class GridFitMixin:

@@ -124,6 +124,7 @@ class FullSpectralFitModule(SpectraFitModule):
         return 0
 
     def cleanup(self):
+        """Release resources after a full spectral fit run."""
         pass
 
 

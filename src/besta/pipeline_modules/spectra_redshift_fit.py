@@ -268,6 +268,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         return 0
 
     def cleanup(self):
+        """Persist the redshift likelihood profile if requested."""
         if self.save_z_loglike:
             logger.info(f"Saving redshift log-likelihood profile to {self.z_loglike_path}")
             np.savetxt(

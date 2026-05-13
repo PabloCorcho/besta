@@ -27,6 +27,21 @@ class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
         self.prepare_grid_model(options)
 
     def make_observable(self, block, parse=False):
+        """Create the photometric model by interpolating the model grid.
+
+        Parameters
+        ----------
+        block : DataBlock
+            Current CosmoSIS parameter block.
+        parse : bool, optional
+            Kept for API compatibility; parameters are read directly from
+            ``block``.
+
+        Returns
+        -------
+        ndarray
+            Normalized model fluxes.
+        """
         targets = [block["parameters", k] for k in self.config["model_grid"].target_names]
         # microJy / Msun at 10 parsec
         flux_model = self.config["model_grid"].interpolate_observables(
@@ -36,6 +51,7 @@ class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
         return flux_model * normalization
 
     def execute(self, block):
+        """Evaluate the grid-interpolated photometric likelihood."""
         flux_model = self.make_observable(block)
         if not np.all(np.isfinite(flux_model)):
             logger.warning(
@@ -54,6 +70,7 @@ class SFHPhotometryGridModule(PhotometryFitModule, GridFitMixin):
         return 0
 
     def cleanup(self):
+        """Release resources after a grid-based photometry fit run."""
         pass
 
 def setup(options):

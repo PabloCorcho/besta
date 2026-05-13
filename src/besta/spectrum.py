@@ -6,6 +6,7 @@ to dealing with spectra
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from functools import wraps
 from typing import Iterable, Sequence, Tuple, Optional
 
 import numpy as np
@@ -88,6 +89,7 @@ def get_legendre_polynomial_array(
 def legendre_decorator(make_observable_mthd):
     """Include multiplicative Legendre polynomials during a fit."""
 
+    @wraps(make_observable_mthd)
     def wrapper(*args, **kwargs):
         if "legendre_pol" in args[0].config:
             legendre_pol = args[0].config["legendre_pol"]
@@ -583,6 +585,7 @@ def get_default_sky_emission_lines():
 def _parse_lines_param_decorator(func):
     """Decorator to parse the `lines` parameter."""
 
+    @wraps(func)
     def wrapper(*args, **kwargs):
         if kwargs.get("lines") is not None:
             lines_input = kwargs["lines"]
@@ -888,23 +891,29 @@ def mask_sky_emission_lines(
     """
     Specialized wrapper around mask_strong_emission_lines to target sky lines.
 
-     This is a robust, low-assumption approach:
-      1) For each expected line center (rest -> observed using `z`), estimate
-         a local continuum with a running median in a window around the line.
-      2) Compute line "excess" = flux - continuum and its S/N using uncertainty.
-      3) If peak S/N within the line window exceeds `snr_threshold` (and the
-         continuum is not completely noise-dominated), mask the line region.
+    This is a robust, low-assumption approach:
+
+    1. For each expected line center (rest to observed using redshift),
+       estimate a local continuum with a running median in a window around
+       the line.
+    2. Compute line excess as ``flux - continuum`` and its S/N using
+       uncertainty.
+    3. If peak S/N within the line window exceeds ``snr_threshold``, mask the
+       line region.
+
     Parameters
     ----------
-    See `mask_strong_emission_lines` for details. The only difference is that if
-    `lines` is None, a default set of common sky emission lines (mostly OH) is used.
+    See :func:`mask_strong_emission_lines` for details. The only difference is
+    that if ``lines`` is None, a default set of common sky emission lines is
+    used.
+
     Notes
     -----
     - This targets *strong, narrow-ish* features near known lines. It will not
       detect arbitrary lines at unknown wavelengths unless you expand the line list.
 
     - The default line list is focused on common sky lines in the optical/NIR, but
-        you can provide your own list for other regimes.
+      you can provide your own list for other regimes.
 
     """
     if kwargs.get("lines") is None:

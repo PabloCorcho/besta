@@ -74,6 +74,7 @@ class MainPipeline(object):
             break
 
     def run_command(self, command):
+        """Execute a shell command and return its process exit code."""
         logger.info(f"Running command >> {command} <<")
         return subprocess.call(command, shell=True)
 

@@ -111,6 +111,7 @@ class GalaxySpectraModule(SpectraFitModule):
         return 0
 
     def cleanup(self):
+        """Release resources after a galaxy spectra fit run."""
         pass
 
 

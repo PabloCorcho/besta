@@ -80,9 +80,24 @@ class GaussHermite(Fittable1DModel):
 
     @property
     def param_names(self):
+        """Tuple of Gaussian and Hermite coefficient parameter names."""
         return self._param_names
 
     def evaluate(self, x, *params):
+        """Evaluate the Gauss-Hermite profile.
+
+        Parameters
+        ----------
+        x : array_like
+            Coordinate values where the profile is evaluated.
+        *params
+            Gaussian parameters followed by Hermite coefficients.
+
+        Returns
+        -------
+        array_like
+            Profile values at ``x``.
+        """
         a, m, s = params[:3]  # amplitude, mean, stddev
         f = self._gaussian.evaluate(x, a, m, s)
         if self._order:

@@ -145,6 +145,7 @@ class PieceWiseSFHMixin:
 
     @sfh_bin_keys.setter
     def sfh_bin_keys(self, value):
+        """Set the parameter keys associated with the SFH bins."""
         self._sfh_bin_keys = value
 
     def get_sfh_parameters_array(self, datablock: DataBlock, dtype=float):
@@ -219,6 +220,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-time SFH model from a CosmoSIS DataBlock."""
         logm_formed = self.get_sfh_parameters_array(datablock)
         if self.use_transforms:
             # Enforce fractions that sum to one
@@ -309,6 +311,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-time sSFR model from a CosmoSIS DataBlock."""
         ssfr_over_last = self.get_sfh_parameters_array(datablock)
 
         if self.use_transforms:
@@ -409,6 +412,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the fixed-mass-fraction SFH model from a CosmoSIS DataBlock."""
         times = self.get_sfh_parameters_array(datablock)
         if self.use_transforms:
             # Enforce strictly increasing times within [0, today]
@@ -490,6 +494,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the exponential SFH model from a CosmoSIS DataBlock."""
         tau = 10 ** datablock[self.sect_name, "logtau"]
         mass = 1 - np.exp(-self.time.to_value("Gyr") / tau)
         self.model.table_mass = mass / mass[-1] << u.Msun
@@ -532,6 +537,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the delayed-tau SFH model from a CosmoSIS DataBlock."""
         self.model = cem.ExponentialDelayedZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -583,6 +589,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the quenched delayed-tau SFH model from a CosmoSIS DataBlock."""
         self.model = cem.ExponentialDelayedQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -631,6 +638,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the log-normal SFH model from a CosmoSIS DataBlock."""
         self.model = cem.LogNormalZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
@@ -689,6 +697,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
 
     def parse_datablock(self, datablock: DataBlock):
+        """Update the quenched log-normal SFH model from a CosmoSIS DataBlock."""
         self.model = cem.LogNormalQuenchedCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
