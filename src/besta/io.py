@@ -15,7 +15,7 @@ from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
 from besta import pipeline_modules
-from besta.logging import get_logger
+from besta.logging import get_logger, setup_logging
 from besta.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -555,6 +555,17 @@ class Reader(object):
         }
 
         self.config = {}
+        
+        # setup logging based on the first module in the pipeline (if any)
+        if self.modules:
+            logging_console = self.ini[self.modules[0]].get("logging_console")
+            logging_level = self.ini[self.modules[0]].get("logging_level", "INFO").upper()
+            logging_overwrite = self.ini[self.modules[0]].get("logging_overwrite", False)
+            logging_file = self.ini[self.modules[0]].get("logging_file", None)
+
+            setup_logging(level=logging_level, log_file=logging_file,
+                          overwrite=logging_overwrite, console=logging_console)
+
 
     def load_results(self):
         """Load the cosmosis run results associated to the ``ini`` file."""
