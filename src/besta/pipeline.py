@@ -112,6 +112,10 @@ class MainPipeline(object):
             ), f"{ini_values_filename} not found"
             config["pipeline"]["values"] = ini_values_filename
 
+        if n_cores == -1:
+            n_cores = os.cpu_count()
+            logger.info(f"Using all available cores: {n_cores}")
+
         if n_cores > 1:
             command = f"mpiexec -n {n_cores} cosmosis --mpi {ini_filename}"
         else:
