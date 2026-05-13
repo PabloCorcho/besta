@@ -831,8 +831,10 @@ class SpectraFitModule(BaseModule):
         # Pixel masking information
         mask_info = {"Total pixels": self.config["flux"].size,
                      "Masked pixels (w=0)": np.sum(weights <= 0),
-                     " - Telluric": np.sum(
+                     " - Telluric abs.": np.sum(
                         self.config.get("telluric_mask", 0)),
+                    " - Sky lines": np.sum(
+                        self.config.get("sky_line_mask", 0)),
                      " - Emission lines": np.sum(
                         self.config.get("emission_lines_mask", 0))}
         
@@ -929,7 +931,7 @@ class SpectraFitModule(BaseModule):
                     ax.annotate(
                         line.name,
                         xy=(line.rest_wavelength / (1 + self.config.get("redshift", 0.0)),
-                            ax.get_ylim()[1]),
+                            ax.get_ylim()[1] * 0.95),
                         xytext=(0, -5),
                         textcoords="offset points", ha="center", va="top",
                         fontsize=6, color="cyan")
@@ -943,7 +945,7 @@ class SpectraFitModule(BaseModule):
                     ax.annotate(
                         band.name,
                         xy=((band.wmin + band.wmax) / 2 / (1 + self.config.get("redshift", 0.0)),
-                        ax.get_ylim()[1]),
+                        ax.get_ylim()[1] * 0.9),
                         xytext=(0, -5),
                         textcoords="offset points", ha="center", va="top",
                         fontsize=6, color="orange")
