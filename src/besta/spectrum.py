@@ -528,6 +528,14 @@ class EmissionLineList:
 
 
 def get_default_emission_lines():
+    """Return the default optical emission-line list.
+
+    Returns
+    -------
+    EmissionLineList
+        Default list of common rest-frame galaxy emission lines with nominal
+        masking half-widths in Angstrom.
+    """
     return EmissionLineList(
         [
             EmissionLine("[OII]3726", 3726.03, 8.0),
@@ -553,6 +561,14 @@ def get_default_emission_lines():
 
 
 def get_default_sky_emission_lines():
+    """Return the default sky emission-line list.
+
+    Returns
+    -------
+    EmissionLineList
+        Default list of common sky emission lines with nominal masking
+        half-widths in Angstrom.
+    """
     return EmissionLineList(
         [
             EmissionLine("NaI 5890", 5890.0, 10.0),
@@ -1062,6 +1078,38 @@ def _gaussian(wl, line_flux, center, sigma):
 
 
 class LineSegmentationMap:
+    """Container for detected emission-line segments and fitted line products.
+
+    Parameters
+    ----------
+    line_segmentation : ndarray
+        Integer segmentation map where 0 marks non-line pixels and positive
+        values identify detected line regions.
+    flux : ndarray
+        Observed flux array.
+    wavelength : ndarray
+        Wavelength array corresponding to ``flux``.
+    error : ndarray
+        Flux uncertainty array.
+    weights : ndarray
+        Pixel weights used when fitting line profiles.
+    continuum : ndarray
+        Estimated continuum flux array.
+    continuum_error : ndarray
+        Uncertainty of the estimated continuum.
+
+    Attributes
+    ----------
+    flux_cont_sub : ndarray
+        Continuum-subtracted flux.
+    flux_cont_sub_err : ndarray
+        Uncertainty of the continuum-subtracted flux.
+    nlines : int
+        Number of labeled line regions in ``line_segmentation``.
+    lines : EmissionLineList or None
+        Fitted line measurements after calling :meth:`fit_all_lines`.
+    """
+
     def __init__(
         self,
         line_segmentation: np.ndarray,
