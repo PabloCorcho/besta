@@ -25,8 +25,10 @@ from besta.logging import get_logger
 
 logger = get_logger(__name__)
 
-def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
-                                  clip_first_zero=True):
+
+def get_legendre_polynomial_array(
+    wavelength, order, bounds=None, scale=None, clip_first_zero=True
+):
     """
     Compute an array of Legendre polynomials evaluated at normalized wavelengths.
 
@@ -82,25 +84,39 @@ def get_legendre_polynomial_array(wavelength, order, bounds=None, scale=None,
     legendre_arr = np.array(poly_set)
     return legendre_arr
 
+
 def legendre_decorator(make_observable_mthd):
     """Include multiplicative Legendre polynomials during a fit."""
+
     def wrapper(*args, **kwargs):
         if "legendre_pol" in args[0].config:
             legendre_pol = args[0].config["legendre_pol"]
             # Get the coefficients from the input DataBlock
-            coeffs = np.array([1.0] + [args[1]["legendre", f"legendre_{ith}"] for ith in range(1, legendre_pol.shape[0])])
+            coeffs = np.array(
+                [1.0]
+                + [
+                    args[1]["legendre", f"legendre_{ith}"]
+                    for ith in range(1, legendre_pol.shape[0])
+                ]
+            )
             output = make_observable_mthd(*args, **kwargs)
             if isinstance(output, tuple):
-                return output[0] * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0), output[1]
+                return (
+                    output[0] * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0),
+                    output[1],
+                )
             else:
                 return output * np.sum(legendre_pol * coeffs[:, np.newaxis], axis=0)
         else:
             return make_observable_mthd(*args, **kwargs)
+
     return wrapper
+
 
 ### Masking
 
 # Telluric regions
+
 
 @dataclass(frozen=True)
 class TelluricBand:
@@ -110,25 +126,23 @@ class TelluricBand:
     wmin: float  # in Angstrom
     wmax: float  # in Angstrom
 
+
 DEFAULT_TELLURIC_BANDS_AA: Tuple[TelluricBand, ...] = (
     # --- Optical ---
     # TelluricBand("O3 Chappuis (broad)", 5000.0, 7000.0),
-
     TelluricBand("O2 gamma (~0.63 um)", 6270.0, 6340.0),
     # TelluricBand("H2O (~0.65 um)",      6450.0, 6600.0),
-
-    TelluricBand("O2 B-band",            6860.0, 6950.0),
-    TelluricBand("H2O (~0.72 um)",       7160.0, 7400.0),
-
-    TelluricBand("O2 A-band",            7580.0, 7700.0),
-    TelluricBand("H2O (~0.82 um)",       8100.0, 8400.0),
-    TelluricBand("H2O (~0.93 um)",       9000.0, 9900.0),
-
+    TelluricBand("O2 B-band", 6860.0, 6950.0),
+    TelluricBand("H2O (~0.72 um)", 7160.0, 7400.0),
+    TelluricBand("O2 A-band", 7580.0, 7700.0),
+    TelluricBand("H2O (~0.82 um)", 8100.0, 8400.0),
+    TelluricBand("H2O (~0.93 um)", 9000.0, 9900.0),
     # --- Near-IR ---
-    TelluricBand("H2O (~1.13 um)",      11000.0, 11700.0),
-    TelluricBand("H2O (~1.40 um)",      13400.0, 15000.0),
-    TelluricBand("H2O/CO2 (~1.90 um)",  18000.0, 20000.0),
+    TelluricBand("H2O (~1.13 um)", 11000.0, 11700.0),
+    TelluricBand("H2O (~1.40 um)", 13400.0, 15000.0),
+    TelluricBand("H2O/CO2 (~1.90 um)", 18000.0, 20000.0),
 )
+
 
 def mask_telluric_regions(
     wavelength: np.ndarray,
@@ -167,7 +181,10 @@ def mask_telluric_regions(
     """
     logger.info("Masking telluric regions with pad=%.1f Angstrom", pad)
     if redshift != 0.0:
-        logger.warning("Redshift is non-zero (z=%.3f); telluric bands will be shifted accordingly. Make sure this is intended.", redshift)
+        logger.warning(
+            "Redshift is non-zero (z=%.3f); telluric bands will be shifted accordingly. Make sure this is intended.",
+            redshift,
+        )
     w = np.asanyarray(wavelength)
     if weight is None:
         wt = np.ones_like(w)
@@ -182,7 +199,10 @@ def mask_telluric_regions(
     # Build list of bands in the same units as wavelength array (i.e. input units)
     if bands is None:
         # Defaults are in microns; convert to input units by dividing by to_um
-        logger.info("Using default telluric bands with %d bands.", len(DEFAULT_TELLURIC_BANDS_AA))
+        logger.info(
+            "Using default telluric bands with %d bands.",
+            len(DEFAULT_TELLURIC_BANDS_AA),
+        )
         bands = DEFAULT_TELLURIC_BANDS_AA
 
     # Combine masks across all bands
@@ -196,7 +216,9 @@ def mask_telluric_regions(
             tell_mask |= overlap
             bands_used.append(band)
 
-    logger.info("Masked %d pixels in %d telluric bands", tell_mask.sum(), len(bands_used))
+    logger.info(
+        "Masked %d pixels in %d telluric bands", tell_mask.sum(), len(bands_used)
+    )
     new_weight = np.array(wt, copy=True)
     new_weight[tell_mask] = 0.0
 
@@ -204,11 +226,14 @@ def mask_telluric_regions(
         return new_weight, tell_mask, bands_used
     return new_weight
 
+
 # Emission lines
+
 
 @dataclass(frozen=True)
 class EmissionLine:
     """Emission line definition."""
+
     name: str
     rest_wavelength: float
     default_half_width: float = 10.0
@@ -221,6 +246,7 @@ class EmissionLine:
 
 class EmissionLineList:
     """Collection of emission lines with helper methods."""
+
     def __init__(self, lines: Iterable[EmissionLine]):
         self.lines = list(lines)
         self.size = len(self.lines)
@@ -235,7 +261,7 @@ class EmissionLineList:
     def rest_wavelengths(self) -> np.ndarray:
         """Array of rest wavelengths of the lines."""
         return np.array([line.rest_wavelength for line in self.lines])
-    
+
     @property
     def names(self) -> list[str]:
         """List of line names."""
@@ -249,20 +275,31 @@ class EmissionLineList:
     @property
     def fluxes(self) -> np.ndarray:
         """Array of measured line fluxes."""
-        return np.array([np.nan if line.flux is None else line.flux for line in self.lines])
+        return np.array(
+            [np.nan if line.flux is None else line.flux for line in self.lines]
+        )
 
     @property
     def flux_errors(self) -> np.ndarray:
         """Array of measured line-flux uncertainties."""
-        return np.array([np.nan if line.flux_error is None else line.flux_error for line in self.lines])
+        return np.array(
+            [
+                np.nan if line.flux_error is None else line.flux_error
+                for line in self.lines
+            ]
+        )
 
     @property
     def rest_wavelength_errors(self) -> np.ndarray:
         """Array of line-center uncertainties."""
-        return np.array([
-            np.nan if line.rest_wavelength_error is None else line.rest_wavelength_error
-            for line in self.lines
-        ])
+        return np.array(
+            [
+                np.nan
+                if line.rest_wavelength_error is None
+                else line.rest_wavelength_error
+                for line in self.lines
+            ]
+        )
 
     @property
     def flags(self) -> np.ndarray:
@@ -275,25 +312,27 @@ class EmissionLineList:
 
     def get_observed_wavelengths(self, redshift: float) -> np.ndarray:
         """Compute observed wavelengths of the lines given a redshift.
-        
+
         Parameters
         ----------
         redshift : float
             Redshift to apply to the rest wavelengths.
-        
+
         Returns
         -------
         np.ndarray
             Array of observed wavelengths corresponding to the input redshift.
         """
         return np.array([line.rest_wavelength * (1 + redshift) for line in self.lines])
-    
+
     def crossmatch_line_list(self, line_list: EmissionLineList):
         """Cross-match this line list with another line list and return the matched lines."""
         matched_lines = []
         for line in self.lines:
             for other_line in line_list:
-                if np.isclose(line.rest_wavelength, other_line.rest_wavelength, atol=1e-3):
+                if np.isclose(
+                    line.rest_wavelength, other_line.rest_wavelength, atol=1e-3
+                ):
                     matched_lines.append(line)
                     break
         return EmissionLineList(matched_lines)
@@ -302,12 +341,13 @@ class EmissionLineList:
         """Return a copy of the line list with updated names."""
         if len(names) != len(self.lines):
             raise ValueError("Number of names must match number of lines.")
-        return EmissionLineList([
-            replace(line, name=name)
-            for line, name in zip(self.lines, names)
-        ])
+        return EmissionLineList(
+            [replace(line, name=name) for line, name in zip(self.lines, names)]
+        )
 
-    def get_closest_line(self, wavelength: float, *, redshift: float = 0.0) -> Optional[EmissionLine]:
+    def get_closest_line(
+        self, wavelength: float, *, redshift: float = 0.0
+    ) -> Optional[EmissionLine]:
         """Return the line with observed wavelength closest to the input value."""
         if not self.lines:
             return None
@@ -315,9 +355,11 @@ class EmissionLineList:
         index = int(np.argmin(np.abs(observed_wavelengths - wavelength)))
         return self.lines[index]
 
-    def get_line_by_observed_wavelength(self, wavelength: float, redshift: float, tol: float = 5.0) -> Optional[EmissionLine]:
+    def get_line_by_observed_wavelength(
+        self, wavelength: float, redshift: float, tol: float = 5.0
+    ) -> Optional[EmissionLine]:
         """Match an input line to the list of emission lines.
-        
+
         Parameters
         ----------
         wavelength : float
@@ -326,7 +368,7 @@ class EmissionLineList:
             Redshift to apply to the rest wavelengths.
         tol : float, optional
             Tolerance for matching, by default 5.0.
-        
+
         Returns
         -------
         Optional[EmissionLine]
@@ -340,7 +382,7 @@ class EmissionLineList:
 
     def to_mask(self, wavelength, redshift=0.0) -> np.ndarray:
         """Create a boolean mask for the input wavelength array where the lines are located.
-        
+
         Parameters
         ----------
         wavelength : np.ndarray
@@ -356,14 +398,16 @@ class EmissionLineList:
         mask = np.zeros_like(wavelength, dtype=bool)
         for line in self.lines:
             obs_wl = line.rest_wavelength * (1 + redshift)  # Apply redshift
-            line_mask = (wavelength >= obs_wl - line.default_half_width) & (wavelength <= obs_wl + line.default_half_width)
+            line_mask = (wavelength >= obs_wl - line.default_half_width) & (
+                wavelength <= obs_wl + line.default_half_width
+            )
             mask |= line_mask
 
         return mask
 
     def to_table(self, filename: str = None, **table_kwargs) -> Table:
         """Save emission lines to a file.
-        
+
         Parameters
         ----------
         filename : str, optional
@@ -393,7 +437,7 @@ class EmissionLineList:
     @classmethod
     def from_table(cls, table: Table) -> EmissionLineList:
         """Create an EmissionLineList from an astropy Table.
-        
+
         Parameters
         ----------
         table : astropy.table.Table
@@ -418,16 +462,26 @@ class EmissionLineList:
         else:
             default_half_widths = np.full(len(rest_wavelengths), 10.0)
 
-        fluxes = table["flux"] if "flux" in table.colnames else np.full(len(rest_wavelengths), np.nan)
+        fluxes = (
+            table["flux"]
+            if "flux" in table.colnames
+            else np.full(len(rest_wavelengths), np.nan)
+        )
         flux_errors = (
-            table["flux_error"] if "flux_error" in table.colnames else np.full(len(rest_wavelengths), np.nan)
+            table["flux_error"]
+            if "flux_error" in table.colnames
+            else np.full(len(rest_wavelengths), np.nan)
         )
         rest_wavelength_errors = (
             table["rest_wavelength_error"]
             if "rest_wavelength_error" in table.colnames
             else np.full(len(rest_wavelengths), np.nan)
         )
-        flags = table["flag"] if "flag" in table.colnames else np.zeros(len(rest_wavelengths), dtype=int)
+        flags = (
+            table["flag"]
+            if "flag" in table.colnames
+            else np.zeros(len(rest_wavelengths), dtype=int)
+        )
 
         lines = [
             EmissionLine(
@@ -436,7 +490,9 @@ class EmissionLineList:
                 default_half_width=float(half_width),
                 flux=None if not np.isfinite(flux) else float(flux),
                 flux_error=None if not np.isfinite(flux_err) else float(flux_err),
-                rest_wavelength_error=None if not np.isfinite(rest_err) else float(rest_err),
+                rest_wavelength_error=None
+                if not np.isfinite(rest_err)
+                else float(rest_err),
                 flag=int(flag),
             )
             for name, rest_wl, half_width, flux, flux_err, rest_err, flag in zip(
@@ -454,7 +510,7 @@ class EmissionLineList:
     @classmethod
     def from_file(cls, filename: str, **table_kwargs) -> EmissionLineList:
         """Load emission lines from a file with columns.
-        
+
         Parameters
         ----------
         filename : str
@@ -473,38 +529,44 @@ class EmissionLineList:
 
 def get_default_emission_lines():
     return EmissionLineList(
-        [EmissionLine("[OII]3726", 3726.03, 8.0),
-        EmissionLine("[OII]3729", 3728.82, 8.0),
-        EmissionLine("Hd",        4101.74, 10.0),
-        EmissionLine("Hg",        4340.47, 10.0),
-        EmissionLine("[OIII]4363",4363.21, 8.0),
-        EmissionLine("Hb",        4861.33, 12.0),
-        EmissionLine("[OIII]4959",4958.91, 10.0),
-        EmissionLine("[OIII]5007",5006.84, 10.0),
-        EmissionLine("[NI]5200",  5199.0,  10.0),
-        EmissionLine("HeI5876",   5875.62, 12.0),
-        EmissionLine("[OI]6300",  6300.30, 10.0),
-        EmissionLine("[OI]6364",  6363.78, 10.0),
-        EmissionLine("[NII]6548", 6548.05, 12.0),
-        EmissionLine("Ha",        6562.80, 14.0),
-        EmissionLine("[NII]6583", 6583.45, 12.0),
-        EmissionLine("[SII]6716", 6716.44, 12.0),
-        EmissionLine("[SII]6731", 6730.82, 12.0),
-        EmissionLine("[ArIII]7136",7135.79, 12.0),
-    ])
-
-def get_default_sky_emission_lines():
-    return EmissionLineList(
-        [EmissionLine("NaI 5890", 5890.0, 10.0),
-         EmissionLine("NaI 5896", 5896.0, 10.0),
-         EmissionLine("OI 5577",   5577.34, 10.0),
-         EmissionLine("OI 6300",   6300.30, 10.0),
-         EmissionLine("OI 6364",   6363.78, 10.0),
+        [
+            EmissionLine("[OII]3726", 3726.03, 8.0),
+            EmissionLine("[OII]3729", 3728.82, 8.0),
+            EmissionLine("Hd", 4101.74, 10.0),
+            EmissionLine("Hg", 4340.47, 10.0),
+            EmissionLine("[OIII]4363", 4363.21, 8.0),
+            EmissionLine("Hb", 4861.33, 12.0),
+            EmissionLine("[OIII]4959", 4958.91, 10.0),
+            EmissionLine("[OIII]5007", 5006.84, 10.0),
+            EmissionLine("[NI]5200", 5199.0, 10.0),
+            EmissionLine("HeI5876", 5875.62, 12.0),
+            EmissionLine("[OI]6300", 6300.30, 10.0),
+            EmissionLine("[OI]6364", 6363.78, 10.0),
+            EmissionLine("[NII]6548", 6548.05, 12.0),
+            EmissionLine("Ha", 6562.80, 14.0),
+            EmissionLine("[NII]6583", 6583.45, 12.0),
+            EmissionLine("[SII]6716", 6716.44, 12.0),
+            EmissionLine("[SII]6731", 6730.82, 12.0),
+            EmissionLine("[ArIII]7136", 7135.79, 12.0),
         ]
     )
 
+
+def get_default_sky_emission_lines():
+    return EmissionLineList(
+        [
+            EmissionLine("NaI 5890", 5890.0, 10.0),
+            EmissionLine("NaI 5896", 5896.0, 10.0),
+            EmissionLine("OI 5577", 5577.34, 10.0),
+            EmissionLine("OI 6300", 6300.30, 10.0),
+            EmissionLine("OI 6364", 6363.78, 10.0),
+        ]
+    )
+
+
 def _parse_lines_param_decorator(func):
     """Decorator to parse the `lines` parameter."""
+
     def wrapper(*args, **kwargs):
         if kwargs.get("lines") is not None:
             lines_input = kwargs["lines"]
@@ -514,13 +576,19 @@ def _parse_lines_param_decorator(func):
             elif isinstance(lines_input, str):
                 # Assume it is a filename; load the line list from the file
                 kwargs["lines"] = EmissionLineList.from_file(lines_input)
-            elif isinstance(lines_input, Iterable) and all(isinstance(line, EmissionLine) for line in lines_input):
+            elif isinstance(lines_input, Iterable) and all(
+                isinstance(line, EmissionLine) for line in lines_input
+            ):
                 # It's already an iterable of EmissionLine objects; convert to EmissionLineList
                 kwargs["lines"] = EmissionLineList(lines_input)
             else:
-                raise ValueError("Invalid format for 'lines' parameter. Must be a filename or an iterable of EmissionLine objects.")
+                raise ValueError(
+                    "Invalid format for 'lines' parameter. Must be a filename or an iterable of EmissionLine objects."
+                )
         return func(*args, **kwargs)
+
     return wrapper
+
 
 @_parse_lines_param_decorator
 def mask_strong_emission_lines(
@@ -630,7 +698,10 @@ def mask_strong_emission_lines(
       estimation with that for even more robustness.
     """
     logger.info(
-        "Masking strong emission lines with redshift z=%.3f and snr_threshold=%.1f", redshift, snr_threshold)
+        "Masking strong emission lines with redshift z=%.3f and snr_threshold=%.1f",
+        redshift,
+        snr_threshold,
+    )
     w = np.asanyarray(wavelength)
     f = np.asanyarray(flux)
     s = np.asanyarray(uncertainty)
@@ -641,7 +712,9 @@ def mask_strong_emission_lines(
     if not (w.size == f.size == s.size == wt.size):
         raise ValueError("All inputs must have the same length.")
     if w.size < 5:
-        logger.warning("Input arrays have less than 5 pixels; skipping emission line masking.")
+        logger.warning(
+            "Input arrays have less than 5 pixels; skipping emission line masking."
+        )
         new_weight = np.array(wt, copy=True)
         if return_mask and return_lines_masked:
             return new_weight, np.zeros_like(w, dtype=bool), []
@@ -662,8 +735,7 @@ def mask_strong_emission_lines(
 
     if lines is None:
         lines = get_default_emission_lines()
-        logger.info("Using default emission line list with %d lines.",
-                    lines.size)
+        logger.info("Using default emission line list with %d lines.", lines.size)
 
     # Precompute pixel dispersion (delta-lambda), robust median for local conversion
     dw = np.diff(w_s)
@@ -687,7 +759,9 @@ def mask_strong_emission_lines(
         # clip using provided uncertainties if reasonable, else MAD
         sig = seg_s[good]
         # avoid division by zero
-        sig = np.where(sig > 0, sig, np.nanmedian(sig[sig > 0]) if np.any(sig > 0) else 1.0)
+        sig = np.where(
+            sig > 0, sig, np.nanmedian(sig[sig > 0]) if np.any(sig > 0) else 1.0
+        )
         resid = x - med
         keep = np.abs(resid) <= cont_sigma_clip * sig
         if keep.sum() < 5:
@@ -736,12 +810,16 @@ def mask_strong_emission_lines(
                 local_dw = np.nanmedian(dw)
             if not np.isfinite(local_dw) or local_dw <= 0:
                 # cannot estimate dispersion; fallback to fixed default
-                hw = float(line.default_half_width if half_width is None else half_width)
+                hw = float(
+                    line.default_half_width if half_width is None else half_width
+                )
             else:
                 # mask ~ +/- 1.5*FWHM (covers core+wings for most cases)
                 hw = 1.5 * float(fwhm_pixels) * float(local_dw)
         else:
-            raise ValueError(f"Unsupported width_mode={width_mode!r}. Use 'fixed' or 'fwhm_pixels'.")
+            raise ValueError(
+                f"Unsupported width_mode={width_mode!r}. Use 'fixed' or 'fwhm_pixels'."
+            )
 
         hw += float(pad)
         if max_half_width is not None:
@@ -787,7 +865,10 @@ def mask_strong_emission_lines(
         return new_weight, mask
     return new_weight
 
-def mask_sky_emission_lines(*args, **kwargs) -> np.ndarray | tuple[np.ndarray, np.ndarray, list[EmissionLine]]:
+
+def mask_sky_emission_lines(
+    *args, **kwargs
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, list[EmissionLine]]:
     """
     Specialized wrapper around mask_strong_emission_lines to target sky lines.
 
@@ -812,16 +893,20 @@ def mask_sky_emission_lines(*args, **kwargs) -> np.ndarray | tuple[np.ndarray, n
     """
     if kwargs.get("lines") is None:
         lines = get_default_sky_emission_lines()
-        logger.info("Using default sky emission line list with %d lines.",
-                    lines.size)
+        logger.info("Using default sky emission line list with %d lines.", lines.size)
 
         kwargs["lines"] = lines
     if kwargs.get("redshift") != 0.0:
-        logger.warning("Redshift is non-zero (z=%.3f); sky lines will be shifted accordingly. Make sure this is intended.", kwargs.get("redshift"))
+        logger.warning(
+            "Redshift is non-zero (z=%.3f); sky lines will be shifted accordingly. Make sure this is intended.",
+            kwargs.get("redshift"),
+        )
     return mask_strong_emission_lines(*args, **kwargs)
 
-def estimate_continuum(wl, flux, err, weights=None, use_log=True,
-knot_spacing=100.0, sigma_clip=3.0):
+
+def estimate_continuum(
+    wl, flux, err, weights=None, use_log=True, knot_spacing=100.0, sigma_clip=3.0
+):
     """Estimate continuum using a robust spline fit to the log-flux.
 
     Parameters
@@ -869,13 +954,27 @@ knot_spacing=100.0, sigma_clip=3.0):
 
     # Initial fit using weighted median in each knot region
     knot_flux = np.array(
-        [np.nanmedian(
-            log_flux[idx[0]:idx[1]][weights[idx[0]:idx[1]] > 0]
-            ) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for idx in zip(knots_idx[:-1], knots_idx[1:])])
+        [
+            np.nanmedian(log_flux[idx[0] : idx[1]][weights[idx[0] : idx[1]] > 0])
+            if np.any(weights[idx[0] : idx[1]] > 0)
+            else np.nan
+            for idx in zip(knots_idx[:-1], knots_idx[1:])
+        ]
+    )
     knot_flux_nmad = np.array(
-        [1.48 * np.nanmedian(
-            np.abs(log_flux[idx[0]:idx[1]][weights[idx[0]:idx[1]] > 0] - knot_flux[i])
-            ) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))])
+        [
+            1.48
+            * np.nanmedian(
+                np.abs(
+                    log_flux[idx[0] : idx[1]][weights[idx[0] : idx[1]] > 0]
+                    - knot_flux[i]
+                )
+            )
+            if np.any(weights[idx[0] : idx[1]] > 0)
+            else np.nan
+            for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))
+        ]
+    )
 
     log_flux_model = np.interp(wl, knots, knot_flux)
     log_flux_nmad_model = np.interp(wl, knots, knot_flux_nmad)
@@ -884,57 +983,95 @@ knot_spacing=100.0, sigma_clip=3.0):
     weights[mask] = 0.0
 
     knot_flux = np.array(
-        [np.nansum(
-            log_flux[idx[0]:idx[1]] * weights[idx[0]:idx[1]]
-            ) / np.nansum(weights[idx[0]:idx[1]]) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for idx in zip(knots_idx[:-1], knots_idx[1:])])
-    
+        [
+            np.nansum(log_flux[idx[0] : idx[1]] * weights[idx[0] : idx[1]])
+            / np.nansum(weights[idx[0] : idx[1]])
+            if np.any(weights[idx[0] : idx[1]] > 0)
+            else np.nan
+            for idx in zip(knots_idx[:-1], knots_idx[1:])
+        ]
+    )
+
     knot_flux_var = np.array(
-        [np.nansum(
-            (log_flux[idx[0]:idx[1]] - knot_flux[i])**2 * weights[idx[0]:idx[1]]
-            ) / np.nansum(weights[idx[0]:idx[1]]) if np.any(weights[idx[0]:idx[1]] > 0) else np.nan for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))])
+        [
+            np.nansum(
+                (log_flux[idx[0] : idx[1]] - knot_flux[i]) ** 2
+                * weights[idx[0] : idx[1]]
+            )
+            / np.nansum(weights[idx[0] : idx[1]])
+            if np.any(weights[idx[0] : idx[1]] > 0)
+            else np.nan
+            for i, idx in enumerate(zip(knots_idx[:-1], knots_idx[1:]))
+        ]
+    )
 
     knot_weights = np.array(
-        [np.nansum(weights[idx[0]:idx[1]]) for idx in zip(knots_idx[:-1], knots_idx[1:])])
-    
+        [
+            np.nansum(weights[idx[0] : idx[1]])
+            for idx in zip(knots_idx[:-1], knots_idx[1:])
+        ]
+    )
+
     good_knots = knot_weights > 0
     if good_knots.sum() < 2:
-        logger.warning("Not enough good knots (%d) to fit continuum; returning median flux as flat continuum.", good_knots.sum())
+        logger.warning(
+            "Not enough good knots (%d) to fit continuum; returning median flux as flat continuum.",
+            good_knots.sum(),
+        )
         median_flux = np.nanmedian(flux[weights > 0]) if np.any(weights > 0) else 1.0
         return np.full_like(wl, median_flux), np.full_like(wl, median_flux)
     elif good_knots.sum() < 4:
-        logger.warning("Only %d good knots to fit continuum; using linear interpolation between knots.", good_knots.sum())
+        logger.warning(
+            "Only %d good knots to fit continuum; using linear interpolation between knots.",
+            good_knots.sum(),
+        )
 
-        pol_c = np.polyfit(knots[good_knots], knot_flux[good_knots], 
-                           w=knot_weights[good_knots], deg=1)
+        pol_c = np.polyfit(
+            knots[good_knots], knot_flux[good_knots], w=knot_weights[good_knots], deg=1
+        )
         pol_continuum = np.poly1d(pol_c)
         continuum = pol_continuum(wl)
         if use_log:
             continuum = np.exp(continuum)
-            continuum_var = np.exp(2 * pol_continuum(wl)) * np.interp(wl, knots[good_knots], knot_flux_var[good_knots])
+            continuum_var = np.exp(2 * pol_continuum(wl)) * np.interp(
+                wl, knots[good_knots], knot_flux_var[good_knots]
+            )
         else:
             continuum_var = np.interp(wl, knots[good_knots], knot_flux_var[good_knots])
         return continuum, continuum_var**0.5
 
     # Sigma-clip residuals and refit
     spline = make_smoothing_spline(
-        knots[good_knots], knot_flux[good_knots], w=knot_weights[good_knots])
+        knots[good_knots], knot_flux[good_knots], w=knot_weights[good_knots]
+    )
     if use_log:
         continuum = np.exp(spline(wl))
-        continuum_var = np.exp(spline(wl))**2 * np.interp(wl, knots, knot_flux_var)
+        continuum_var = np.exp(spline(wl)) ** 2 * np.interp(wl, knots, knot_flux_var)
     else:
         continuum = spline(wl)
         continuum_var = np.interp(wl, knots, knot_flux_var)
     return continuum, continuum_var**0.5
 
+
 def _gaussian(wl, line_flux, center, sigma):
-    return line_flux / (sigma * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((wl - center) / sigma)**2)
+    return (
+        line_flux
+        / (sigma * np.sqrt(2 * np.pi))
+        * np.exp(-0.5 * ((wl - center) / sigma) ** 2)
+    )
+
 
 class LineSegmentationMap:
-
-    def __init__(self, line_segmentation: np.ndarray, flux: np.ndarray,
-                 wavelength: np.ndarray, error: np.ndarray,
-                 weights: np.ndarray, continuum: np.ndarray, continuum_error: np.ndarray):
-
+    def __init__(
+        self,
+        line_segmentation: np.ndarray,
+        flux: np.ndarray,
+        wavelength: np.ndarray,
+        error: np.ndarray,
+        weights: np.ndarray,
+        continuum: np.ndarray,
+        continuum_error: np.ndarray,
+    ):
         self.line_segmentation = line_segmentation
         self.flux = flux
         self.wavelength = wavelength
@@ -952,23 +1089,43 @@ class LineSegmentationMap:
     def get_line_mask(self, line_id: int) -> np.ndarray:
         """Return a boolean mask for the specified line_id."""
         return self.line_segmentation == line_id
-    
-    def _gaussian_fit(self, wl, flux, err, weights, line_id, line_mask):
 
-        mask = line_mask & np.isfinite(flux) & np.isfinite(err) & (err > 0) & (weights > 0)
+    def _gaussian_fit(self, wl, flux, err, weights, line_id, line_mask):
+        mask = (
+            line_mask & np.isfinite(flux) & np.isfinite(err) & (err > 0) & (weights > 0)
+        )
 
         n_valid = np.count_nonzero(mask)
         if not n_valid:
-            logger.warning("No valid pixels to fit line_id=%s; returning NaN parameters.", line_id)
-            return dict(id=line_id, line_flux=0.0, line_flux_err=0.0,
-                        center=np.nan, sigma=np.nan, npixels=0, flag=1)
+            logger.warning(
+                "No valid pixels to fit line_id=%s; returning NaN parameters.", line_id
+            )
+            return dict(
+                id=line_id,
+                line_flux=0.0,
+                line_flux_err=0.0,
+                center=np.nan,
+                sigma=np.nan,
+                npixels=0,
+                flag=1,
+            )
         elif n_valid < 3:
-            logger.warning("Not enough valid pixels to fit line_id=%s; using peak flux and width instead.", line_id)
+            logger.warning(
+                "Not enough valid pixels to fit line_id=%s; using peak flux and width instead.",
+                line_id,
+            )
             peak = np.argmax(flux[mask])
             wl_peak = wl[mask][peak]
             sigma = np.clip(wl[mask].ptp() / 2.355, (wl[1] - wl[0]) / 10, None)
-            return dict(id=line_id, line_flux=flux[mask][peak], line_flux_err=0.0,
-                        center=wl_peak, sigma=sigma, npixels=n_valid, flag=2)
+            return dict(
+                id=line_id,
+                line_flux=flux[mask][peak],
+                line_flux_err=0.0,
+                center=wl_peak,
+                sigma=sigma,
+                npixels=n_valid,
+                flag=2,
+            )
 
         weighted_flux = np.sum(flux[mask] * weights[mask])
         mean = np.median(wl[mask])
@@ -977,22 +1134,51 @@ class LineSegmentationMap:
 
         try:
             popt, pcov, infodict, messg, ier = curve_fit(
-                    _gaussian, wl[mask], flux[mask],
-                    p0=[line_flux, mean, sigma],
-                    bounds=([0, wl[mask].min(), (wl[1] - wl[0]) / 10],
-                            [10 * line_flux, max(wl[mask].min() + wl[1] - wl[0], wl[mask].max()), 100]),
-                    sigma=err[mask], absolute_sigma=True,
-                    full_output=True, ftol=1e-9, maxfev=1000)
+                _gaussian,
+                wl[mask],
+                flux[mask],
+                p0=[line_flux, mean, sigma],
+                bounds=(
+                    [0, wl[mask].min(), (wl[1] - wl[0]) / 10],
+                    [
+                        10 * line_flux,
+                        max(wl[mask].min() + wl[1] - wl[0], wl[mask].max()),
+                        100,
+                    ],
+                ),
+                sigma=err[mask],
+                absolute_sigma=True,
+                full_output=True,
+                ftol=1e-9,
+                maxfev=1000,
+            )
             line_flux, mean, sigma = popt
 
         except Exception as e:
-            logger.warning("Gaussian fit failed (%s) for line_id=%s; using MLE estimates instead.",
-                           str(e), line_id)
-            return dict(id=line_id, line_flux=line_flux, line_flux_err=line_flux, center=mean,
-                        sigma=sigma, npixels=n_valid, flag=3)
+            logger.warning(
+                "Gaussian fit failed (%s) for line_id=%s; using MLE estimates instead.",
+                str(e),
+                line_id,
+            )
+            return dict(
+                id=line_id,
+                line_flux=line_flux,
+                line_flux_err=line_flux,
+                center=mean,
+                sigma=sigma,
+                npixels=n_valid,
+                flag=3,
+            )
 
-        return dict(id=line_id, line_flux=line_flux, line_flux_err=np.sqrt(np.diag(pcov)[0]),
-                    center=mean, sigma=sigma, npixels=n_valid, flag=0)
+        return dict(
+            id=line_id,
+            line_flux=line_flux,
+            line_flux_err=np.sqrt(np.diag(pcov)[0]),
+            center=mean,
+            sigma=sigma,
+            npixels=n_valid,
+            flag=0,
+        )
 
     def fit_line(self, line_id: int) -> dict:
         """Fit a Gaussian to the specified line_id and return fit parameters."""
@@ -1003,16 +1189,26 @@ class LineSegmentationMap:
             err=self.flux_cont_sub_err,
             weights=self.weights,
             line_id=line_id,
-            line_mask=mask # Convert boolean mask to int for fitting
+            line_mask=mask,  # Convert boolean mask to int for fitting
         )
 
     def fit_all_lines(self) -> Table:
         """Fit all lines in the segmentation map and return a table of results."""
         output_table = Table(
-            names=["id", "line_flux", "center", "line_flux_err", "sigma", "npixels", "flag"],
+            names=[
+                "id",
+                "line_flux",
+                "center",
+                "line_flux_err",
+                "sigma",
+                "npixels",
+                "flag",
+            ],
             dtype=[int, float, float, float, float, int, int],
-            meta={"description": "Fitted parameters for each emission line segment",
-                  "flags": "0=good fit, 1=no valid pixels, 2=not enough pixels for fit, 3=fit failed, used MLE estimates" }
+            meta={
+                "description": "Fitted parameters for each emission line segment",
+                "flags": "0=good fit, 1=no valid pixels, 2=not enough pixels for fit, 3=fit failed, used MLE estimates",
+            },
         )
         measured_lines = []
         for line_id in range(1, self.nlines + 1):
@@ -1021,12 +1217,19 @@ class LineSegmentationMap:
             measured_lines.append(
                 EmissionLine(
                     name=f"line_{line_id}",
-                    rest_wavelength=float(fit_params["center"]) if np.isfinite(fit_params["center"]) else np.nan,
-                    default_half_width=float(fit_params["sigma"]) if np.isfinite(fit_params["sigma"]) else 10.0,
+                    rest_wavelength=float(fit_params["center"])
+                    if np.isfinite(fit_params["center"])
+                    else np.nan,
+                    default_half_width=float(fit_params["sigma"])
+                    if np.isfinite(fit_params["sigma"])
+                    else 10.0,
                     flux=float(fit_params["line_flux"]),
                     flux_error=float(fit_params["line_flux_err"]),
                     flag=int(fit_params["flag"]),
-                    metadata={"id": int(fit_params["id"]), "npixels": int(fit_params["npixels"])}
+                    metadata={
+                        "id": int(fit_params["id"]),
+                        "npixels": int(fit_params["npixels"]),
+                    },
                 )
             )
 
@@ -1036,13 +1239,15 @@ class LineSegmentationMap:
         for row in output_table:
             line = _gaussian(
                 self.wavelength, row["line_flux"], row["center"], row["sigma"]
-                )
+            )
             eline_flux += line if np.isfinite(line).all() else 0.0
         self.eline_flux = eline_flux
         return output_table
 
 
-def _watershed_1d(signal: np.ndarray, markers: np.ndarray, mask: np.ndarray) -> np.ndarray:
+def _watershed_1d(
+    signal: np.ndarray, markers: np.ndarray, mask: np.ndarray
+) -> np.ndarray:
     """
     1D watershed segmentation for deblending overlapping emission lines.
 
@@ -1079,7 +1284,12 @@ def _watershed_1d(signal: np.ndarray, markers: np.ndarray, mask: np.ndarray) -> 
         if labels[i] > 0 and mask[i]:
             for di in (-1, 1):
                 nb = i + di
-                if 0 <= nb < len(signal) and mask[nb] and labels[nb] == 0 and not in_queue[nb]:
+                if (
+                    0 <= nb < len(signal)
+                    and mask[nb]
+                    and labels[nb] == 0
+                    and not in_queue[nb]
+                ):
                     heappush(heap, (-signal[nb], nb, labels[i]))
                     in_queue[nb] = True
 
@@ -1095,25 +1305,37 @@ def _watershed_1d(signal: np.ndarray, markers: np.ndarray, mask: np.ndarray) -> 
         # Expand to unlabeled neighbours
         for di in (-1, 1):
             nb = idx + di
-            if 0 <= nb < len(signal) and mask[nb] and labels[nb] == 0 and not in_queue[nb]:
+            if (
+                0 <= nb < len(signal)
+                and mask[nb]
+                and labels[nb] == 0
+                and not in_queue[nb]
+            ):
                 heappush(heap, (-signal[nb], nb, lbl))
                 in_queue[nb] = True
 
     return labels
 
+
 @_parse_lines_param_decorator
-def find_emission_lines(wl, flux, err, weights=None,
-                        continuum=None, continuum_error=None,
-                        lines=None,
-                        redshift=0.0,
-                        to_rest_frame=False,
-                        snr_threshold=3.0,
-                        min_continuum_snr=1.0,
-                        cont_sigma_clip=1.5,
-                        knot_spacing=100.0,
-                        min_npixels: int =3,
-                        pad_detection_pix: int = 10,
-                        deblend_lines: bool = True):
+def find_emission_lines(
+    wl,
+    flux,
+    err,
+    weights=None,
+    continuum=None,
+    continuum_error=None,
+    lines=None,
+    redshift=0.0,
+    to_rest_frame=False,
+    snr_threshold=3.0,
+    min_continuum_snr=1.0,
+    cont_sigma_clip=1.5,
+    knot_spacing=100.0,
+    min_npixels: int = 3,
+    pad_detection_pix: int = 10,
+    deblend_lines: bool = True,
+):
     """Find and fit emission lines in a spectrum.
 
     Parameters
@@ -1157,15 +1379,20 @@ def find_emission_lines(wl, flux, err, weights=None,
         Estimated continuum flux at each wavelength.
     continuum_error : ndarray
         Estimated uncertainty of the continuum at each wavelength.
-    """ 
+    """
     if weights is None:
         weights = np.ones_like(wl)
 
     # Estimate continuum
     if continuum is None and continuum_error is None:
         continuum, continuum_error = estimate_continuum(
-            wl, flux, err, weights, knot_spacing=knot_spacing,
-            sigma_clip=cont_sigma_clip)
+            wl,
+            flux,
+            err,
+            weights,
+            knot_spacing=knot_spacing,
+            sigma_clip=cont_sigma_clip,
+        )
 
     if lines is not None:
         logger.info("Using provided line list with %d lines.", lines.size)
@@ -1186,7 +1413,11 @@ def find_emission_lines(wl, flux, err, weights=None,
     bright_pixels = clean_snr > snr_threshold
     line_ids, nlines = label(bright_pixels)
     slices = find_objects(line_ids)  # just to log the line regions
-    logger.info("Initial detection found %d candidate lines with SNR > %.1f", nlines, snr_threshold)
+    logger.info(
+        "Initial detection found %d candidate lines with SNR > %.1f",
+        nlines,
+        snr_threshold,
+    )
 
     # Deblend lines
     if deblend_lines:
@@ -1209,7 +1440,11 @@ def find_emission_lines(wl, flux, err, weights=None,
                 next_marker_id += 1
 
         n_seeds = next_marker_id - 1
-        logger.info("Watershed deblending: found %d peak seeds across %d initial regions.", n_seeds, nlines)
+        logger.info(
+            "Watershed deblending: found %d peak seeds across %d initial regions.",
+            n_seeds,
+            nlines,
+        )
 
         if n_seeds > nlines:
             # Only run watershed if we actually found sub-peaks worth splitting
@@ -1225,12 +1460,20 @@ def find_emission_lines(wl, flux, err, weights=None,
     valid_line_ids = np.where(line_pixel_counts >= min_npixels)[0] + 1
     line_ids = np.where(np.isin(line_ids, valid_line_ids), line_ids, 0)
     nlines = len(valid_line_ids)
-    logger.info("%d candidate lines have at least %d pixels above the SNR threshold.", nlines, min_npixels)
+    logger.info(
+        "%d candidate lines have at least %d pixels above the SNR threshold.",
+        nlines,
+        min_npixels,
+    )
     # re-map line ids to 1..nlines
     unique_ids = np.unique(line_ids)
-    new_id_map = {old_id: new_id for new_id, old_id in enumerate(
-        unique_ids[unique_ids > 0], start=1)}
-    line_ids = np.array(np.where(line_ids > 0, np.vectorize(new_id_map.get)(line_ids), 0), dtype=int)
+    new_id_map = {
+        old_id: new_id
+        for new_id, old_id in enumerate(unique_ids[unique_ids > 0], start=1)
+    }
+    line_ids = np.array(
+        np.where(line_ids > 0, np.vectorize(new_id_map.get)(line_ids), 0), dtype=int
+    )
 
     if pad_detection_pix > 0:
         slices = find_objects(line_ids)
@@ -1243,7 +1486,7 @@ def find_emission_lines(wl, flux, err, weights=None,
                 pad_left = min(pad_detection_pix, dist_to_prev)
             else:
                 pad_left = pad_detection_pix
-            
+
             if i < len(slices) and s[0].stop + pad_detection_pix > slices[i][0].start:
                 dist_to_next = slices[i][0].start - s[0].stop
                 pad_right = min(pad_detection_pix, dist_to_next)
@@ -1254,12 +1497,19 @@ def find_emission_lines(wl, flux, err, weights=None,
             stop = min(len(wl), s[0].stop + pad_right)
             line_ids[start:stop] = i
 
-    logger.info("Found %d candidate emission lines with SNR > %.1f", nlines,
-                snr_threshold)
+    logger.info(
+        "Found %d candidate emission lines with SNR > %.1f", nlines, snr_threshold
+    )
 
     line_segm_map = LineSegmentationMap(
-        line_segmentation=line_ids, flux=flux, wavelength=wl, error=err,
-        weights=weights, continuum=continuum, continuum_error=continuum_error)
+        line_segmentation=line_ids,
+        flux=flux,
+        wavelength=wl,
+        error=err,
+        weights=weights,
+        continuum=continuum,
+        continuum_error=continuum_error,
+    )
     output_table = line_segm_map.fit_all_lines()
 
     if lines is not None:
@@ -1271,8 +1521,16 @@ def find_emission_lines(wl, flux, err, weights=None,
                 matched_line_names.append("unknown")
                 continue
             matched_line = lines.get_closest_line(line_center, redshift=redshift)
-            tolerance = max(3 * row["sigma"], matched_line.default_half_width) if matched_line is not None else 0.0
-            if matched_line is not None and np.abs(matched_line.rest_wavelength * (1 + redshift) - line_center) < tolerance:
+            tolerance = (
+                max(3 * row["sigma"], matched_line.default_half_width)
+                if matched_line is not None
+                else 0.0
+            )
+            if (
+                matched_line is not None
+                and np.abs(matched_line.rest_wavelength * (1 + redshift) - line_center)
+                < tolerance
+            ):
                 matched_line_names.append(matched_line.name)
             else:
                 matched_line_names.append("unknown")
@@ -1284,13 +1542,14 @@ def find_emission_lines(wl, flux, err, weights=None,
         output_table["center"] = output_table["center"] / (1 + redshift)
         output_table["sigma"] = output_table["sigma"] / (1 + redshift)
         if line_segm_map.lines is not None:
-            line_segm_map.lines = EmissionLineList([
-                replace(
-                    line,
-                    rest_wavelength=line.rest_wavelength / (1 + redshift),
-                    default_half_width=line.default_half_width / (1 + redshift),
-                )
-                for line in line_segm_map.lines
-            ])
+            line_segm_map.lines = EmissionLineList(
+                [
+                    replace(
+                        line,
+                        rest_wavelength=line.rest_wavelength / (1 + redshift),
+                        default_half_width=line.default_half_width / (1 + redshift),
+                    )
+                    for line in line_segm_map.lines
+                ]
+            )
     return output_table, line_segm_map
-
