@@ -12,4 +12,5 @@ requests>=2.30
 synphot
 population-synthesis-toolkit
 psutil
+numba
 #yaml
