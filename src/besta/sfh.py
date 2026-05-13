@@ -393,9 +393,9 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             k = f"t_at_frac_{frc:.4f}"
             self.sfh_bin_keys.append(k)
             self.free_params[k] = [
-                0,
+                1e-3,
                 frc * self.today.to_value("Gyr"),
-                self.today.to_value("Gyr"),
+                self.today.to_value("Gyr") * 0.999,
             ]
 
         self.model = cem.TabularMassFracCEM(
