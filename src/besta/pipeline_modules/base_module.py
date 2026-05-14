@@ -510,15 +510,14 @@ class SpectraFitModule(BaseModule):
             wl_units = u.angstrom
 
         if options.has_value("fluxUnits"):
-            _log("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
+            _log(f"Converting flux units to {self._default_flux_units}")
             flux_units = u.Unit(options["fluxUnits"])
-            flux = (flux << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
+            flux = (flux << flux_units).to(self._default_flux_units).value
             error = (error << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
+                self._default_flux_units).value
         else:
-            _log("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
-            flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
+            _log(f"Assuming input flux units are in {self._default_flux_units}")
+            flux_units = u.Unit(self._default_flux_units)
 
         # Wavelength range to include in the fit
         if options.has_value("wlRange"):
@@ -1291,12 +1290,12 @@ class PhotometryFitModule(BaseModule):
         ax.set_xlim(min_wl.to_value(u.AA) * 0.8, max_wl.to_value(u.AA) * 1.2)
         # Flux density per wavelength unit
         ax = axs[1, 0]
-        flam = (full_spec * u.Unit("uJy")).to("1e-16 erg / (s cm**2 AA)", u.spectral_density(self.config["galaxy"].target_wavelength))
+        flam = (full_spec * u.Unit("uJy")).to(self._default_flux_units, u.spectral_density(self.config["galaxy"].target_wavelength))
         ax.plot(
             self.config["galaxy"].target_wavelength.to_value("AA"),
             flam,
             color="k", alpha=0.4)
-        ax.set_ylabel("Flux density (1e-16 erg / (s cm**2 AA))")
+        ax.set_ylabel(f"Flux density ({self._default_flux_units})")
         # chi2 as function of wavelength
         chi2 = (flux_model - self.config["photometry_flux"]) ** 2 / self.config["photometry_flux_var"]
         ax = axs[2, 0]
