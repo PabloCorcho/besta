@@ -93,9 +93,7 @@ def compute_redshift_chi2_from_slices(
             residual = scale * f - t
             chi2 += w * residual * residual
 
-        # Normalise chi2 by the number of good pixels
-        if len(good_idx) > 0:
-            z_chi2[i] = chi2 / len(good_idx)
+        z_chi2[i] = chi2
 
     return z_chi2, z_scales
 
