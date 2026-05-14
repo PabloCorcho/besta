@@ -453,6 +453,7 @@ class BaseModule(ClassModule):
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
+        _log("Configuration done")
 
         if options.has_value("save_t_frac_at"):
             self.config["save_t_frac_at"] = True
@@ -486,6 +487,9 @@ class BaseModule(ClassModule):
 
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
+
+    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
+    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
 
     def prepare_observed_spectra(
         self, options: DataBlock, normalize=False):
@@ -1093,7 +1097,7 @@ class SpectraFitModule(BaseModule):
                     continuum_model - continuum_model_err,
                     continuum_model + continuum_model_err,
                     color="cornflowerblue",
-                    alpha=0.4,
+                    alpha=0.1,
                     label="Continuum error"
                 )
 
