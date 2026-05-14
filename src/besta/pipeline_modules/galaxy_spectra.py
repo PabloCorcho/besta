@@ -45,7 +45,7 @@ class GalaxySpectraModule(SpectraFitModule):
         galaxy.update_parameters(parameters, strict=False)
         # Synthesis
         flux_model = 1e10 * galaxy.emission_spectrum(
-            to_obs_frame=False).to_value("1e-16 erg / (s Angstrom)") / self.config["dl_sq"]
+            to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
 
         # Kinematics #TODO: this should be done by PST stars.kinematics
         velscale = self.config["velscale"]

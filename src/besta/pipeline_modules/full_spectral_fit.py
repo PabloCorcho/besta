@@ -50,7 +50,7 @@ class FullSpectralFitModule(SpectraFitModule):
         luminosity_model = sfh_model.model.compute_SED(
             self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
         )
-        flux_model = 1e10 * luminosity_model.to_value("1e-16 erg / (s Angstrom)"
+        flux_model = 1e10 * luminosity_model.to_value(self._default_luminosity_units
         ) / self.config["dl_sq"]
 
         # Kinematics
