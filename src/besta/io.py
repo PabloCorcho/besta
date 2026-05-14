@@ -148,9 +148,9 @@ def _parse_group(token: str):
 
 def _parse_scalar(token: str):
     low = token.lower()
-    if low in {"true", "yes", "on"}:
+    if low in {"t", "true", "yes", "on"}:
         return True
-    if low in {"false", "no", "off"}:
+    if low in {"f", "false", "no", "off"}:
         return False
     if low in {"none", "null"}:
         return "none"
