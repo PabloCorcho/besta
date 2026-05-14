@@ -162,10 +162,10 @@ class BaseModule(ClassModule):
             during convolution. The buffer is applied to both sides of the
             SSP spectra.
         """
-        _log("\n-> Configuring SSP model")
+        _log("Configuring SSP model")
 
         if options.has_value("SSPModelFromPickle"):
-            _log("\n-> Loading preconfigured SSP model from pickle")
+            _log("Loading preconfigured SSP model from pickle")
             if not os.path.isfile(
                 os.path.expandvars(options["SSPModelFromPickle"])):
                 raise FileNotFoundError(
@@ -186,7 +186,7 @@ class BaseModule(ClassModule):
             extra_offset_pixel = int(velocity_buffer / velscale)
             self.config["velscale"] = velscale
             self.config["extra_pixels"] = extra_offset_pixel
-            _log("-> Configuration done.")
+            _log("Configuration done.")
             return
 
         ssp_name = options["SSPModel"]
@@ -315,7 +315,7 @@ class BaseModule(ClassModule):
         if options.has_value("SaveSSPModel"):
             _log("Saving SSP model to ", options["SaveSSPModel"])
             ssp.to_pickle(os.path.expandvars(options["SaveSSPModel"]))
-        _log("-> Configuration done.")
+        _log("Configuration done.")
         return
 
     def prepare_extinction_law(self, options):
@@ -332,7 +332,7 @@ class BaseModule(ClassModule):
         _log("Extinction law: ", ext_law)
         # TODO: add more extinction laws
         self.config["extinction_law"] = dust.DustScreen(ext_law)
-        _log("-> Configuration is done.")
+        _log("Configuration is done.")
 
     def prepare_sfh_model(self, options):
         """Prepare the SFH model.
@@ -342,7 +342,7 @@ class BaseModule(ClassModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        _log("\n-> Configuring SFH model")
+        _log("Configuring SFH model")
         sfh_model_name = options["SFHModel"]
         sfh_args = []
         sfh_kwargs = {}
@@ -378,7 +378,7 @@ class BaseModule(ClassModule):
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
-        _log("-> Configuration done")
+        _log("Configuration done")
 
     def log_like(self, data, model, var, weights=None, is_upper=None, is_lower=None, include_norm=True):
         """Compute log-likelihood between data and model.
@@ -479,6 +479,9 @@ class BaseModule(ClassModule):
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
 
+    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
+    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
+
     def prepare_observed_spectra(
         self, options: DataBlock, normalize=False):
         """Prepare the input spectra data.
@@ -489,7 +492,7 @@ class SpectraFitModule(BaseModule):
         normalize : bool, optional
             If ``True``, normalizes the spectra using the given wavelength range.
         """
-        _log("\n-> Configuring input observed spectra")
+        _log("Configuring input observed spectra")
         filename = os.path.expandvars(options["inputSpectrum"])
         # Read wavelength and spectra
         _log("Loading observed spectra from input file: ", filename)
@@ -680,7 +683,7 @@ class SpectraFitModule(BaseModule):
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
 
-        _log("-> Configuration done.")
+        _log("Configuration done.")
 
     def prepare_galaxy(self, options):
         """Build and configure a :class:`pst.galaxy.GalaxySED` model.
@@ -751,7 +754,7 @@ class SpectraFitModule(BaseModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        _log("\n-> Configuring multiplicative polynomial")
+        _log("Configuring multiplicative polynomial")
         if options.has_value("legendre_deg"):
             kwargs = {}
             if options.has_value("legendre_bounds"):
@@ -766,7 +769,29 @@ class SpectraFitModule(BaseModule):
                 self.config["wavelength"], options["legendre_deg"], **kwargs)
         else:
             _log(f"Not using multiplicative Legendre polynomials")
-        _log("-> Configuration done")
+        _log("Configuration done")
+
+    def get_feature_weights(self, options):
+        logger.info("Computing feature weights from input spectra")
+        # Estimate the continuum
+        continuum, continuum_err = spectrum.estimate_continuum(
+                self.config["wavelength"].to_value("AA"),
+                self.config["flux"],
+                err=self.config["var"]**0.5,
+                weights=self.config["weights"],
+                knot_spacing=options.get_double("continuum_knot_spacing", default=200.0),
+                sigma_clip=options.get_double("continuum_sigma_clip", default=3.0),
+            )
+        self.config["continuum"] = continuum
+        self.config["continuum_err"] = continuum_err
+        # Favour features over/under continuum
+        w = (np.abs(self.config["flux"] - continuum) / continuum_err)**2
+        w = np.where(np.isfinite(w), w, 0.0)
+        w_sum = np.nansum(w)
+        if w_sum <= 0:
+            raise ValueError("Feature-based weights sum to zero; please check the input data or disable feature-based weighting.")
+        w /= w_sum
+        self.config["feature_weights"] = w
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
         """Measure emission line fluxes and EWs from the best-fit solution.
@@ -802,13 +827,14 @@ class SpectraFitModule(BaseModule):
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
+        continuum_model = self.config.get("continuum")
+        continuum_model_err = self.config.get("continuum_err")
+
         if isinstance(flux_model, tuple):
             weights = flux_model[1]
             flux_model = flux_model[0]
         else:
             weights = np.ones_like(flux_model)
-        # Include input weights
-        weights *= self.config["weights"]
 
         # Grab the solution values (visualuzation purpose only)
         sol_keys = solution.keys()
@@ -829,6 +855,14 @@ class SpectraFitModule(BaseModule):
         # Display the information
         ax = axs[0, 1]
         # Pixel masking information
+        like_weights = self.config["weights"]
+        if "sweep_weights" in self.config:
+            sweep_weights = self.config["sweep_weights"]
+            weights *= sweep_weights
+        
+        like_eff_pixels = np.sum(like_weights > 0)
+
+
         mask_info = {"Total pixels": self.config["flux"].size,
                      "Masked pixels (w=0)": np.sum(weights <= 0),
                      " - Telluric abs.": np.sum(
@@ -887,6 +921,19 @@ class SpectraFitModule(BaseModule):
         # Plot model
         ax.plot(self.config["wavelength"], flux_model, c="b", label="Model",
                 lw=0.7)
+        if continuum_model is not None:
+            ax.plot(self.config["wavelength"], continuum_model, c="cornflowerblue",
+                    label="Continuum", lw=0.7)
+            if continuum_model_err is not None:
+                ax.fill_between(
+                    self.config["wavelength"].value,
+                    continuum_model - continuum_model_err,
+                    continuum_model + continuum_model_err,
+                    color="cornflowerblue",
+                    alpha=0.1,
+                    label="Continuum error"
+                )
+
         # Plot residuals
         residuals = flux_model - self.config["flux"]
         ax.plot(
@@ -1006,7 +1053,7 @@ class PhotometryFitModule(BaseModule):
         ----------
         options : :class:`DataBlock`
         """
-        _log("\n-> Configuring photometric data")
+        _log("Configuring photometric data")
         photometry_file = os.path.expandvars(options["inputPhotometry"])
 
         # Read the data
@@ -1058,7 +1105,7 @@ class PhotometryFitModule(BaseModule):
         redshift = options.get_double("redshift", default=0.0)
         self.config["redshift"] = redshift
         _log("Source redshift: ", redshift)
-        _log("-> Configuration done.")
+        _log("Configuration done.")
 
     def prepare_galaxy(self, options):
         """Build and configure a :class:`pst.galaxy.GalaxySED` model for photometry.
@@ -1355,7 +1402,7 @@ class GridFitMixin:
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        logger.info("-> Configuring model grid")
+        logger.info("Configuring model grid")
         if not options.has_value("modelGridFile"):
             raise ValueError("No input model grid file provided.")
         grid_file = os.path.expandvars(options["modelGridFile"])
@@ -1385,7 +1432,7 @@ class GridFitMixin:
             self.config["knn"] = options["knn"]
         else:
             self.config["knn"] = int(4 * model_grid.n_targets)
-        logger.info("-> Configuration done.")
+        logger.info("Configuration done.")
 
 
 class EmulatorMixin:
@@ -1408,7 +1455,7 @@ class EmulatorMixin:
         except ImportError:
             raise ImportError("joblib is required to load ML emulators."
                               "Please install joblib and try again.")
-        logger.info("-> Configuring ML emulator")
+        logger.info("Configuring ML emulator")
         if not options.has_value("emulatorFile"):
             raise ValueError("No input emulator file provided.")
         emulator_file = os.path.expandvars(options["emulatorFile"])
@@ -1418,4 +1465,4 @@ class EmulatorMixin:
         logger.info("Reading ML emulator...")
         ml_emulator = joblib.load(emulator_file)
         self.config["ml_emulator"] = ml_emulator
-        logger.info("-> Configuration done.")
+        logger.info("Configuration done.")
