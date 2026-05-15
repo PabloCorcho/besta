@@ -285,10 +285,8 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             z_best,
             z_chi2[best_fit_slice_index],
         )
-        # Re-scale model flux to match the observed flux level, and convert to physical units for
-        # luminosity distance calculation. The stellar mass is then inferred from the normalization.
-        # dl_sq = cosmology.luminosity_distance(z_best).to_value("cm")**2
-        # flux_model /= 4 * np.pi * dl_sq
+
+        # TODO: I am not sure if this will bias the likelihood
         # Use the original weights to estimate the normalization
         w = self.config["weights_orig"]
         candidate_flux = flux_model[best_fit_index : best_fit_index + w.size]
