@@ -14,7 +14,6 @@ from cosmosis import Inifile
 from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
-from besta import pipeline_modules
 from besta.logging import get_logger, setup_logging
 from besta.utils import expand_env_vars
 
@@ -369,6 +368,33 @@ def load_class_from_path(file_path, class_name):
 
     return getattr(module, class_name)
 
+def parse_table_format(path):
+    """Parse the format of a table file based on its extension.
+    
+    Parameters
+    ----------
+    path : str
+        Path to the table file.
+    
+    Returns
+    -------
+    format : str
+        Format of the table file (e.g., "csv", "fits", "ascii").
+    """
+    extension = os.path.splitext(path)[1].lower()
+    if extension in [".csv"]:
+        format = "csv"
+    elif extension in [".fits"]:
+        format = "fits"
+    elif extension in [".txt", ".dat"]:
+        format = "ascii"
+    else:
+        logger.warning(f"Could not guess file format from extension '{extension}'. Defaulting to ASCII.")
+        format = "ascii"
+
+    return format
+
+
 class Reader(object):
     r"""CosmoSIS run results reader.
     
@@ -497,10 +523,6 @@ class Reader(object):
         module = load_class_from_path(self.ini[module_name]["file"], "module")
         logger.debug(f"Loaded module {module_name} from {self.ini[module_name]['file']}")
         return module(self.ini, alias=module_name)
-        # if not hasattr(pipeline_modules, module_class):
-        #     raise ValueError(
-        #         f"Module class {module_class} not found in besta.pipeline_modules.")
-        # return getattr(pipeline_modules, module_class)(options)
 
     #TODO: deprecate
     @property
