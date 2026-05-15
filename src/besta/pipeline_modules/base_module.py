@@ -1097,7 +1097,7 @@ class SpectraFitModule(BaseModule):
                     continuum_model - continuum_model_err,
                     continuum_model + continuum_model_err,
                     color="cornflowerblue",
-                    alpha=0.1,
+                    alpha=0.4,
                     label="Continuum error"
                 )
 
