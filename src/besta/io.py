@@ -377,8 +377,6 @@ def load_class_from_path(file_path, class_name):
 
     return getattr(module, class_name)
 
-# Table operations
-
 def parse_table_format(path):
     """Parse the format of a table file based on its extension.
     
