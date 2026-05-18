@@ -636,7 +636,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         self, targets: np.ndarray, observables: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
-        Evaluate log p(z | m) per model row.
+        Evaluate :math:`log p(z | m)` per model row.
 
         Parameters
         ----------
@@ -664,29 +664,6 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         return self._logP_z_given_m[iz, im]
 
 
-class HierarchicalPrior(Prior):
-    """Base class for priors controlled by hyperparameters."""
-
-    def __init__(self, hyperparams: dict):
-        self.hyperparams = hyperparams
-
-    def update_hyperparams(self, new_values: dict) -> None:
-        self.hyperparams.update(new_values)
-
-    @abstractmethod
-    def log_prob_for_models(self, targets: np.ndarray, **kwargs) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    def fit_from_data(
-        self,
-        targets: np.ndarray,
-        observables: np.ndarray,
-        weights: np.ndarray | None = None,
-    ) -> None:
-        pass
-
-
 @dataclass
 class CompositePrior(Prior):
     """
@@ -695,9 +672,9 @@ class CompositePrior(Prior):
     The total log prior is defined as a weighted sum of component
     log priors:
 
-        log p_total(model) = sum_i w_i * log p_i(model)
+        :math:`\log p_{total}(model) = sum_i w_i * \log p_i(model)`
 
-    where each p_i is a Prior that does *not* depend on observables.
+    where each p_i is a Prior that does not depend on observables.
 
     Parameters
     ----------
@@ -717,6 +694,7 @@ class CompositePrior(Prior):
 
     def __post_init__(self):
         self.priors = list(self.priors)
+        logger.debug(f"Setting up CompositePrior with {len(self.priors)} priors")
         if not self.priors:
             raise ValueError("CompositePrior requires at least one component prior.")
 
@@ -728,6 +706,7 @@ class CompositePrior(Prior):
                 )
 
         if self.weights is not None:
+            logger.debug("Using user-provided relative prior weights")
             if len(self.weights) != len(self.priors):
                 raise ValueError(
                     "weights must have the same length as priors "
@@ -773,20 +752,22 @@ class CompositePrior(Prior):
             warnings.warn(
                 "All weights were zero in CompositePrior; returning flat prior."
             )
+            logger.warning(
+                "All weights were zero in CompositePrior; returning flat prior."
+            )
             return np.zeros(N, dtype=float)
-
         return logp_total
 
 
 @dataclass
 class ObservableCompositePrior(ObservableDependentPrior):
     """
-    Composite prior combining Priors, including observable-dependent ones.
+    Same as :class:`CompositePrior`, but including :class:`ObservableDependentPrior`.
 
     The total log prior is defined as a weighted sum of component
     log priors:
 
-        log p_total(model) = sum_i w_i * log p_i(model)
+        :math:`\log p_{total}(model) = sum_i w_i * \log p_i(model)`
 
     Components can be:
       - Plain Prior (target-only), evaluated as
@@ -821,12 +802,15 @@ class ObservableCompositePrior(ObservableDependentPrior):
 
     def __post_init__(self):
         self.priors = list(self.priors)
+        logger.debug(f"Setting up CompositePrior with {len(self.priors)} priors")
+
         if not self.priors:
             raise ValueError(
                 "ObservableCompositePrior requires at least one component prior."
             )
 
         if self.weights is not None:
+            logger.debug("Using user-provided relative prior weights")
             if len(self.weights) != len(self.priors):
                 raise ValueError(
                     "weights must have the same length as priors "
@@ -901,7 +885,7 @@ class ObservableCompositePrior(ObservableDependentPrior):
 
 class Likelihood(ABC):
     """
-    Abstract likelihood interface p(x | model).
+    Base likelihood class representing :math:`p(x | model)`.
 
     Methods
     -------
@@ -937,10 +921,6 @@ class GaussianProductLikelihood(Likelihood):
     """
     Independent per-dimension Gaussian product likelihood.
 
-    The likelihood is proportional to the product over j of
-    N(x_j | X_ij, h_j^2), where h_j is derived from sigma_native with
-    an optional floor.
-
     Parameters
     ----------
     bandwidth_floor : float, optional
@@ -955,8 +935,8 @@ class GaussianProductLikelihood(Likelihood):
     def log_likelihood(
         self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
     ) -> np.ndarray:
+        # truncate prior
         h = np.maximum(self.scale * sigma_native, self.bandwidth_floor)
-        # broadcast to (Nc, P)
         diff = X_models - x_native[None, :]
         var = h[None, :] ** 2
         # sum of 1-D logpdfs
@@ -967,66 +947,33 @@ class GaussianProductLikelihood(Likelihood):
 
 
 @dataclass
-class CensoredSizeLikelihood(Likelihood):
+class SplitGaussianProductLikelihood(Likelihood):
+    """Independent per-dimension split Gaussian likelihood
+
+    The likelihood along each dimension is given by
+
+    .. math:
+
+        \mathcal{L} = \mathcal{N}(x | \mu, \sigma_L),\, if x\leq\mu\\
+        \mathcal{L} = \mathcal{N}(x | \mu, \sigma_R),\, if x>\mu
+
+    and the total likelihood is the product along all dimensions.
     """
-    Photometry-only Gaussian product with a left-censored size factor.
-
-    This is useful when the apparent size is below a reliability floor
-    (e.g., PSF or measurement threshold). The photometric part is a
-    Gaussian product over selected photometry indices. The size part
-    adds a log CDF factor log Phi((s_min - s_model) / h_s), where s is
-    log10(Re) and h_s is derived from sigma_native[size_index].
-
-    Parameters
-    ----------
-    phot_indices : Sequence[int]
-        Indices of observable columns to include in the Gaussian product
-        (typically colours and anchor magnitude).
-    size_index : int
-        Index of the size observable column (e.g., log10(Re)).
-    s_min : float
-        Left-censoring threshold in the same units as the size observable.
-    bandwidth_floor : float, optional
-        Minimum bandwidth per dimension in native units. Default 0.0.
-    scale : float, optional
-        Multiplicative scale applied to sigma_native. Default 1.0.
-    """
-
-    phot_indices: Sequence[int]
-    size_index: int
-    s_min: float
-    bandwidth_floor: float = 0.0
-    scale: float = 1.0
+    bandwith_floor: float = 0.0
+    scale_left: float = 1.0
+    scale_right: float = 1.0
 
     def log_likelihood(
         self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
     ) -> np.ndarray:
-        # Photometry part
-        phot_idx = np.asarray(self.phot_indices, dtype=int)
-        x_ph = x_native[phot_idx]
-        sig_ph = np.maximum(self.scale * sigma_native[phot_idx], self.bandwidth_floor)
-        Xm_ph = X_models[:, phot_idx]
-        diff = Xm_ph - x_ph[None, :]
-        var = sig_ph[None, :] ** 2
-        logL_ph = -0.5 * (
-            np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff**2 / var, axis=1)
-        )
-
-        # Censored size factor: log Phi((s_min - s_model)/h_s)
-        h_s = max(self.scale * sigma_native[self.size_index], self.bandwidth_floor)
-        s_model = X_models[:, self.size_index]
-        z = (self.s_min - s_model) / h_s
-        # avoid log(0)
-        cdf = np.clip(_std_norm_cdf(z), 1e-300, 1.0)
-        logL_sz = np.log(cdf)
-
-        return logL_ph + logL_sz
+        # truncate prior
+        raise NotImplementedError("Class not implemented")
 
 
 @dataclass
 class CompositeLikelihood(Likelihood):
     """
-    Sum of multiple likelihood terms (log-likelihoods add).
+    Sum of multiple likelihood terms.
 
     Parameters
     ----------
@@ -1113,7 +1060,7 @@ def posterior_over_models(
     return w
 
 
-# Numba-dedicated likelihood
+# Numba-dedicated likelihood for increased performance
 
 
 @njit(parallel=True, fastmath=True, cache=True)
@@ -1124,17 +1071,14 @@ def _quadform_diag_parallel(X, x, h):
     for i in prange(N):
         s = 0.0
         Xi = X[i]
-        # unrolled-style simple loop lets numba vectorise well
         for j in range(P):
             d = (Xi[j] - x[j]) * invh[j]
             s += d * d
         out[i] = s
-    return out  # squared Mahalanobis with diagonal covariance
-
+    return out
 
 @njit(parallel=True, fastmath=True, cache=True)
 def _loglike_gaussprod_diag(X, x, h):
-    # log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2   (constants drop)
     q = _quadform_diag_parallel(X, x, h)
     return -0.5 * q
 
@@ -1156,7 +1100,7 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
         self.prefer_batch = prefer_batch
 
     def log_likelihood(self, x_native, sigma_native, X_models):
-        # Expect C-contiguous float64 for best performance
+        # C-contiguous float64 for best performance (https://stackoverflow.com/questions/67784563/how-to-make-two-arrays-contiguous-so-that-numba-can-speed-up-np-dot)
         x = np.ascontiguousarray(x_native, dtype=np.float64)
         X = np.ascontiguousarray(X_models, dtype=np.float64)
         sigma = np.ascontiguousarray(sigma_native, dtype=np.float64)
