@@ -488,9 +488,6 @@ class BaseModule(ClassModule):
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
 
-    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
-    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
-
     def prepare_observed_spectra(
         self, options: DataBlock, normalize=False):
         """Prepare the input spectra data.
