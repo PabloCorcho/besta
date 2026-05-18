@@ -50,6 +50,9 @@ def _log(*args):
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
+    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
+    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
+
     def __init__(self, options, *, alias=None):
         """
         Set up the CosmoSIS module.
@@ -260,8 +263,10 @@ class BaseModule(ClassModule):
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
-            inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
-                                 self.config["lsf"])
+            inst_lsf = np.interp(
+                ssp.wavelength,
+                self.config["wavelength"] / (1 + self.config["redshift"]),
+                self.config["lsf"])
 
             if options.has_value("SSPLSF"):
                 _log("Including SSP resolution")
@@ -269,7 +274,8 @@ class BaseModule(ClassModule):
                     os.path.expandvars(options["SSPLSF"]),
                     unpack=True, usecols=(0, 1))
                 ssp_lsf_fwhm = np.interp(ssp.wavelength,
-                                         ssp_lsf_wl << u.AA, ssp_lsf_fwhm)
+                                         ssp_lsf_wl << u.AA / (1 + self.config["redshift"]),
+                                         ssp_lsf_fwhm)
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
             # Assume both LSF are Gaussian
@@ -479,9 +485,6 @@ class BaseModule(ClassModule):
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
 
-    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
-    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
-
     def prepare_observed_spectra(
         self, options: DataBlock, normalize=False):
         """Prepare the input spectra data.
@@ -497,8 +500,6 @@ class SpectraFitModule(BaseModule):
         # Read wavelength and spectra
         _log("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
-        _log("Wavelength coverage: ", wavelength[[0, -1]])
-        _log("Size: ", wavelength.size)
 
         # Convert units if needed
         if options.has_value("wlUnits"):
@@ -524,6 +525,7 @@ class SpectraFitModule(BaseModule):
             wl_range = (np.asarray(options["wlRange"]) << wl_units
             ).to("Angstrom").value
         else:
+            _log("No input wavelength range provided; using full wavelength coverage")
             wl_range = wavelength[[0, -1]]
         # Wavelength range to renormalize the spectra
         if options.has_value("wlNormRange"):
@@ -1170,6 +1172,7 @@ class PhotometryFitModule(BaseModule):
 
         z_obs = self.config.get("redshift", 0.0)
 
+        #TODO: make sure this is well documented
         if options.get_bool("logwave", False):
             target_wl = np.geomspace(min_wl.to_value("AA") / (1 + z_obs),
                                      max_wl.to_value("AA"), 3000) << u.AA
