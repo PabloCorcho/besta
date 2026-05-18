@@ -83,7 +83,7 @@ def _std_norm_cdf(x: np.ndarray) -> np.ndarray:
 
 class Prior(ABC):
     """
-    Abstract prior interface over model targets.
+    Prior base class.
 
     A prior returns log p(theta) for each model row. It may depend on
     specific target columns (e.g., redshift) and optionally on other
@@ -301,7 +301,7 @@ class EmpiricalHistogramPrior1D(Prior):
     Parameters
     ----------
     target_col : int
-        Index of the target column to build the prior on (e.g., redshift).
+        Index of the target column to build the prior.
     edges : ndarray, shape (K+1,)
         Histogram bin edges. Must cover the support of the target.
     density_floor : float, optional
@@ -327,14 +327,18 @@ class EmpiricalHistogramPrior1D(Prior):
         -------
         self : EmpiricalHistogramPrior1D
         """
+
+        logger.debug("Fitting EmpiricalHistogramPrior 1D")
+        # Select the target column
         t = targets[:, self.target_col]
+        # Compute the histogram
         hist, _ = np.histogram(t, bins=self.edges, weights=weights, density=False)
-        mass = hist.astype(float)
-        mass = (
-            mass / np.sum(mass)
-            if np.sum(mass) > 0
-            else np.full_like(mass, 1.0 / mass.size)
-        )
+        # Normalise histogram
+        norm = np.sum(mass)
+        if norm > 0:
+            mass /= norm
+        else:
+            mass = np.full_like(mass, 1.0 / mass.size)
         mass = np.clip(mass, self.density_floor, None)
         self._logp_per_bin = np.log(mass)
         return self
@@ -343,6 +347,7 @@ class EmpiricalHistogramPrior1D(Prior):
         if not hasattr(self, "_logp_per_bin"):
             raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
         t = targets[:, self.target_col]
+        # Bin targets using the pre-defined bins
         j = np.digitize(t, self.edges) - 1
         j = np.clip(j, 0, self._logp_per_bin.size - 1)
         return self._logp_per_bin[j]
@@ -351,17 +356,17 @@ class EmpiricalHistogramPrior1D(Prior):
 @dataclass
 class EmpiricalFlatteningPriorND(Prior):
     """
-    Empirical flattening prior over several target columns.
+    Empirical flattening prior over arbitrary target columns.
 
     This prior uses the model grid itself to estimate the (possibly
-    non-flat) distribution of a set of parameters and builds a prior
+    non-uniform) distribution of a set of parameters and builds a prior
     that counteracts those inhomogeneities.
 
     Two modes are provided:
 
     - 'factorised': build 1-D histograms for each column separately and
       form a product prior over dimensions. This approximately flattens
-      the *marginal* distributions of those parameters.
+      the marginal distributions of those parameters.
 
     - 'joint': build a joint N-D histogram over all selected columns and
       assign prior mass proportional to 1 / N_k for each occupied
@@ -426,41 +431,41 @@ class EmpiricalFlatteningPriorND(Prior):
         -------
         self : EmpiricalFlatteningPriorND
         """
+        logger.debug("Fitting EmpiricalHistogramPriorND")
         t = targets[:, self.target_cols]  # (N, D)
+        # Grid dimensions
         D = t.shape[1]
 
         if weights is not None and weights.shape[0] != t.shape[0]:
             raise ValueError("weights must have shape (N,) if provided.")
 
         if self.mode == "factorised":
+            logger.debug("Using 'factorised' mode (per-dim prior)")
             # One histogram per dimension, store log inverse-mass per bin
             log_inv_mass_list = []
             for d in range(D):
                 edges = self.edges_list[d]
+                # get all parameter values
                 td = t[:, d]
-
+                # compute histogram
                 counts, _ = np.histogram(td, bins=edges, weights=weights, density=False)
-                counts = counts.astype(float)
-
                 total = np.sum(counts)
                 if total <= 0:
                     raise RuntimeError(
-                        f"No models in any bin for dimension {d}; cannot fit prior."
+                        f"No models in any user-provided bin for dimension {d}; cannot fit prior."
                     )
-
+                # Clip prior to prevent zero division
                 counts = np.clip(counts, self.count_floor, None)
 
-                # Define per-bin mass proportional to 1 / counts
+                # Define per-bin prior mass proportional to 1 / counts
                 inv_counts = 1.0 / counts
                 inv_counts /= np.sum(inv_counts)
-
-                # Store log(mass_d per bin) or directly log(1/count_d) up to a constant
-                # For our purpose, log prior for a model in bin j_d is sum_d log(inv_counts_d[j_d])
                 log_inv_mass_list.append(np.log(inv_counts))
 
             self._log_inv_mass_list = log_inv_mass_list
 
         else:  # mode == 'joint'
+            logger.debug("Using 'joint' mode (multi-dim prior)")
             # Build joint N-D histogram
             bin_indices = []
             bin_sizes = []
@@ -473,12 +478,12 @@ class EmpiricalFlatteningPriorND(Prior):
                 bin_indices.append(j)
                 bin_sizes.append(edges.size - 1)
 
-            bin_indices = np.stack(bin_indices, axis=0)  # (D, N)
+            bin_indices = np.stack(bin_indices, axis=0)
 
             # Flatten to 1-D indices for bincount
             linear_indices = np.ravel_multi_index(
                 bin_indices, dims=tuple(bin_sizes)
-            )  # (N,)
+            )
 
             counts_flat = np.bincount(
                 linear_indices,
@@ -554,7 +559,7 @@ class EmpiricalFlatteningPriorND(Prior):
 
 
 class ObservableDependentPrior(Prior):
-    """TODO"""
+    """Base class for priors that depend on observables."""
 
     def fit_from_grid(self):
         raise NotImplementedError()
@@ -563,14 +568,16 @@ class ObservableDependentPrior(Prior):
 @dataclass
 class MagDependentRedshiftPrior(ObservableDependentPrior):
     """
-    Magnitude-dependent redshift prior p(z | m) from a 2-D histogram.
+    Magnitude-dependent redshift prior, i.e. likelihood
+    of an object with a magnitude ``m`` being detected at
+    redshift ``z``.
 
     Parameters
     ----------
     z_col : int
         Index of redshift in targets.
     mag_observable_index : int
-        Index of magnitude in observables (e.g., VIS magnitude column).
+        Index of magnitude in observables.
     z_edges : ndarray
         Bin edges in redshift.
     m_edges : ndarray
@@ -591,6 +598,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
     z_edges: np.ndarray
     m_edges: np.ndarray
     density_floor: float = 1e-12
+    # TODO: allow for optional user-provided prior
 
     def fit_from_grid(
         self,
@@ -599,7 +607,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         weights: Optional[np.ndarray] = None,
     ) -> "MagDependentRedshiftPrior":
         """
-        Fit conditional histogram from the model grid.
+        Fit conditional histogram from input dataset.
 
         Parameters
         ----------
@@ -616,12 +624,12 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         H, z_edges, m_edges = np.histogram2d(
             z, m, bins=[self.z_edges, self.m_edges], weights=weights
         )
-        # normalise each magnitude column to sum 1 over z
+        # compute the conditional distribution
         colsum = H.sum(axis=0, keepdims=True)
         colsum[colsum == 0] = 1.0
-        P = H / colsum
-        P = np.clip(P, self.density_floor, None)
-        self._logP_z_given_m = np.log(P)  # shape (Kz, Km)
+        p_z_given_m = H / colsum
+        p_z_given_m = np.clip(p_z_given_m, self.density_floor, None)
+        self._logP_z_given_m = np.log(p_z_given_m)
         return self
 
     def log_prob_for_models(
@@ -646,6 +654,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
             raise ValueError("observables must be provided to evaluate p(z|m)")
         z = targets[:, self.z_col]
         m = observables[:, self.mag_observable_index]
+        # Interpolate input magnitudes
         iz = np.clip(
             np.digitize(z, self.z_edges) - 1, 0, self._logP_z_given_m.shape[0] - 1
         )
@@ -656,7 +665,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
 
 
 class HierarchicalPrior(Prior):
-    """Abstract base class for priors controlled by learnable hyperparameters."""
+    """Base class for priors controlled by hyperparameters."""
 
     def __init__(self, hyperparams: dict):
         self.hyperparams = hyperparams
