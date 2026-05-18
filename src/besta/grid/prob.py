@@ -5,19 +5,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, List
 import warnings
+from numba import njit, prange
 
 import numpy as np
 from besta.logging import get_logger
 
 logger = get_logger(__name__)
-
-try:
-    from numba import njit, prange
-
-    NUMBA_OK = True
-except Exception:
-    NUMBA_OK = False
-    logger.warning("numba could not be imported")
 
 # ------------------------------- utilities -------------------------------
 
@@ -1154,9 +1147,6 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
         self.prefer_batch = prefer_batch
 
     def log_likelihood(self, x_native, sigma_native, X_models):
-        if not NUMBA_OK:
-            return super().log_likelihood(x_native, sigma_native, X_models)
-
         # Expect C-contiguous float64 for best performance
         x = np.ascontiguousarray(x_native, dtype=np.float64)
         X = np.ascontiguousarray(X_models, dtype=np.float64)
