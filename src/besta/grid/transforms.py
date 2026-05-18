@@ -19,14 +19,14 @@ class LinearStandardiser:
     sd: Optional[np.ndarray] = None
 
     def fit(self, X: np.ndarray, *, ddof: int = 0) -> "LinearStandardiser":
-	"""Fit the standariser parameters."""
-       X = np.asarray(X)
-       mu = np.nanmean(X, axis=0)
-       std = np.nanstd(X, axis=0, ddof=ddof)
-       std = np.where(std == 0.0, 1.0, std)
-       self.mean = mu
-       self.sd = std
-       return self
+        """Fit the standariser parameters."""
+        X = np.asarray(X)
+        mu = np.nanmean(X, axis=0)
+        std = np.nanstd(X, axis=0, ddof=ddof)
+        std = np.where(std == 0.0, 1.0, std)
+        self.mean = mu
+        self.sd = std
+        return self
 
     @property
     def is_fit(self) -> bool:
