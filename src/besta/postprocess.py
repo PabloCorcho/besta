@@ -1471,6 +1471,135 @@ def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     return {"bias": float(med), "nmad": float(nmad),
             "outlier": outlier, "rmse": rmse}
 
+def specz_posterior(path: str, pct_val=[0.16, 0.5, 0.84]) -> dict:
+    """Load spectral redshift posterior from a file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the posterior file.
+    pct_val : list of float
+        Percentiles to compute (default: 16, 50, 84).
+   
+    Returns
+    -------
+    results : dict
+        Keys: pct, mean, var, modes, mode_loglike, mode_log_amplitude.
+    """
+    z, loglike = np.loadtxt(path, dtype=np.float64, skiprows=1, unpack=True)
+
+    # sort by z
+    idx = np.argsort(z)
+    z = z[idx]
+    loglike = loglike[idx]
+    # Renormalize to get a proper PDF
+    loglike -= np.nanmax(loglike)
+    like = np.exp(loglike)
+    pdf = like / np.trapz(like, z)
+
+    pct = weighted_quantile(z, like, pct_val)
+    mean = weighted_mean(z, like)
+    var = weighted_covariance(z[None, :], like, unbiased=False)[0, 0]
+    # Analyze multimodality (simple local maxima)
+    modes = []
+    modes_loglike = []
+    modes_idx = []  # list of list of indices corresponding to modes
+    modes_pct = []
+    modes_mean = []
+    modes_var = []
+    modes_log_amplitude = []
+    modes_evidence = []
+    idx_cont = []  # to track indices contributing to modes for continuum estimation
+
+    # Step 1: find local minima
+    for i in range(1, len(z) - 1):
+        if loglike[i] < loglike[i - 1] and loglike[i] < loglike[i + 1]:
+            idx_cont.append(i)
+
+    # Step 2: characterise local maxima and assign mode indices
+    start = 0
+    for i in range(len(idx_cont) + 1):  # add end index to capture last segment
+        if i < len(idx_cont):
+            segment_idx = range(start, idx_cont[i])
+        else:
+            segment_idx = range(start, len(z))
+        if len(segment_idx) == 0:
+            continue
+        # Find local maximum in this segment
+        seg_loglike = loglike[segment_idx]
+        max_idx_in_seg = np.argmax(seg_loglike)
+        global_idx = segment_idx[max_idx_in_seg]
+        modes.append(z[global_idx])
+        modes_loglike.append(loglike[global_idx])
+        modes_idx.append(list(segment_idx))
+
+        # mode quantities
+        mode_like = np.exp(seg_loglike - loglike[global_idx])
+        mode_mean = weighted_mean(z[segment_idx], mode_like)
+        mode_var = weighted_covariance(
+            z[segment_idx][None, :], mode_like, unbiased=False
+        )[0, 0]
+        mode_pct = weighted_quantile(z[segment_idx], mode_like, pct_val)
+        modes_mean.append(mode_mean)
+        modes_var.append(mode_var)
+        modes_pct.append(mode_pct)
+        # mode loglike amplitude above local continuum
+        left_cont = loglike[segment_idx[0]] if segment_idx[0] > 0 else loglike[0]
+        right_cont = loglike[segment_idx[-1]] if segment_idx[-1] < len(z) - 1 else loglike[-1]
+
+        cont_loglike = np.interp(z[global_idx], [z[segment_idx[0]], z[segment_idx[-1]]], [left_cont, right_cont])
+        mode_log_amplitude = loglike[global_idx] - cont_loglike
+        modes_log_amplitude.append(mode_log_amplitude)
+
+        # mode evidence
+        mode_evidence = np.trapz(pdf[segment_idx], z[segment_idx])
+        modes_evidence.append(mode_evidence)
+
+        if i < len(idx_cont):
+            start = idx_cont[i] + 1
+
+    if modes:
+        modes = np.array(modes)
+        modes_loglike = np.array(modes_loglike)
+        modes_log_amplitude = np.array(modes_log_amplitude)
+        modes_evidence = np.array(modes_evidence)
+        modes_pct = np.array(modes_pct)
+        modes_mean = np.array(modes_mean)
+        modes_var = np.array(modes_var)
+
+        # from matplotlib import pyplot as plt
+        # plt.figure()
+        # plt.plot(z, loglike, label="loglike")
+        # plt.scatter(modes, modes_loglike, c=np.log(modes_evidence), label="modes")
+        # plt.colorbar()
+        # plt.legend()
+    else:
+        modes = np.array([z[np.argmax(loglike)]])
+        modes_loglike = np.array([np.max(loglike)])
+        modes_log_amplitude = np.array([0.0])
+        modes_evidence = np.array([np.trapz(np.exp(loglike), z)])
+        modes_evidence_contsub = np.array([0.0])
+        modes_pct = np.array([0.0])
+        modes_mean = np.array([0.0])
+        modes_var = np.array([0.0])
+        modes_idx = [list(range(len(z)))]
+
+    results = {
+        "pct": pct,
+        "mean": mean,
+        "var": var,
+        "modes": modes,
+        "mode_loglike": modes_loglike,
+        "mode_log_amplitude": modes_log_amplitude,
+        "mode_evidence": modes_evidence,
+        "mode_pct": modes_pct,
+        "mode_mean": modes_mean,
+        "mode_var": modes_var,
+        "mode_indices": modes_idx,
+    }
+    return results
+
+
 def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post"):
     """Make trace plots from an astropy Table containing chain results.
 
