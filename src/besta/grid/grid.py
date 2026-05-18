@@ -1,8 +1,5 @@
 """
 Model grid container and fitting machinery.
-
-This module defines the ModelGrid class, which stores a grid of models with
-their parameters and provides methods for fitting and evaluating these models.
 """
 
 from __future__ import annotations
@@ -26,7 +23,7 @@ import h5py
 from scipy.spatial import cKDTree
 from scipy.stats import gaussian_kde
 
-from besta.grid.prob import (
+from .prob import (
     Prior,
     FlatPrior,
     ObservableDependentPrior,
@@ -34,6 +31,8 @@ from besta.grid.prob import (
     GaussianProductLikelihood,
     posterior_over_models as posterior_over_models_fn,
 )
+from .transforms import LinearStandardiser
+
 from besta.postprocess import (
     enclosed_fraction_map,
     pit_from_discrete_posterior,
@@ -41,8 +40,6 @@ from besta.postprocess import (
     photoz_metrics,
     weighted_quantiles,
 )
-
-from .transforms import LinearStandardiser
 
 from besta.utils import available_memory_bytes
 from besta.logging import get_logger
@@ -53,8 +50,10 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 logger = get_logger(__name__)
 
+# ------------- Helper methods ---------------
 
 def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
+    """Helper function for guessing the amount of parallel fit slices."""    
     # fewer, larger slices when P is large
     base_tasks = n_jobs * tasks_per_worker
     scale = max(1, n_observables // 8)
