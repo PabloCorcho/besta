@@ -2,12 +2,14 @@
 
 import os
 import numpy as np
+from astropy.table import Table
 
 from besta.pipeline_modules.base_module import SpectraFitModule
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import spectrum
 from besta.logging import get_logger
+from besta.io import parse_table_format
 from numba import njit, prange
 logger = get_logger(__name__)
 
@@ -20,7 +22,37 @@ def compute_redshift_chi2_from_slices(
     slice_starts,
     slice_stops,
     good_idx,
-):
+    ):
+    """Compute the chi2 values for all redshift steps defined by the model slices.
+    
+    Description
+    -----------
+
+    The returned scales are the best-fit normalization factors for each redshift
+    step, which can be used to compute the best-fit model fluxes if needed.
+    
+    Parameters
+    ----------
+    flux_model : array-like
+        The model flux values.
+    target_flux : array-like
+        The target flux values.
+    candidate_weights : array-like
+        The weights for each pixel.
+    slice_starts : array-like
+        The starting indices for each redshift slice.
+    slice_stops : array-like
+        The stopping indices for each redshift slice.
+    good_idx : array-like
+        The indices of the good pixels.
+
+    Returns
+    -------
+    z_chi2 : array-like
+        The chi2 values for each redshift step.
+    z_scales : array-like
+        The best-fit normalization factors for each redshift step.
+    """
     n_z = len(slice_starts)
 
     z_chi2 = np.full(n_z, np.inf)
@@ -61,7 +93,9 @@ def compute_redshift_chi2_from_slices(
             residual = scale * f - t
             chi2 += w * residual * residual
 
-        z_chi2[i] = chi2
+        # Normalise chi2 by the number of good pixels
+        if len(good_idx) > 0:
+            z_chi2[i] = chi2 / len(good_idx)
 
     return z_chi2, z_scales
 
@@ -184,7 +218,10 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             # Check if the output file already exists to avoid overwriting previous results.
             if os.path.exists(self.z_loglike_path):
                 logger.info("Loading existing redshift log-likelihood profile from file.")
-                z, loglike = np.loadtxt(self.z_loglike_path, unpack=True)
+
+                format = parse_table_format(self.z_loglike_path)
+                t = Table.read(self.z_loglike_path, format=format)
+                z, loglike = t["redshift"].value, t["log_likelihood"].value
                 if np.array_equal(z, slice_redshifts):
                     self.z_loglike = loglike
                 else:
@@ -214,7 +251,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
 
 
     @spectrum.legendre_decorator
-    def make_observable(self, block, parse=False):
+    def make_observable(self, block, parse=False, ):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
         sfh_model = self.config["sfh_model"]
@@ -244,9 +281,6 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         norm_obs_flux = self.config["norm_obs_flux"]
         target_flux = norm_obs_flux[good]
 
-        # z_chi2 = np.full(len(self.config["model_slices"]), np.inf)
-        # z_scales = np.full(len(self.config["model_slices"]), np.nan)
-
         z_chi2, z_scales = compute_redshift_chi2_from_slices(
                             flux_model,
                             target_flux,
@@ -255,20 +289,6 @@ class SpectraRedshiftFitModule(SpectraFitModule):
                             slc_stops,
                             good_idx,
                         )
-        
-        # Sweep over all target slices using the same weighted least-squares
-        # scale that is applied to the selected model below.
-        # for i, slc in enumerate(self.config["model_slices"]):
-        #     candidate_flux = flux_model[slc][good]
-        #     denominator = np.nansum(candidate_weights * candidate_flux**2)
-        #     if denominator <= 0:
-        #         logger.warning(f"Denominator for redshift step {i} is non-positive; skipping this step.")
-        #         continue
-        #     scale = np.nansum(candidate_weights * candidate_flux * target_flux) / denominator
-        #     z_scales[i] = scale
-        #     z_chi2[i] = np.nansum(
-        #         candidate_weights * (candidate_flux * scale - target_flux) ** 2
-        #     )
 
         # Keep track of the likelihood values for all redshift steps.
         self.z_loglike = np.maximum(self.z_loglike, -0.5 * z_chi2)
@@ -327,15 +347,18 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         return 0
 
     def cleanup(self):
-        """Persist the redshift likelihood profile if requested."""
+        """Save the redshift likelihood profile if requested."""
         if self.save_z_loglike:
             logger.info(f"Saving redshift log-likelihood profile to {self.z_loglike_path}")
-            np.savetxt(
-                self.z_loglike_path,
-                np.column_stack(
-                    (self.config["slice_redshifts"], self.z_loglike)),
-                    header="redshift log_likelihood")
 
+            t = Table(
+                [self.config["slice_redshifts"], self.z_loglike],
+                names=["redshift", "log_likelihood"],
+                meta={"description": "Redshift log-likelihood profile from SpectraRedshiftFitModule"}
+            )
+            # Guess the format from the file extension
+            format = parse_table_format(self.z_loglike_path)
+            t.write(self.z_loglike_path, format=format, overwrite=True)
 
 
 def setup(options):
