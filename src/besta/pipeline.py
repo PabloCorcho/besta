@@ -102,15 +102,16 @@ class MainPipeline(object):
             )
             io.make_ini_file(ini_filename, config)
         else:
-            assert os.path.isfile(os.path.expandvars(ini_filename)
-                                  ), f"{os.path.expandvars(ini_filename)} not found"
+            ini_filename = os.path.expandvars(ini_filename)
+            if not os.path.isfile(ini_filename):
+                raise FileNotFoundError(f"{ini_filename} not found")
 
         if ini_values_filename is None:
             io.make_values_file(config)
         else:
-            assert os.path.isfile(
-                ini_values_filename
-            ), f"{ini_values_filename} not found"
+            ini_values_filename = os.path.expandvars(ini_values_filename)
+            if not os.path.isfile(ini_values_filename):
+                raise FileNotFoundError(f"{ini_values_filename} not found")
             config["pipeline"]["values"] = ini_values_filename
 
         if n_cores == -1:
@@ -141,11 +142,16 @@ class MainPipeline(object):
         ):
             if prev_solution is not None:
                 logger.info("Updating configuration file with previous run results")
+                module_name = subpipe_config["pipeline"]["modules"].replace(",", " ").split()[0]
+                if module_name not in subpipe_config:
+                    raise KeyError(
+                        f"Module '{module_name}' not found in subpipeline configuration."
+                    )
                 # Update the input values
-                subpipe_config[subpipe_config["pipeline"]["modules"]].update(
+                subpipe_config[module_name].update(
                     (k, v)
                     for k, v in prev_solution.items()
-                    if k in subpipe_config[subpipe_config["pipeline"]["modules"]]
+                    if k in subpipe_config[module_name]
                 )
             # Execute sub-pipepline
             ini_filename = self.execute_pipeline(
