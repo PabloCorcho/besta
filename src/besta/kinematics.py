@@ -71,6 +71,13 @@ class LOSVDPixelKernel:
                 # self.skip_convolution = False
                 # self._kernel_weight = value
 
+    @property
+    def size(self):
+        """Kernel size in pixels."""
+        if self.kernel_weight is not None:
+            return self.kernel_weight.size
+        else:
+            return 0
 
     def __init__(self, velocity_scale):
         """Initialize a pixel-space LOSVD kernel container.
@@ -118,6 +125,37 @@ class LOSVDPixelKernel:
             return fftconvolve(spectra, kernel, mode="same", axes=-1)
         else:
             raise ValueError("Kernel weights are not set.")
+
+    def get_percentile_pixel(self, percentile):
+        """Get a percentile location in pixel units relative to kernel center.
+
+        Parameters
+        ----------
+        percentile : float
+            Desired percentile (between 0 and 100).
+
+        Returns
+        -------
+        pixel_offset : float
+            Pixel offset relative to the central kernel pixel.
+        """
+        if self.kernel_weight is None:
+            raise ValueError("Kernel weights are not set.")
+        if not (0.0 <= percentile <= 100.0):
+            raise ValueError("percentile must be in [0, 100].")
+        
+        cumulative = np.cumsum(self.kernel_weight)
+        pixel = np.interp(
+            percentile / 100.0,
+            cumulative,
+            np.arange(len(self.kernel_weight), dtype=float),
+        )
+        center = 0.5 * (len(self.kernel_weight) - 1)
+        return pixel - center
+
+    def get_percentile_velocity(self, percentile):
+        """Get a percentile location in velocity units relative to kernel center."""
+        return self.get_percentile_pixel(percentile) * self.velocity_scale
 
     def parse_parameters(self, datablock):
         """Read kinematic parameters from a DataBlock and set kernel weights.
