@@ -328,7 +328,7 @@ def make_values_file(config, overwrite=True, values_sec="values"):
         make_ini_file(values_filename, config[values_sec], ignore_sec=None)
 
 @expand_env_vars()
-def read_results_file(path):
+def read_results_file(path, delimiter="\t"):
     """Read the results produced during a CosmoSIS run.
 
     Parameters
@@ -342,13 +342,21 @@ def read_results_file(path):
         Table containing the results.
     """
     with open(path, "r", encoding="utf-8") as f:
-        header = f.readline().strip("#")
-        columns = header.replace("\n", "").split("\t")
+        header = f.readline()
+    if not header.startswith("#"):
+        raise ValueError("Expected first line header starting with '#'.")
+
+    columns = [col.strip().lower() for col in header.strip("# \n").split(delimiter)]
     matrix = np.atleast_2d(np.loadtxt(path))
     table = Table()
-    if matrix.size > 1:
-        for ith, c in enumerate(columns):
-            table.add_column(matrix.T[ith], name=c.lower())
+    if matrix.size <= 1:
+        return table
+    if matrix.shape[1] != len(columns):
+        raise ValueError(
+            f"Data has {matrix.shape[1]} columns but header lists {len(columns)}."
+        )
+    for ith, name in enumerate(columns):
+        table[name] = matrix[:, ith]
     return table
 
 def load_class_from_path(file_path, class_name):
@@ -485,7 +493,7 @@ class Reader(object):
     @property
     def values_file(self) -> str:
         """Path to the CosmoSIS (prior) values configuration file."""
-        return getattr(self, "_ini_file", None)
+        return getattr(self, "_values_file", None)
 
     @values_file.setter
     def values_file(self, value):
@@ -667,7 +675,8 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
+        if not (0 < frac <= 100):
+            raise ValueError("Fraction must be in (0, 100].")
         good_sample = np.isfinite(self.results_table[log_prob])
         tab = self.results_table[good_sample]
         post_sort = np.argsort(tab[log_prob])
