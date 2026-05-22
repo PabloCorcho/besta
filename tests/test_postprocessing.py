@@ -7,11 +7,10 @@ import numpy as np
 from astropy.table import Table
 
 from besta.postprocess import (
-    read_results_file,
     summarize_results,
     ResultsSummary,
 )
-
+from besta import io
 
 class TestPostprocessing(unittest.TestCase):
     """
@@ -85,23 +84,9 @@ class TestPostprocessing(unittest.TestCase):
             return self.data_file
         return self._make_synthetic_results_file()
 
-    def test_read_results_file(self):
-        path = self._get_results_path()
-        table = read_results_file(path)
-
-        self.assertIsInstance(table, Table)
-        self.assertGreater(len(table), 0, "Results table is empty")
-
-        # Basic column expectations
-        self.assertIn("post", table.colnames, "Missing 'post' column")
-        # The synthetic file has prior; a real sfh.txt might not.
-        # So only assert prior if present in the file.
-        # Parameter columns: at least one 'section--param' should exist
-        self.assertTrue(any("--" in c for c in table.colnames), "No parameter columns found (expected '--' delimiter).")
-
     def test_summarize_results_and_exports(self):
         path = self._get_results_path()
-        table = read_results_file(path)
+        table = io.read_results_file(path)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_fits = os.path.join(tmp, "besta_summary.fits")
