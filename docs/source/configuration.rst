@@ -269,6 +269,9 @@ Photometry-only fit
    [runtime]
    sampler = maxlike
 
+   [maxlike]
+   method = Powell
+
    [output]
    filename = ./photometry_fit
    format = text
@@ -296,6 +299,13 @@ Single-spectrum fit
 
    [runtime]
    sampler = maxlike emcee
+
+   [maxlike]
+   method = Powell
+
+   [emcee]
+   nwalkers = 16
+   nsteps = 500
 
    [output]
    filename = ./spectral_fit
@@ -334,6 +344,11 @@ spectra of the same galaxy simultaneously with shared parameters:
    from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 
    cfg = {
+    
+      "runtime": {"sampler": "maxlike emcee"},
+         "maxlike": {"method": "Nelder-Mead", "tolerance": 1e-3, "maxiter": 3000},
+         "emcee": {"walkers": 32, "samples": 100, "nsteps": 100},
+
        "output": {"filename": "./fit_all", "format": "text"},
        "pipeline": {
            "modules": "FullSpectralFit_blue FullSpectralFit_red",
