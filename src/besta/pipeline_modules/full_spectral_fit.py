@@ -39,6 +39,8 @@ class FullSpectralFitModule(SpectraFitModule):
         self.prepare_sfh_model(options)
         self.prepare_extinction_law(options)
         self.prepare_legendre_polynomials(options)
+        self.prepare_losvd_kernel(options)
+        self._losvd_kernel = self.config["losvd_kernel"]
 
     @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
@@ -54,30 +56,13 @@ class FullSpectralFitModule(SpectraFitModule):
         ) / self.config["dl_sq"]
 
         # Kinematics
-        velscale = self.config["velscale"]
-        # Kinematics
-        sigma_pixel = block["kinematics", "los_sigma"] / velscale
-        veloffset_pixel = block["kinematics", "los_vel"] / velscale
-        # Build the kernel. TOO SLOW? Initialise only once?
-        kernel_model = kinematics.GaussHermite(
-            4,
-            mean=veloffset_pixel,
-            stddev=sigma_pixel,
-            h3=block["kinematics", "los_h3"],
-            h4=block["kinematics", "los_h4"],
-        )
-        kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
-                                      None) + 1
-        kernel = kinematics.get_losvd_kernel(
-            kernel_model,
-            x_size=kernel_n_pixel
-        )
+        self._losvd_kernel.parse_parameters(block)
         # Perform the convolution
-        flux_model = kinematics.convolve_spectra_with_kernel(flux_model, kernel)
+        flux_model = self._losvd_kernel.convolve(flux_model)
         # Track those pixels at the edges
         mask = flux_model > 0
-        mask[: int(10 * sigma_pixel)] = False
-        mask[-int(10 * sigma_pixel) :] = False
+        mask[:self._losvd_kernel.size // 2] = False
+        mask[-self._losvd_kernel.size // 2:] = False
         # Sample to observed resolution
         extra_pixels = self.config["extra_pixels"]
         pixels = slice(extra_pixels, -extra_pixels)
@@ -87,7 +72,7 @@ class FullSpectralFitModule(SpectraFitModule):
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "a_v"]
+            self.config["wavelength"], flux_model, a_v=block["dust_attenuation", "a_v"]
         ).value
 
         weights = self.config["weights"] * mask
