@@ -772,6 +772,66 @@ class SpectraFitModule(BaseModule):
             _log(f"Not using multiplicative Legendre polynomials")
         _log("Configuration done")
 
+    def prepare_losvd_kernel(self, options):
+        """Prepare the LOSVD convolution kernel.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        _log("Configuring LOSVD convolution kernel")
+        # Get the velocity scale from options or previously prepared config.
+        if options.has_value("velscale"):
+            velocity_scale = options["velscale"]
+            self.config["velscale"] = velocity_scale
+        elif "velscale" in self.config:
+            velocity_scale = self.config["velscale"]
+        else:
+            raise ValueError("LOSVD convolution requires a defined velocity scale (velscale).")
+
+        _log("Pixel velocity scale for LOSVD convolution: ",
+             velocity_scale, " km/s per pixel")
+
+        kernel_name = options.get_string("losvd_kernel", default="gauss-hermite")
+        kernel_name = kernel_name.strip().lower().replace("_", "-")
+        _log("LOSVD kernel name: ", kernel_name)
+
+        if kernel_name == "gaussian":
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.GaussianPixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"gauss-hermite", "gausshermite"}:
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.GaussHermitePixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"split-gaussian", "splitgaussian"}:
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.SplitGaussianPixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"piece-wise", "piecewise"}:
+            velocity_bin_size = options.get_int("velocity_bin_size", default=10)
+            velocity_min = options.get_double("velocity_min", default=-500.0)
+            velocity_max = options.get_double("velocity_max", default=500.0)
+            self.config["losvd_kernel"] = kinematics.PieceWisePixelKernel(
+                velocity_scale=velocity_scale,
+                velocity_bin_size=velocity_bin_size,
+                velocity_min=velocity_min,
+                velocity_max=velocity_max,
+            )
+        else:
+            raise ValueError(f"Unsupported LOSVD kernel: {kernel_name}")
+        _log("Configuration done")
+
     def get_feature_weights(self, options):
         logger.info("Computing feature weights from input spectra")
         # Estimate the continuum

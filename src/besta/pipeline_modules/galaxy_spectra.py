@@ -24,6 +24,8 @@ class GalaxySpectraModule(SpectraFitModule):
         self.prepare_observed_spectra(options)
         self.prepare_galaxy(options)
         self.prepare_legendre_polynomials(options)
+        self.prepare_losvd_kernel(options)
+        self._losvd_kernel = self.config["losvd_kernel"]
 
         # Set parameters fixed in this module
         self.config["galaxy"].redshift.fixed = True
@@ -47,30 +49,13 @@ class GalaxySpectraModule(SpectraFitModule):
         flux_model = 1e10 * galaxy.emission_spectrum(
             to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
 
-        # Kinematics #TODO: this should be done by PST stars.kinematics
-        velscale = self.config["velscale"]
-        sigma_pixel = block["kinematics", "los_sigma"] / velscale
-        veloffset_pixel = block["kinematics", "los_vel"] / velscale
-
-        kernel_model = kinematics.GaussHermite(
-            4,
-            mean=veloffset_pixel,
-            stddev=sigma_pixel,
-            h3=block["kinematics", "los_h3"],
-            h4=block["kinematics", "los_h4"],
-        )
-        kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
-                                      None) + 1
-        kernel = kinematics.get_losvd_kernel(
-            kernel_model,
-            x_size=kernel_n_pixel
-        )
+        self._losvd_kernel.parse_parameters(block)
         # Perform the convolution
-        flux_model = kinematics.convolve_spectra_with_kernel(flux_model, kernel)
+        flux_model = self._losvd_kernel.convolve(flux_model)
         # Track those pixels at the edges
         mask = flux_model > 0
-        mask[: int(10 * sigma_pixel)] = False
-        mask[-int(10 * sigma_pixel) :] = False
+        mask[:self._losvd_kernel.size // 2] = False
+        mask[-self._losvd_kernel.size // 2:] = False
         # Sample to observed resolution
         extra_pixels = self.config["extra_pixels"]
         pixels = slice(extra_pixels, -extra_pixels)
