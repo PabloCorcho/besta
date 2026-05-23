@@ -60,7 +60,7 @@ def test_full_spectral_fit_make_observable(tmp_path):
     spec = make_dummy_spectrum(tmp_path)
     block = DataBlock()
     all_params = {
-        "dust.extinction": {"a_v": 0.0},
+        "dust_attenuation": {"a_v": 0.0},
         "kinematics":  {
         "los_vel": 0.0,
         "los_sigma": 100.0,
@@ -95,3 +95,9 @@ def test_full_spectral_fit_make_observable(tmp_path):
     flux_model, weights = mod.make_observable(block)
     assert flux_model.shape == mod.config["flux"].shape
     assert weights.shape == mod.config["flux"].shape
+
+if __name__ == "__main__":
+    import sys
+    import unittest
+
+    unittest.main(argv=[sys.argv[0]])
