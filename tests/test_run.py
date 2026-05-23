@@ -33,7 +33,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             [ssp.wavelength, np.random.normal(sed, sed * 0.01), sed * 0.01]).T)
     
         # Create values file
-        text = """[dust.extinction]
+        text = """[dust_attenuation]
         a_v = 0 0 1
         [stars.sfh]
         alpha_powerlaw = 0 1 10

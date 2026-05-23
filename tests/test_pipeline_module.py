@@ -59,7 +59,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust_attenuation', 'a_v'] = 0
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -91,7 +91,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust_attenuation', 'a_v'] = 0
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -123,7 +123,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust_attenuation', 'a_v'] = 0
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
