@@ -145,11 +145,11 @@ class LOSVDPixelKernel:
             raise ValueError("percentile must be in [0, 100].")
         
         cumulative = np.cumsum(self.kernel_weight)
-        pixel = np.interp(
-            percentile / 100.0,
-            cumulative,
-            np.arange(len(self.kernel_weight), dtype=float),
-        )
+        # Interpolate on bin edges so symmetric kernels yield zero-centered
+        # median offsets instead of the half-pixel bias from center-grid CDF.
+        cdf_edges = np.concatenate(([0.0], cumulative))
+        pixel_edges = np.arange(len(self.kernel_weight) + 1, dtype=float) - 0.5
+        pixel = np.interp(percentile / 100.0, cdf_edges, pixel_edges)
         center = 0.5 * (len(self.kernel_weight) - 1)
         return pixel - center
 
