@@ -23,11 +23,15 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+from matplotlib import pyplot as plt
+from scipy import stats
+from scipy.optimize import minimize
+
 from astropy.io import fits
 from astropy.table import Table, Column
 from astropy import units as u
-from matplotlib import pyplot as plt
-from scipy import stats
+
+from besta import io
 from besta.logging import get_logger
 
 logger = get_logger(__name__)
@@ -447,35 +451,166 @@ def kde_or_hist_pdf_2d(
     return xc, yc, Z
 
 # -----------------------------------------------------------------------------
-# I/O helpers
+# Autocorrelation
 # -----------------------------------------------------------------------------
 
-def read_results_file(path: str, *, delimiter: str = "\t") -> Table:
-    """
-    Read a CosmoSIS-style text results file:
-    - First line is a commented header starting with '#'
-    - Columns are delimiter-separated
-    - Remaining lines numeric
 
-    Returns an Astropy Table with lowercase column names.
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        header = f.readline()
-    if not header.startswith("#"):
-        raise ValueError("Expected first line header starting with '#'.")
+def next_pow_two(n):
+    i = 1
+    while i < n:
+        i <<= 1
+    return i
 
-    columns = header.strip("# \n").split(delimiter)
-    matrix = np.atleast_2d(np.loadtxt(path))
-    tab = Table()
-    if matrix.size <= 1:
-        return tab
-    if matrix.shape[1] != len(columns):
+
+def autocorr_func_1d(x, norm=True):
+    """
+    Estimate the 1D autocorrelation function using FFT.
+
+    Parameters
+    ----------
+    x : array_like, shape (n_sample,)
+        One chain, e.g. one walker for one parameter.
+    norm : bool
+        If True, normalize so acf[0] = 1.
+
+    Returns
+    -------
+    acf : ndarray, shape (n_sample,)
+        Autocorrelation function.
+    """
+    x = np.asarray(x, dtype=float)
+
+    if x.ndim != 1:
+        raise ValueError("x must be one-dimensional")
+
+    if x.size < 2:
+        raise ValueError("x must contain at least two samples")
+
+    if not np.all(np.isfinite(x)):
+        raise ValueError("x contains NaN or infinite values")
+
+    x = x - np.mean(x)
+
+    if np.allclose(x, 0.0):
+        raise ValueError("cannot compute autocorrelation of a constant chain")
+
+    n = next_pow_two(len(x))
+
+    f = np.fft.fft(x, n=2 * n)
+    acf = np.fft.ifft(f * np.conjugate(f))[: len(x)].real
+
+    if norm:
+        acf /= acf[0]
+
+    return acf
+
+
+def auto_window(taus, c=5.0):
+    """
+    Automated windowing criterion.
+
+    Finds the first lag M where M >= c * tau(M).
+    """
+    taus = np.asarray(taus, dtype=float)
+
+    m = np.arange(len(taus)) < c * taus
+
+    if np.any(~m):
+        return np.argmin(m)
+
+    return len(taus) - 1
+
+def autocorr_time_one_dim(y, c=5.0):
+    """
+    Estimate autocorrelation time for one parameter.
+
+    Parameters
+    ----------
+    y : ndarray, shape (n_walker, n_sample)
+        Chains for one parameter.
+
+    Returns
+    -------
+    tau : float
+        Integrated autocorrelation time.
+    """
+    y = np.asarray(y, dtype=float)
+
+    if y.ndim != 2:
+        raise ValueError("y must have shape (n_walker, n_sample)")
+
+    n_walker, n_sample = y.shape
+
+    acf = np.zeros(n_sample)
+
+    for walker in range(n_walker):
+        acf += autocorr_func_1d(y[walker])
+
+    acf /= n_walker
+
+    taus = 2.0 * np.cumsum(acf) - 1.0
+
+    window = auto_window(taus, c=c)
+
+    return taus[window]
+
+def autocorr_time_chain(chain, c=5.0):
+    """
+    Estimate autocorrelation time for each dimension.
+
+    Parameters
+    ----------
+    chain : ndarray, shape (n_dim, n_walker, n_sample)
+        MCMC chain.
+
+    Returns
+    -------
+    taus : ndarray, shape (n_dim,)
+        Autocorrelation time for each parameter.
+    """
+    chain = np.asarray(chain, dtype=float)
+
+    if chain.ndim != 3:
+        raise ValueError("chain must have shape (n_dim, n_walker, n_sample)")
+
+    n_dim, n_walker, n_sample = chain.shape
+
+    taus = np.empty(n_dim)
+
+    for dim in range(n_dim):
+        taus[dim] = autocorr_time_one_dim(chain[dim], c=c)
+
+    return taus
+
+# Following the suggestion from Goodman & Weare (2010)
+def autocorr_gw2010(y, c=5.0):
+    f = autocorr_func_1d(np.mean(y, axis=0))
+    taus = 2.0 * np.cumsum(f) - 1.0
+    window = auto_window(taus, c)
+    return taus[window]
+
+
+def autocorr_new(y, c=5.0):
+    f = np.zeros(y.shape[1])
+    # Loop over all variables
+    for variable in y:
+        f += autocorr_func_1d(variable)
+    f /= y.shape[0]
+    taus = 2.0 * np.cumsum(f) - 1.0
+    window = auto_window(taus, c)
+    return taus[window]
+
+# -----------------------------------------------------------------------------
+# I/O helpers
+# -----------------------------------------------------------------------------
+def flat_chain_to_walkers(data, nwalkers, nsamples):
+    nrows = data.shape[0]
+    expected = nwalkers * nsamples
+    if nrows != expected:
         raise ValueError(
-            f"Data has {matrix.shape[1]} columns but header lists {len(columns)}."
+            f"Cannot reshape chain with {nrows} rows into (nsteps={nsamples}, nwalkers={nwalkers})."
         )
-    for i, c in enumerate(columns):
-        tab[c.strip().lower()] = matrix[:, i]
-    return tab
+    return data.reshape((nsamples, nwalkers, -1))
 
 def _select_parameter_keys(
     table: Table,
@@ -1021,6 +1156,8 @@ def summarize_results(
     *,
     output_fits: Optional[str] = None,
     output_json: Optional[str] = None,
+    nwalkers: Optional[int] = 1,
+    burn_in: int = 0,
     parameter_prefix: str = "--",
     posterior_key: str = "post",
     parameter_keys: Optional[Sequence[str]] = None,
@@ -1079,6 +1216,22 @@ def summarize_results(
     -------
     ResultsSummary
     """
+    if burn_in > 0:
+        # discard the first burn_in samples per walker; assumes samples are ordered as (walker0, walker1, ..., walkerN, walker0, ...)
+        nrows = len(table)
+        if nwalkers is None:
+            raise ValueError("burn_in > 0 requires nwalkers to be specified.")
+        expected = nwalkers * burn_in
+        if nrows < expected:
+            raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
+        # Keep rows after burn-in for each walker
+        mask = np.ones(nrows, dtype=bool)
+        for w in range(nwalkers):
+            start = w * burn_in
+            end = (w + 1) * burn_in
+            mask[start:end] = False
+        table = table[mask]
+
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
@@ -1250,7 +1403,7 @@ def summarize_results_file(
     **kwargs,
 ) -> ResultsSummary:
     """Read a results file and summarize it (passes kwargs to summarize_results)."""
-    tab = read_results_file(results_path, delimiter=delimiter)
+    tab = io.read_results_file(results_path, delimiter=delimiter)
     return summarize_results(tab, output_fits=output_fits, output_json=output_json, **kwargs)
 
 
