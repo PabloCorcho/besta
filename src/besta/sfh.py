@@ -301,12 +301,15 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             # Maximum value of the sSFR
             max_logssfr = np.log10(1 / lbt)
             self.max_ssfr_logyr[ith] = max_logssfr
-            self.free_params[k] = [
-                -14.0,
-                np.log10(1 / self.today.to_value("yr")),
-                max_logssfr,
-            ]
-        
+            if not self.use_transforms:
+                self.free_params[k] = [
+                    -14.0,
+                    np.log10(1 / self.today.to_value("yr")),
+                    max_logssfr,
+                ]
+            else:
+                self.free_params[k] = [-10.0, 0.0, 10.0]
+
         # log(tau1 / tau2) where tau1 > tau2
         self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
 
@@ -395,11 +398,18 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         for frc in mass_fraction:
             k = f"t_at_frac_{frc:.4f}"
             self.sfh_bin_keys.append(k)
-            self.free_params[k] = [
-                1e-3,
-                frc * self.today.to_value("Gyr"),
-                self.today.to_value("Gyr") * 0.999,
-            ]
+            if not self.use_transforms:
+                self.free_params[k] = [
+                    1e-3,
+                    frc * self.today.to_value("Gyr"),
+                    self.today.to_value("Gyr") * 0.999,
+                ]
+            else:
+                self.free_params[k] = [-10.0, 0.0, 10.0]
+
+        if self.use_transforms:
+            logger.info("Using transforms to enforce monotonicity and bounds on time bins.")
+            mass_fraction = mass_fraction[:-1]
 
         self.model = cem.TabularMassFracCEM(
             mass_frac=mass_fraction,
@@ -408,40 +418,42 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
-            alpha_powerlaw=kwargs.get("alpha", 0.0),
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
         )
 
     def parse_datablock(self, datablock: DataBlock):
         """Update the fixed-mass-fraction SFH model from a CosmoSIS DataBlock."""
         times = self.get_sfh_parameters_array(datablock)
-        if self.use_transforms:
-            # Enforce strictly increasing times within [0, today]
-            deltas = np.exp(times)  # positive
-            times = np.cumsum(deltas)
-            # TEMPFIX:
-            times = times / times[-1] * self.today.to_value("Gyr") * 0.999
-            # TODO: this enforces that mass_fraction[-1] occurs at present time
-            # which is unphysical. This transformed sampling should therefore
-            # include and additional fraction (*mass_frac, today).
 
-        # Ensure monotonically increasing and always smaller than the age of the Universe
-        delta_t = times[1:] - times[:-1]
-        if (delta_t <= 0).any() or times[-1] >= self.today.to_value("Gyr"):
-            return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
-        # Update the mass of the tabular model
-        self.model.times = times << u.Gyr
         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
         self.model.ism_metallicity_today = (
             datablock[self.sect_name, "ism_metallicity_today"] << u.dimensionless_unscaled
         )
+
+        if self.use_transforms:
+            times = self.to_physical(times)
+            times = np.insert(times, 0, 0)
+            # Bypass the setter and avoid the insert
+            self.model._times = Parameter(
+                times << u.Gyr,
+                fixed=False,
+                doc="Observing-time SFH anchors",
+            )
+        # Ensure monotonically increasing and always smaller than the age of the Universe
+        else:
+            delta_t = times[1:] - times[:-1]
+            if (delta_t <= 0).any() or times[-1] >= self.today.to_value("Gyr"):
+                return 0, 1 + np.abs(delta_t[delta_t < 0].sum())
+            # Update the mass of the tabular model
+            self.model.times = times << u.Gyr
         return 1, None
 
     def to_physical(self, latent):
         """Map unconstrained latents to strictly increasing times (Gyr)."""
         if self.use_transforms:
-            deltas = np.exp(latent)
-            times = np.cumsum(deltas)
-            times = times / times[-1] * self.today.to_value("Gyr")
+            # Softmax transform
+            time_frac = _softmax(latent)
+            times = np.cumsum(time_frac) * self.today.to_value("Gyr")
             return times
         return np.asarray(latent, dtype=float)
 
