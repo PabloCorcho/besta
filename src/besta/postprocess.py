@@ -26,14 +26,20 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
 from scipy.optimize import minimize
+<<<<<<< HEAD
 from scipy.signal import find_peaks
+=======
+>>>>>>> cd02727 (autocorrelation times)
 
 from astropy.io import fits
 from astropy.table import Table, Column
 from astropy import units as u
 
+<<<<<<< HEAD
 from cosmosis.postprocessing import run_cosmosis_postprocess
 
+=======
+>>>>>>> cd02727 (autocorrelation times)
 from besta import io
 from besta.logging import get_logger
 
@@ -1381,6 +1387,22 @@ def summarize_results(
     -------
     ResultsSummary
     """
+    if burn_in > 0:
+        # discard the first burn_in samples per walker; assumes samples are ordered as (walker0, walker1, ..., walkerN, walker0, ...)
+        nrows = len(table)
+        if nwalkers is None:
+            raise ValueError("burn_in > 0 requires nwalkers to be specified.")
+        expected = nwalkers * burn_in
+        if nrows < expected:
+            raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
+        # Keep rows after burn-in for each walker
+        mask = np.ones(nrows, dtype=bool)
+        for w in range(nwalkers):
+            start = w * burn_in
+            end = (w + 1) * burn_in
+            mask[start:end] = False
+        table = table[mask]
+
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
