@@ -333,6 +333,7 @@ class EmpiricalHistogramPrior1D(Prior):
         t = targets[:, self.target_col]
         # Compute the histogram
         hist, _ = np.histogram(t, bins=self.edges, weights=weights, density=False)
+        mass = hist * np.diff(self.edges)
         # Normalise histogram
         norm = np.sum(mass)
         if norm > 0:
