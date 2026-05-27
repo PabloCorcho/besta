@@ -501,6 +501,9 @@ class SpectraFitModule(BaseModule):
         _log("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
 
+        if options.get_bool("is_variance", default=False):
+            error = np.sqrt(error)
+
         # Convert units if needed
         if options.has_value("wlUnits"):
             _log("Converting wavelength units to Angstrom")
@@ -550,6 +553,12 @@ class SpectraFitModule(BaseModule):
         if weights.size != flux.size:
             raise ValueError(
                 "Input mask size does not match the input spectrum size.")
+        
+        # Check for negative weights and wrong errors
+        if np.any(weights < 0):
+            raise ValueError("Input weights contain negative values.")
+        if np.any(error <= 0):
+            raise ValueError("Input errors contain negative values.")
         # Load the instrumental LSF
         if options.has_value("lsf"):
             lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
@@ -642,7 +651,21 @@ class SpectraFitModule(BaseModule):
 
             flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
             cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
-            weights = np.interp(ln_wave, np.log(wavelength), weights)
+            weights = np.interp(ln_wave, np.log(wavelength), weights).clip(0, None)
+            bad_cov = cov <= 0
+            bad_flux = ~np.isfinite(flux)
+            if np.any(bad_cov):
+                _log(
+                    f"Warning: some interpolated covariance values ({np.count_nonzero(bad_cov)}) are non-positive.",
+                     "Setting weights to zero for those pixels.")
+                weights[bad_cov] = 0.0
+
+            if np.any(bad_flux):
+                _log(
+                    f"Warning: some interpolated flux values ({np.count_nonzero(bad_flux)}) are non-finite.",
+                     "Setting weights to zero for those pixels.")
+                weights[bad_flux] = 0.0
+
             instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
     
             new_wavelength = np.exp(ln_wave)
