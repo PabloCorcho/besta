@@ -5,6 +5,7 @@ import re
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -376,6 +377,8 @@ def load_class_from_path(file_path, class_name):
 
     return getattr(module, class_name)
 
+# Table operations
+
 def parse_table_format(path):
     """Parse the format of a table file based on its extension.
     
@@ -402,6 +405,49 @@ def parse_table_format(path):
 
     return format
 
+def burn_table(table, nwalkers: int, burn_in: int) -> Table:
+    """Discard the first `burn_in` samples per walker from the table."""
+    nrows = len(table)
+    expected = nwalkers * burn_in
+    if nrows < expected:
+        raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
+    # Keep rows after burn-in for each walker
+    mask = np.ones(nrows, dtype=bool)
+    for w in range(nwalkers):
+        start = w * burn_in
+        end = (w + 1) * burn_in
+        mask[start:end] = False
+    return table[mask]
+
+def _select_parameter_keys(
+    table: Table,
+    *,
+    parameter_prefix: str = "--",
+    parameter_keys: Optional[Sequence[str]] = None,
+) -> List[str]:
+    if parameter_keys is not None:
+        keys = list(parameter_keys)
+    else:
+        keys = [k for k in table.colnames if parameter_prefix in k]
+    if len(keys) == 0:
+        raise ValueError("No parameter keys found/selected.")
+    return keys
+
+def _split_param_key(key: str, prefix: str = "--") -> Tuple[str, str]:
+    """
+    Split a parameter key into (section, name) using the delimiter/prefix.
+
+    If the key cannot be split, returns ("", key).
+    """
+    if prefix in key:
+        sect, name = key.split(prefix, 1)
+        return sect, name
+    return "", key
+
+
+###################
+# Main reader class
+###################
 
 class Reader(object):
     r"""CosmoSIS run results reader.
@@ -604,12 +650,24 @@ class Reader(object):
                           overwrite=logging_overwrite, console=logging_console)
 
 
-    def load_results(self):
-        """Load the cosmosis run results associated to the ``ini`` file."""
+    def load_results(self, burn_in=0, nwalkers=1):
+        """Load the cosmosis run results associated to the ``ini`` file.
+        
+        Parameters
+        ----------
+        burn_in : int, optional
+            Number of initial samples to discard per walker. Default is 0 (no burn-in).
+        nwalkers : int, optional
+            Number of walkers used during the sampling. Required if burn_in > 0. Default is 1.
+        """
         path = self.ini["output"]["filename"]
         if ".txt" not in path:
             path += ".txt"
         self.results_table = read_results_file(path)
+        if burn_in > 0:
+            self.results_table = burn_table(
+                self.results_table,
+                nwalkers=self.ini["pipeline"].get("nwalkers", nwalkers), burn_in=burn_in)
 
     def get_maxlike_solution(self, log_prob="post", as_datablock=False,
                              **kwargs):
