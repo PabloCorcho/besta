@@ -612,31 +612,6 @@ def flat_chain_to_walkers(data, nwalkers, nsamples):
         )
     return data.reshape((nsamples, nwalkers, -1))
 
-def _select_parameter_keys(
-    table: Table,
-    *,
-    parameter_prefix: str = "--",
-    parameter_keys: Optional[Sequence[str]] = None,
-) -> List[str]:
-    if parameter_keys is not None:
-        keys = list(parameter_keys)
-    else:
-        keys = [k for k in table.colnames if parameter_prefix in k]
-    if len(keys) == 0:
-        raise ValueError("No parameter keys found/selected.")
-    return keys
-
-def _split_param_key(key: str, prefix: str = "--") -> Tuple[str, str]:
-    """
-    Split a parameter key into (section, name) using the delimiter/prefix.
-
-    If the key cannot be split, returns ("", key).
-    """
-    if prefix in key:
-        sect, name = key.split(prefix, 1)
-        return sect, name
-    return "", key
-
 def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
     a = _as_float_array(a).ravel()
     w = _as_float_array(w).ravel()
@@ -1218,24 +1193,12 @@ def summarize_results(
     """
     if burn_in > 0:
         # discard the first burn_in samples per walker; assumes samples are ordered as (walker0, walker1, ..., walkerN, walker0, ...)
-        nrows = len(table)
-        if nwalkers is None:
-            raise ValueError("burn_in > 0 requires nwalkers to be specified.")
-        expected = nwalkers * burn_in
-        if nrows < expected:
-            raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
-        # Keep rows after burn-in for each walker
-        mask = np.ones(nrows, dtype=bool)
-        for w in range(nwalkers):
-            start = w * burn_in
-            end = (w + 1) * burn_in
-            mask[start:end] = False
-        table = table[mask]
+        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
 
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
-    keys = _select_parameter_keys(table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
+    keys = io._select_parameter_keys(table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
     # Extract and filter samples
     logpost_all = _as_float_array(table[posterior_key])
     # Finite mask across posterior and all selected parameters
@@ -1271,7 +1234,7 @@ def summarize_results(
     sections = []
     names = []
     for k in keys:
-        sect, nm = _split_param_key(k, prefix=parameter_prefix)
+        sect, nm = io._split_param_key(k, prefix=parameter_prefix)
         sections.append(sect)
         names.append(nm)
 
