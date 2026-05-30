@@ -4,7 +4,10 @@ This module contains the pipeline manager to concatenate multiple modules.
 
 import os
 import subprocess
+import copy
 import numpy as np
+
+from typing import List, Dict
 
 from matplotlib import pyplot as plt
 
@@ -189,3 +192,231 @@ class MainPipeline(object):
                     pipeline_module.plot_solution(solution_datablock,
                                              figname=figname)
         return 0
+
+
+# Run multiple independent pipelines in parallel
+def _run_main_pipeline_job(job):
+    """Worker helper used by multiprocessing to run one MainPipeline."""
+    pipeline = MainPipeline(
+        job["pipeline_config"],
+        n_cores_list=job["n_cores_list"],
+        ini_files=job["ini_files"],
+        ini_values_files=job["ini_values_files"],
+    )
+    status = pipeline.execute_all(plot_result=job["plot_result"])
+    return {"index": job["index"], "status": status}
+
+
+class BatchPipeline(object):
+    """Manager for running multiple independent MainPipeline instances in parallel.
+
+    Parameters
+    ----------
+    pipeline_configuration_list : list[list[dict]]
+        Each entry is the configuration list required to initialize a MainPipeline.
+    n_cores_list : list, optional
+        Per-pipeline n_cores lists to pass to each MainPipeline.
+    ini_files : list, optional
+        Per-pipeline ini_files lists to pass to each MainPipeline.
+    ini_values_files : list, optional
+        Per-pipeline ini_values_files lists to pass to each MainPipeline.
+    n_jobs_parallel : int, optional
+        Maximum number of parallel processes.
+    """
+
+    def __init__(
+        self,
+        *,
+        pipeline_configuration_list: List[List[Dict]],
+        n_cores_list=None,
+        ini_files=None,
+        ini_values_files=None,
+        n_jobs_parallel=None,
+    ):
+        # Store the list of independent pipeline configurations.
+        self.all_pipelines_config = pipeline_configuration_list
+
+        n_pipelines = len(self.all_pipelines_config)
+
+        self.all_n_cores_list = (
+            [None] * n_pipelines if n_cores_list is None else n_cores_list
+        )
+        self.all_ini_files = [None] * n_pipelines if ini_files is None else ini_files
+        self.all_ini_values_files = (
+            [None] * n_pipelines if ini_values_files is None else ini_values_files
+        )
+        self.n_jobs_parallel = n_jobs_parallel
+
+        self._validate_inputs()
+
+    def _validate_inputs(self):
+        """Validate top-level list lengths."""
+        n_pipelines = len(self.all_pipelines_config)
+        for attr_name in (
+            "all_n_cores_list",
+            "all_ini_files",
+            "all_ini_values_files",
+        ):
+            value = getattr(self, attr_name)
+            if len(value) != n_pipelines:
+                raise ValueError(
+                    f"{attr_name} length ({len(value)}) must match "
+                    f"number of pipelines ({n_pipelines})"
+                )
+
+    def cpu_info(self):
+        """Log available CPU cores and number of independent pipelines."""
+        n_pipelines = len(self.all_pipelines_config)
+        n_cores = os.cpu_count() or 1
+        logger.info(f"Available CPU cores: {n_cores}")
+        logger.info(f"Number of pipelines to run: {n_pipelines}")
+
+    def build_pipelines(self):
+        """Build all MainPipeline objects without executing them."""
+        pipelines = []
+        for pipeline_config, n_cores, ini_file, ini_values_file in zip(
+            self.all_pipelines_config,
+            self.all_n_cores_list,
+            self.all_ini_files,
+            self.all_ini_values_files,
+        ):
+            pipelines.append(
+                MainPipeline(
+                    pipeline_config,
+                    n_cores_list=n_cores,
+                    ini_files=ini_file,
+                    ini_values_files=ini_values_file,
+                )
+            )
+        return pipelines
+
+    def _build_jobs(self, plot_result=False):
+        jobs = []
+        for index, (pipeline_config, n_cores, ini_file, ini_values_file) in enumerate(
+            zip(
+                self.all_pipelines_config,
+                self.all_n_cores_list,
+                self.all_ini_files,
+                self.all_ini_values_files,
+            )
+        ):
+            jobs.append(
+                {
+                    "index": index,
+                    "pipeline_config": pipeline_config,
+                    "n_cores_list": n_cores,
+                    "ini_files": ini_file,
+                    "ini_values_files": ini_values_file,
+                    "plot_result": plot_result,
+                }
+            )
+        return jobs
+
+    def run_single_pipeline(self, index, plot_result=False):
+        """Run one independent pipeline by index."""
+        jobs = self._build_jobs(plot_result=plot_result)
+        if index < 0 or index >= len(jobs):
+            raise IndexError(f"Pipeline index {index} out of range")
+        return _run_main_pipeline_job(jobs[index])["status"]
+
+    def run_all_pipelines(self, plot_result=False):
+        """Run all configured MainPipeline instances in parallel."""
+        from multiprocessing import get_context
+
+        self.cpu_info()
+        jobs = self._build_jobs(plot_result=plot_result)
+        if not jobs:
+            logger.info("No pipelines to run")
+            return []
+
+        max_jobs = os.cpu_count() or 1
+        if self.n_jobs_parallel is None:
+            n_jobs = min(len(jobs), max_jobs)
+        else:
+            n_jobs = max(1, min(self.n_jobs_parallel, len(jobs), max_jobs))
+
+        logger.info(f"Running {n_jobs} pipelines in parallel")
+
+        if n_jobs == 1:
+            raw_results = [_run_main_pipeline_job(job) for job in jobs]
+        else:
+            with get_context("spawn").Pool(processes=n_jobs) as pool:
+                raw_results = pool.map(_run_main_pipeline_job, jobs)
+
+        raw_results.sort(key=lambda x: x["index"])
+        results = [item["status"] for item in raw_results]
+
+        n_failed = sum(status != 0 for status in results)
+        if n_failed > 0:
+            logger.error(f"{n_failed}/{len(results)} pipelines failed")
+        else:
+            logger.info("All pipelines executed successfully")
+
+        return results
+    
+    @classmethod
+    def from_running_parameters(
+        cls,
+        pipeline_configuration: Dict,
+        running_parameters: List[Dict],
+        **kwargs,
+    ):
+        """Factory method to create a BatchPipeline from a single pipeline configuration and multiple running parameters.
+        
+        Parameters
+        ----------
+        pipeline_configuration : dict
+            Base configuration for the pipeline, which will be updated with each set of running parameters.
+        running_parameters : list[dict]
+            List of dictionaries containing the parameters to update in the base configuration for each independent pipeline run.
+        **kwargs
+            Additional keyword arguments to pass to the BatchPipeline constructor (e.g., n_cores_list
+            or ini_files). These will be applied to all pipelines created from the running parameters.
+        
+        Returns
+        -------
+        BatchPipeline
+             An instance of BatchPipeline configured to run multiple pipelines based on the provided configuration and parameters.
+
+        Example
+        -------
+           >>> from besta.pipeline import BatchPipeline
+           >>> base_config = {
+           ...     "pipeline": {"modules": "FullSpectralFit", "values": "./values.ini"},
+           ...     "output": {"filename": "./fit_result"},
+           ...     "FullSpectralFit": {"file": "/path/to/module.py", "redshift": 0.1},
+           ... }
+           >>> running_parameters = [
+           ...     {"FullSpectralFit": {"redshift": 0.10}, "output": {"filename": "./fit_z010"}},
+           ...     {"FullSpectralFit": {"redshift": 0.12}, "output": {"filename": "./fit_z012"}},
+           ... ]
+           >>> batch = BatchPipeline.from_running_parameters(
+           ...     pipeline_configuration=base_config,
+           ...     running_parameters=running_parameters,
+           ...     n_jobs_parallel=2,
+           ... )
+           >>> results = batch.run_all_pipelines()
+           >>> len(results)
+           2
+        """
+        if not isinstance(running_parameters, list):
+            raise TypeError("running_parameters must be a list of dictionaries")
+
+        pipeline_config_list = []
+
+        # Recursively merge nested dictionaries from one parameter set.
+        def recursive_update(d, u):
+            for k, v in u.items():
+                if isinstance(v, dict):
+                    d[k] = recursive_update(d.get(k, {}), v)
+                else:
+                    d[k] = v
+            return d
+
+        for params in running_parameters:
+            if not isinstance(params, dict):
+                raise TypeError("Each running parameter entry must be a dictionary")
+            config_copy = copy.deepcopy(pipeline_configuration)
+            config_copy = recursive_update(config_copy, params)
+            pipeline_config_list.append([config_copy])  # Wrap in list for MainPipeline
+        return cls(pipeline_configuration_list=pipeline_config_list, **kwargs)
