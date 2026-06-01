@@ -96,14 +96,12 @@ class FullSpectralFitModule(SpectraFitModule):
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
-        cov = self.config["var"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
-                             cov[good_pixels],
-                             weights=weights[good_pixels])
+                             self.config["ivar"][good_pixels] * weights[good_pixels])
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
         return 0
