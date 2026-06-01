@@ -180,7 +180,6 @@ def test_modelgrid_hdf5_and_fits_roundtrip(tmp_path):
     np.testing.assert_allclose(g_fits.observables, grid.observables)
     np.testing.assert_allclose(g_fits.targets, grid.targets)
 
-
 def test_linear_standardiser_roundtrip():
     X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     std = LinearStandardiser().fit(X)
