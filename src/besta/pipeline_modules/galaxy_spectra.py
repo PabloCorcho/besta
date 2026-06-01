@@ -19,7 +19,7 @@ class GalaxySpectraModule(SpectraFitModule):
     def __init__(self, options, **kwargs):
         """Set up the module from a CosmoSIS configuration block."""
 
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_spectra(options)
         self.prepare_galaxy(options)

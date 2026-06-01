@@ -27,7 +27,7 @@ class FullSpectralFitModule(SpectraFitModule):
         **kwargs : dict
             Extra keyword arguments forwarded to ``SpectraFitModule``.
         """
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
 
         # Check for the necessary options and prepare the models

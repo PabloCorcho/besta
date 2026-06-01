@@ -115,7 +115,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         **kwargs : dict
             Extra keyword arguments forwarded to ``SpectraFitModule``.
         """
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
 
         if options.has_value("redshift") and options["redshift"] != 0:
@@ -313,7 +313,9 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         denominator = np.nansum(w[good] * candidate_flux[good]**2)
 
         if denominator <= 0:
-            logger.warning(f"Denominator for redshift step {i} is non-positive; skipping this step.")
+            logger.warning(
+                f"Denominator for redshift step {best_fit_slice_index} is non-positive; skipping this step."
+            )
             return np.full_like(candidate_flux, np.nan), w
 
         scale = np.nansum(w[good] * candidate_flux[good] * target_flux) / denominator
