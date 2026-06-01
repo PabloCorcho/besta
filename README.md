@@ -67,6 +67,26 @@ sudo apt install -y \
 	libgtk2.0-dev
 ```
 
+using conda
+
+```bash
+conda install -c conda-forge \
+    gcc_linux-64 \
+    gxx_linux-64 \
+    gfortran_linux-64 \
+    openmpi \
+    mpi4py \
+    gsl \
+    cfitsio \
+    fftw \
+    lapack \
+    openblas \
+    git \
+    make \
+    cmake \
+    pkg-config
+```
+
 Package names can vary by distribution and version. If your environment already provides BLAS/LAPACK and MPI through conda, you may not need to install all system-level packages.
 
 ## Contributing
