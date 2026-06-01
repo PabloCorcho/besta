@@ -72,6 +72,96 @@ seed = 11
     assert "like" in col_names
 
 
+def test_pymc_sampler_accepts_slice_step_method(tmp_path):
+    class DummyPipeline:
+        def __init__(self):
+            self.varied_params = [object(), object()]
+            self.modules = []
+
+        def output_names(self):
+            return ["p0", "p1", "extra0"]
+
+        def denormalize_vector(self, u):
+            return 4.0 * np.asarray(u, dtype=float) - 2.0
+
+        def run_results(self, p):
+            p = np.asarray(p, dtype=float)
+            post = -0.5 * float(np.dot(p, p))
+            prior = -0.1 * float(np.dot(p, p))
+            like = post - prior
+            extra = np.array([float(p.sum())], dtype=float)
+            return SimpleNamespace(post=post, prior=prior, like=like, extra=extra)
+
+    ini_path = _write_ini(
+        tmp_path / "pymc_slice.ini",
+        """
+[runtime]
+sampler = pymc
+
+[pymc]
+samples = 12
+nsteps = 4
+burn_fraction = 0.0
+chains = 1
+progressbar = F
+seed = 5
+step_method = slice
+""".strip(),
+    )
+
+    output = InMemoryOutput()
+    sampler = PymcSampler(str(ini_path), DummyPipeline(), output)
+    sampler.config()
+    sampler.execute()
+
+    assert sampler.is_converged()
+    assert sampler.num_samples > 0
+
+
+def test_pymc_sampler_rejects_gradient_step_methods(tmp_path):
+    class DummyPipeline:
+        def __init__(self):
+            self.varied_params = [object(), object()]
+            self.modules = []
+
+        def output_names(self):
+            return ["p0", "p1", "extra0"]
+
+        def denormalize_vector(self, u):
+            return 4.0 * np.asarray(u, dtype=float) - 2.0
+
+        def run_results(self, p):
+            p = np.asarray(p, dtype=float)
+            post = -0.5 * float(np.dot(p, p))
+            prior = -0.1 * float(np.dot(p, p))
+            like = post - prior
+            extra = np.array([float(p.sum())], dtype=float)
+            return SimpleNamespace(post=post, prior=prior, like=like, extra=extra)
+
+    ini_path = _write_ini(
+        tmp_path / "pymc_nuts.ini",
+        """
+[runtime]
+sampler = pymc
+
+[pymc]
+samples = 6
+nsteps = 3
+burn_fraction = 0.0
+chains = 1
+progressbar = F
+seed = 1
+step_method = nuts
+""".strip(),
+    )
+
+    output = InMemoryOutput()
+    sampler = PymcSampler(str(ini_path), DummyPipeline(), output)
+    sampler.config()
+    with pytest.raises(ValueError, match="requires gradients"):
+        sampler.execute()
+
+
 def test_pymc_sampler_full_besta_run(tmp_path):
     cosmosis_exe = shutil.which("cosmosis")
     if cosmosis_exe is None:
