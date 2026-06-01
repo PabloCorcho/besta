@@ -500,9 +500,12 @@ class SpectraFitModule(BaseModule):
         # Read wavelength and spectra
         _log("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
+<<<<<<< HEAD
 
         if options.get_bool("is_variance", default=False):
             error = np.sqrt(error)
+=======
+>>>>>>> origin/develop
 
         # Convert units if needed
         if options.has_value("wlUnits"):
