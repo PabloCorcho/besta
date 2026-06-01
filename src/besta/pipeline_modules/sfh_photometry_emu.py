@@ -20,7 +20,7 @@ class SFHPhotometryEmulatorModule(PhotometryFitModule, EmulatorMixin):
     def __init__(self, options):
         """Set up the module from a CosmoSIS configuration block."""
 
-        super().__init__(options)
+        super().__init__(options, likelihood_kind="photometry")
         options = self.parse_options(options)
         # Pipeline values file
         self.prepare_observed_photometry(options)

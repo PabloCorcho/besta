@@ -18,7 +18,6 @@ from matplotlib import pyplot as plt
 from besta.visualization import draw_dict_in_axes
 
 import numpy as np
-from scipy.stats import norm
 from sklearn.decomposition import NMF
 from astropy import units as u
 from astropy.io import ascii
@@ -38,6 +37,7 @@ from besta import sfh
 from besta import io
 from besta import utils
 from besta.grid import ModelGrid
+from . import likelihoods
 from besta.config import cosmology, memory
 from besta.logging import get_logger, setup_logging
 
@@ -53,7 +53,7 @@ class BaseModule(ClassModule):
     _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
     _default_luminosity_units = "1e-16 erg / (s Angstrom)"
 
-    def __init__(self, options, *, alias=None):
+    def __init__(self, options, *, alias=None, likelihood_kind=None, likelihood_method=None):
         """
         Set up the CosmoSIS module.
 
@@ -103,6 +103,30 @@ class BaseModule(ClassModule):
         else:
             self.like_name = self.name + "_like"
             _log("Setting module likelihood name to default: ", self.like_name)
+
+        if likelihood_kind is None:
+            name = (self.__class__.__name__ + " " + self.name).lower()
+            if "photometry" in name:
+                likelihood_kind = "photometry"
+            else:
+                likelihood_kind = "spectra"
+
+        if options.has_value("likelihood_kind"):
+            likelihood_kind = options.get_string("likelihood_kind", default=likelihood_kind)
+        if options.has_value("likelihood_method"):
+            likelihood_method = options.get_string("likelihood_method", default="auto")
+
+        self.likelihood_kind = str(likelihood_kind).strip().lower()
+        self.likelihood_method = str(likelihood_method or "auto").strip().lower()
+
+        if self.likelihood_kind == "photometry":
+            self.log_like = likelihoods.make_photometry_loglike(self.likelihood_method)
+        elif self.likelihood_kind == "spectra":
+            self.log_like = likelihoods.make_spectra_loglike(self.likelihood_method)
+        else:
+            raise ValueError(
+                f"Unknown likelihood_kind={self.likelihood_kind!r}; expected 'spectra' or 'photometry'."
+            )
 
     @abstractmethod
     def make_observable(self, *args, **kwargs):
@@ -385,102 +409,6 @@ class BaseModule(ClassModule):
         sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
         _log("Configuration done")
-
-    def log_like(self, data, model, var, weights=None, is_upper=None, is_lower=None, include_norm=True):
-        """Compute log-likelihood between data and model.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            For detections: measured values.
-            For limits: the limit value (upper or lower).
-        model : np.ndarray
-            Model prediction for each datum.
-        var : np.ndarray
-            Data variance. Must match shape of data/model.
-        weights : np.ndarray, optional
-            Data weights. If provided, returns weighted mean log-likelihood.
-        is_upper : np.ndarray[bool], optional
-            Mask for upper limits (x < data).
-        is_lower : np.ndarray[bool], optional
-            Mask for lower limits (x > data).
-        include_norm : bool, optional, default=True
-            If True, include Gaussian normalization terms for detections:
-            -0.5*log(2*pi*var).
-
-        Returns
-        -------
-        loglike : float
-            Total (or weighted-mean) log-likelihood.
-        """
-        if data.shape != model.shape or data.shape != var.shape:
-            raise ValueError("data, model, var must have the same shape (var is per-datum variance).")
-        if np.any(var <= 0):
-            raise ValueError("All var entries must be > 0 (variance).")
-
-        if is_upper is None:
-            is_upper = np.zeros_like(data, dtype=bool)
-        else:
-            is_upper = np.asarray(is_upper, dtype=bool)
-
-        if is_lower is None:
-            is_lower = np.zeros_like(data, dtype=bool)
-        else:
-            is_lower = np.asarray(is_lower, dtype=bool)
-
-        if is_upper.shape != data.shape or is_lower.shape != data.shape:
-            raise ValueError("is_upper and is_lower must have the same shape as data/model.")
-        if np.any(is_upper & is_lower):
-            raise ValueError("A data point cannot be both an upper and a lower limit.")
-
-        if weights is None:
-            weights = np.ones_like(data, dtype=float)
-            normalize = False
-        else:
-            weights = np.asarray(weights, dtype=float)
-            if weights.shape != data.shape:
-                raise ValueError("weights must have the same shape as data/model.")
-            if np.any(weights < 0):
-                raise ValueError("weights must be non-negative.")
-            normalize = True
-
-        # TODO: to avoid this step the pipeline should store sigma
-        sigma = np.sqrt(var)
-
-        logp = np.empty_like(data, dtype=float)
-        det = ~(is_upper | is_lower)
-
-        # For detections: Gaussian logpdf
-        if np.any(det):
-            if include_norm:
-                logp[det] = norm.logpdf(data[det], loc=model[det], scale=sigma[det])
-            else:
-                z = (data[det] - model[det]) / sigma[det]
-                logp[det] = -0.5 * z**2
-
-        # Upper limits: P(x < L)
-        if np.any(is_upper):
-            z_u = (data[is_upper] - model[is_upper]) / sigma[is_upper]
-            logp[is_upper] = norm.logcdf(z_u)
-
-        # Lower limits: P(x > L) = 1 - P(x < L)
-        if np.any(is_lower):
-            z_l = (data[is_lower] - model[is_lower]) / sigma[is_lower]
-            logp[is_lower] = norm.logsf(z_l)  # 1 - logcdf
-
-        # User-provided weighted mean
-        if normalize:
-            wsum = np.sum(weights)
-            if wsum <= 0:
-                if np.all(weights == 0):
-                    raise ValueError("All weights are zero.")
-                else:
-                    raise ValueError("Sum of weights must be > 0 for normalization.")
-            return np.sum(logp * weights) / wsum
-
-        return np.sum(logp * weights)
-
-
 
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
@@ -896,21 +824,6 @@ class SpectraFitModule(BaseModule):
             raise ValueError("Feature-based weights sum to zero; please check the input data or disable feature-based weighting.")
         w /= w_sum
         self.config["feature_weights"] = w
-
-    def log_like(self, data, model, ivar):
-        """Compute log-likelihood between data and model using inverse variance."""
-        if data.shape != model.shape or data.shape != ivar.shape:
-            raise ValueError("data, model, ivar must have the same shape (ivar is per-datum inverse variance).")
-        if np.any(ivar < 0):
-            raise ValueError("All ivar entries must be >= 0 (inverse variance).")
-
-        # Compute chi-squared
-        chi2 = np.sum(ivar * (data - model)**2)
-
-        # Compute log-likelihood (up to an additive constant)
-        loglike = -0.5 * chi2
-
-        return loglike
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
         """Measure emission line fluxes and EWs from the best-fit solution.
