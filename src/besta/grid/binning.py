@@ -6,6 +6,7 @@ from typing import Iterable, List, Tuple, Optional, Dict, Sequence, Any
 from itertools import product
 import json
 import os
+import re
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -122,6 +123,32 @@ def _chunk_ranges(n: int, batch_size: Optional[int]):
         e = min(n, s + batch_size)
         yield s, e
         s = e
+
+
+def _tuple_key_to_str(key: Sequence[Any]) -> str:
+    """Serialize tuple-like keys using plain Python ints for stable JSON keys."""
+    values = [int(v) for v in key]
+    if not values:
+        return "()"
+    if len(values) == 1:
+        return f"({values[0]},)"
+    return "(" + ", ".join(str(v) for v in values) + ")"
+
+
+def _parse_tuple_key_str(key_str: str) -> Tuple[int, ...]:
+    """Parse tuple-like keys from legacy and NumPy scalar string representations."""
+    k_clean = key_str.strip().strip("()")
+    if k_clean == "":
+        return tuple()
+    parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
+    out: List[int] = []
+    for part in parts:
+        nums = re.findall(r"[-+]?\d+", part)
+        if not nums:
+            raise ValueError(f"Could not parse tuple key component: {part!r}")
+        # Use the last integer token so tokens like 'np.int64(2)' map to 2.
+        out.append(int(nums[-1]))
+    return tuple(out)
 
 
 def _sigma_to_space(sig_native: np.ndarray, T: dict) -> np.ndarray:
@@ -692,7 +719,7 @@ class RectBinner(BaseBinner):
             },
             "_edges": [[e.tolist() for e in lev] for lev in self._edges],
             "_layers": {
-                str(li): {str(k): v.tolist() for k, v in layer.items()}
+                str(li): {_tuple_key_to_str(k): v.tolist() for k, v in layer.items()}
                 for li, layer in enumerate(self._layers)
             },
             "_level_bin_size": self._level_bin_size.tolist(),
@@ -725,10 +752,7 @@ class RectBinner(BaseBinner):
             layer_d = d["_layers"][str(li)]
             layer: Dict[Tuple[int, ...], np.ndarray] = {}
             for k_str, v in layer_d.items():
-                # Robust tuple parsing from the str(key) form
-                k_clean = k_str.strip().strip("()")
-                parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
-                key = tuple(int(p) for p in parts)
+                key = _parse_tuple_key_str(k_str)
                 layer[key] = np.asarray(v, dtype=np.int64)
             layers.append(layer)
         obj._layers = layers
@@ -1032,7 +1056,7 @@ class HashedGridBinner(BaseBinner):
             "_cell_width": self._cell_width.tolist(),
             "_coord_min": self._coord_min.tolist(),
             "_coord_max": self._coord_max.tolist(),
-            "_cells": {str(k): v.tolist() for k, v in self._cells.items()},
+            "_cells": {_tuple_key_to_str(k): v.tolist() for k, v in self._cells.items()},
         }
         with open(path, "w") as f:
             json.dump(blob, f)
@@ -1066,9 +1090,7 @@ class HashedGridBinner(BaseBinner):
         obj._coord_max = np.asarray(d["_coord_max"], dtype=np.int64)
         cells = {}
         for k_str, v in d["_cells"].items():
-            k_clean = k_str.strip().strip("()")
-            parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
-            key = tuple(int(p) for p in parts)
+            key = _parse_tuple_key_str(k_str)
             cells[key] = np.asarray(v, dtype=np.int64)
         obj._cells = cells
         return obj
@@ -1373,11 +1395,7 @@ class NestedBinner(BaseBinner):
 
     @staticmethod
     def _parse_tuple_key(key_str: str) -> Tuple[int, ...]:
-        k_clean = key_str.strip().strip("()")
-        if k_clean == "":
-            return tuple()
-        parts = [p.strip() for p in k_clean.split(",") if p.strip() != ""]
-        return tuple(int(p) for p in parts)
+        return _parse_tuple_key_str(key_str)
 
     @staticmethod
     def _coords_for_edges(X: np.ndarray, edges_per_dim: List[np.ndarray]) -> np.ndarray:
@@ -1481,7 +1499,7 @@ class NestedBinner(BaseBinner):
                 "_cell_width": None if b._cell_width is None else b._cell_width.tolist(),
                 "_coord_min": None if b._coord_min is None else b._coord_min.tolist(),
                 "_coord_max": None if b._coord_max is None else b._coord_max.tolist(),
-                "_cells": {str(k): v.tolist() for k, v in b._cells.items()},
+                "_cells": {_tuple_key_to_str(k): v.tolist() for k, v in b._cells.items()},
             }
 
         if isinstance(b, RectBinner):
@@ -1505,7 +1523,7 @@ class NestedBinner(BaseBinner):
                 },
                 "_edges": [[e.tolist() for e in lev] for lev in b._edges],
                 "_layers": {
-                    str(li): {str(k): v.tolist() for k, v in layer.items()}
+                    str(li): {_tuple_key_to_str(k): v.tolist() for k, v in layer.items()}
                     for li, layer in enumerate(b._layers)
                 },
                 "_level_bin_size": b._level_bin_size.tolist(),
@@ -1785,12 +1803,16 @@ class NestedBinner(BaseBinner):
             "final_target_k": self.final_target_k,
             "use_global_fallback": self.use_global_fallback,
             "_primary_edges": [ed.tolist() for ed in self._primary_edges],
-            "_primary_cells": {str(k): v.tolist() for k, v in self._primary_cells.items()},
+            "_primary_cells": {
+                _tuple_key_to_str(k): v.tolist() for k, v in self._primary_cells.items()
+            },
             "_secondary_models": {
-                str(k): self._pack_binner(v) for k, v in self._secondary_models.items()
+                _tuple_key_to_str(k): self._pack_binner(v)
+                for k, v in self._secondary_models.items()
             },
             "_secondary_global_index": {
-                str(k): v.tolist() for k, v in self._secondary_global_index.items()
+                _tuple_key_to_str(k): v.tolist()
+                for k, v in self._secondary_global_index.items()
             },
             "_fallback_secondary": None
             if self._fallback_secondary is None
