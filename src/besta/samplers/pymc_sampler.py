@@ -59,6 +59,31 @@ class PymcSampler(ParallelSampler):
     parallel_output = False
     supports_smp = False
 
+    def _make_step_method(self):
+        """Build the configured PyMC step method."""
+        name = self.step_method_name
+
+        if name == "metropolis":
+            return self.pm.Metropolis()
+        if name == "demetropolis":
+            return self.pm.DEMetropolis()
+        if name == "demetropolisz":
+            return self.pm.DEMetropolisZ()
+        if name == "slice":
+            return self.pm.Slice()
+
+        if name in {"nuts", "hmc", "hamiltonianmc"}:
+            raise ValueError(
+                f"step_method={name!r} requires gradients, but this sampler wraps "
+                "a black-box CosmoSIS likelihood and does not provide gradients. "
+                "Use one of: metropolis, demetropolis, demetropolisz, slice."
+            )
+
+        raise ValueError(
+            f"Unknown step_method={name!r}. "
+            "Valid options are: metropolis, demetropolis, demetropolisz, slice."
+        )
+
     def config(self):
         try:
             import pymc as pm
@@ -78,6 +103,7 @@ class PymcSampler(ParallelSampler):
         self.chains = max(1, self.read_ini("chains", int, 1))
         self.target_accept = float(self.read_ini("target_accept", float, 0.8))
         self.progressbar = bool(self.read_ini("progressbar", bool, False))
+        self.step_method_name = self.read_ini("step_method", str, "demetropolisz").strip().lower()
 
         fburn = self.read_ini("burn_fraction", float, 0.0)
         if 0.0 <= fburn < 1.0:
@@ -153,7 +179,7 @@ class PymcSampler(ParallelSampler):
                 compute_convergence_checks=False,
                 discard_tuned_samples=True,
                 return_inferencedata=True,
-                step=self.pm.Metropolis(),
+                step=self._make_step_method(),
             )
 
         theta = np.asarray(idata.posterior["theta_unit"])
