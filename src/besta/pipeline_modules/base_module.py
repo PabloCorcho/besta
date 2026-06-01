@@ -503,6 +503,9 @@ class SpectraFitModule(BaseModule):
 
         if options.get_bool("is_variance", default=False):
             error = np.sqrt(error)
+        elif options.get_bool("is_inverse_variance", default=False):
+            error = np.divide(1.0, error**0.5, out=error, where=error > 0)
+            error[error <= 0] = np.inf
 
         # Convert units if needed
         if options.has_value("wlUnits"):
@@ -559,6 +562,22 @@ class SpectraFitModule(BaseModule):
             raise ValueError("Input weights contain negative values.")
         if np.any(error <= 0):
             raise ValueError("Input errors contain negative values.")
+
+        # non-finite numbers handling
+        mask_non_finite = options.get_bool("mask_non_finite", default=True)
+        if not np.isfinite(error).all() and mask_non_finite:
+            logger.warning("Input error array contains non-finite values."
+                           "Setting weights to zero for those pixels.")
+            weights[~np.isfinite(error)] = 0.0
+            # Set non-finite errors to the median of finite errors to avoid issues during interpolation or convolution
+            error[~np.isfinite(error)] = np.nanmedian(error[np.isfinite(error)])
+        if not np.isfinite(flux).all() and mask_non_finite:
+            logger.warning("Input flux array contains non-finite values."
+                           "Setting weights to zero for those pixels.")
+            weights[~np.isfinite(flux)] = 0.0
+            # Set non-finite fluxes to the median of finite fluxes to avoid issues during interpolation or convolution
+            flux[~np.isfinite(flux)] = np.nanmedian(flux[np.isfinite(flux)])
+
         # Load the instrumental LSF
         if options.has_value("lsf"):
             lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
@@ -696,6 +715,7 @@ class SpectraFitModule(BaseModule):
 
         self.config["flux"] = flux
         self.config["var"] = cov
+        self.config["ivar"] = np.divide(1.0, cov, out=np.zeros_like(cov), where=cov > 0)
         self.config["redshift"] = redshift
         self.config["wlUnits"] = wl_units
         self.config["fluxUnits"] = flux_units
@@ -876,6 +896,21 @@ class SpectraFitModule(BaseModule):
             raise ValueError("Feature-based weights sum to zero; please check the input data or disable feature-based weighting.")
         w /= w_sum
         self.config["feature_weights"] = w
+
+    def log_like(self, data, model, ivar):
+        """Compute log-likelihood between data and model using inverse variance."""
+        if data.shape != model.shape or data.shape != ivar.shape:
+            raise ValueError("data, model, ivar must have the same shape (ivar is per-datum inverse variance).")
+        if np.any(ivar < 0):
+            raise ValueError("All ivar entries must be >= 0 (inverse variance).")
+
+        # Compute chi-squared
+        chi2 = np.sum(ivar * (data - model)**2)
+
+        # Compute log-likelihood (up to an additive constant)
+        loglike = -0.5 * chi2
+
+        return loglike
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
         """Measure emission line fluxes and EWs from the best-fit solution.
@@ -1084,15 +1119,14 @@ class SpectraFitModule(BaseModule):
         ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
-        chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["var"]
+        chi2 = (flux_model - self.config["flux"]) ** 2 * self.config["ivar"]
         mean_chi2 = np.nanmean(chi2[good_pixels])
         median_chi2 = np.nanmedian(chi2[good_pixels])
         nmad_chi2 = 1.4826 * np.nanmedian(
             np.abs(chi2[good_pixels] - median_chi2))
         loglike = self.log_like(self.config["flux"][good_pixels],
                                 flux_model[good_pixels],
-                                self.config["var"][good_pixels],
-                                weights=weights[good_pixels])
+                                self.config["ivar"][good_pixels] * weights[good_pixels])
         ax = axs[1, 0]
         ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)
         ax.grid(visible=True)
