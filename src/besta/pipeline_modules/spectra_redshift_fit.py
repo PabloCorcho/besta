@@ -268,7 +268,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         if dust_model is not None:
             flux_model = dust_model.apply_extinction(
                 self.config["ssp_model"].wavelength, flux_model,
-                a_v=block["dust.extinction", "a_v"]
+                a_v=block["dust_attenuation", "a_v"]
             ).value
 
         w = self.config["sweep_weights"]
