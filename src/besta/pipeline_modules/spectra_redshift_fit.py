@@ -343,7 +343,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
                              flux_model[good_pixels],
                              self.config["ivar"][good_pixels] * weights[good_pixels])
         # To make it compatible with photometric likelihoods
-        like /= np.sum(good_pixels)
+        like /= np.sum(weights[good_pixels])
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
         return 0
