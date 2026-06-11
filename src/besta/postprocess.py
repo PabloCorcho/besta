@@ -350,24 +350,24 @@ def histogram_pdf_1d(
     # Convert probability per bin -> density
     with np.errstate(divide="ignore", invalid="ignore"):
         pdf = hist / dx
-    centers = 0.5 * (edges[:-1] + edges[1:])
     # Ensure integrates to 1 (numerical)
     integral = np.nansum(pdf * dx)
     if integral > 0:
         pdf /= integral
-    return centers, pdf
+    return edges, pdf
 
 def kde_pdf_1d(
     x: np.ndarray,
     weights: np.ndarray,
-    grid: np.ndarray,
+    bins: np.ndarray,
 ) -> np.ndarray:
     """
     KDE PDF on a provided grid; returns NaNs on failure.
     """
     x = _as_float_array(x).ravel()
     w = _as_float_array(weights).ravel()
-    g = _as_float_array(grid).ravel()
+    edges = _as_float_array(bins).ravel()
+    g = 0.5 * (edges[:-1] + edges[1:])
     mask = np.isfinite(x) & np.isfinite(w)
     x = x[mask]
     w = w[mask]
@@ -449,6 +449,33 @@ def kde_or_hist_pdf_2d(
     if integral > 0:
         Z /= integral
     return xc, yc, Z
+
+def pit_from_pdf(x_edges, pdf, x_true):
+    """
+    Compute PIT value for a true value given a PDF defined by edges and values.
+
+    Parameters
+    ----------
+    x_edges : array shape (N+1,) bin edges
+    pdf : array shape (N,) PDF values for each bin, normalized to integrate to 1
+    x_true : scalar true value
+
+    Returns
+    -------
+    pit : scalar in [0,1] representing the cumulative probability up to ``x_true``
+    """
+    x_edges = _as_float_array(x_edges).ravel()
+    pdf = _as_float_array(pdf).ravel()
+    if x_edges.size != pdf.size + 1:
+        raise ValueError("x_edges must have one more element than pdf.")
+    if not np.isfinite(x_true):
+        raise ValueError("x_true must be finite.")
+    dx = np.diff(x_edges)
+    cdf = np.cumsum(pdf * dx)
+    if not np.isclose(cdf[-1], 1.0):
+        raise ValueError("pdf must be normalized to integrate to 1.")
+
+    return np.interp(x_true, x_edges, np.r_[0.0, cdf])
 
 # -----------------------------------------------------------------------------
 # Autocorrelation
@@ -939,12 +966,12 @@ class ResultsSummary:
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
-        # PDF1D table: store grid/pdf/kde per parameter as separate columns
+        # PDF1D table: store edges/pdf/kde per parameter as separate columns
         t_pdf1 = Table()
         for name, d in self.pdf_1d.items():
-            t_pdf1[f"{name}_x"] = _as_float_array(d["grid"])
+            t_pdf1[f"{name}_x"] = _as_float_array(d["edges"])
             t_pdf1[f"{name}_pdf"] = _as_float_array(d["hist_pdf"])
-            t_pdf1[f"{name}_kde"] = _as_float_array(d.get("kde_pdf", np.full_like(d["grid"], np.nan)))
+            t_pdf1[f"{name}_kde"] = _as_float_array(d.get("kde_pdf", np.full_like(d["edges"], np.nan)))
 
         if len(t_pdf1.colnames) > 0:
             hdus.append(fits.BinTableHDU(t_pdf1, name="PDF1D"))
@@ -1274,10 +1301,10 @@ def summarize_results(
     pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
     if compute_1d:
         for i, nm in enumerate(names):
-            grid, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
-            d = {"grid": grid, "hist_pdf": hist_pdf}
+            edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
+            d = {"edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
-                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, grid)
+                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
             pdf1d[nm] = d
 
     # 2D PDFs
