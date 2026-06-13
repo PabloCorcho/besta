@@ -97,9 +97,21 @@ class SFHBase(ABC):
             Path to the output .ini file.
         """
         logger.info("Making ini file: %s", ini_file)
+
+        free_params = self.free_params.copy()
+
+        if self.use_transforms:
+            logger.info("transforming default SFH values into latent variables")
+            if getattr(self, "sfh_bin_keys", None):
+                sfh_values = self.to_latent([free_params[k][1] for k in self.sfh_bin_keys])
+                for key, val in zip(self.sfh_bin_keys, sfh_values):
+                    free_params[key] = [-5, val, 5]
+
         with open(ini_file, "w", encoding="utf-8") as file:
+            file.write(f"; Default prior file for SFH model: {str(self.__class__)}\n")
+            file.write(f"; use_transforms: {str(self.use_transforms)}\n")
             file.write(f"[{self.sect_name}]\n")
-            for key, val in self.free_params.items():
+            for key, val in free_params.items():
                 if len(val) > 1:
                     file.write(f"{key} = {val[0]} {val[1]} {val[2]}\n")
                 else:
@@ -169,15 +181,13 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     The SFH of a galaxy is modelled as a stepwise function where the free
     parameters correspond to the mass fraction formed on each bin.
 
-    Upon initializaiton, the free parameters are set between -8 to 0 in terms
-    of log(M/Msun). The starting point corresponds to the mass fraction formed
-    assuming a constant star formation history.
+    The default starting point for uniform priors corresponds to the mass
+    fraction formed assuming a constant star formation history.
 
     Attributes
     ----------
     lookback_time : astropy.units.Quantity
         Lookback time bin edges.
-
     """
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
