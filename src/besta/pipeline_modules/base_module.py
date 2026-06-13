@@ -655,6 +655,9 @@ class SpectraFitModule(BaseModule):
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
 
+        if options.get_bool("use_features", default=True):
+            self.get_feature_weights(options)
+            self.config["weights"] *= self.config["feature_weights"]
         _log("Configuration done.")
 
     def prepare_galaxy(self, options):
@@ -804,6 +807,7 @@ class SpectraFitModule(BaseModule):
         _log("Configuration done")
 
     def get_feature_weights(self, options):
+        """TODO"""
         logger.info("Computing feature weights from input spectra")
         # Estimate the continuum
         continuum, continuum_err = spectrum.estimate_continuum(
@@ -817,12 +821,10 @@ class SpectraFitModule(BaseModule):
         self.config["continuum"] = continuum
         self.config["continuum_err"] = continuum_err
         # Favour features over/under continuum
-        w = (np.abs(self.config["flux"] - continuum) / continuum_err)**2
+        weight_powlaw = options.get_double("feature_weight_powlaw", 2.0)
+        w = (np.abs(self.config["flux"] - continuum) / continuum_err)**weight_powlaw
         w = np.where(np.isfinite(w), w, 0.0)
-        w_sum = np.nansum(w)
-        if w_sum <= 0:
-            raise ValueError("Feature-based weights sum to zero; please check the input data or disable feature-based weighting.")
-        w /= w_sum
+        w /= w.max()
         self.config["feature_weights"] = w
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
@@ -1047,6 +1049,12 @@ class SpectraFitModule(BaseModule):
         ax.set_yscale("symlog", linthresh=1.0)
         ax.set_xlabel("Wavelength (AA)")
         
+        twax = ax.twinx()
+        twax.fill_between(
+            np.array(self.config["wavelength"]), 0.0, weights,
+            color="lime", alpha=0.2, label="Weights")
+        twax.set_ylabel("Weight")
+    
         ax = axs[1, 1]
         ax.hist(
             chi2,
