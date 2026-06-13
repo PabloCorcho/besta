@@ -35,13 +35,10 @@ from .transforms import LinearStandardiser
 
 from besta.postprocess import (
     enclosed_fraction_map,
-    pit_from_discrete_posterior,
     pdf_stats,
-    photoz_metrics,
     weighted_quantiles,
 )
 
-from besta.utils import available_memory_bytes
 from besta.logging import get_logger
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
