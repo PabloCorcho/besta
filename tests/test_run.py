@@ -111,6 +111,7 @@ class TestPipelineManagerFit(unittest.TestCase):
                 "SFHModel": "ExponentialSFH",
                 "velscale": 50.0,
                 "ExtinctionLaw": "ccm89",
+                "use_features": "T",
                 }}
 
         t0 = time()
