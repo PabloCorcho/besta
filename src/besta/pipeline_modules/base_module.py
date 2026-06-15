@@ -415,7 +415,21 @@ class BaseModule(ClassModule):
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
+
+        if options.has_value("save_t_frac_at"):
+            self.config["save_t_frac_at"] = True
+            self.config["t_frac_at"] = np.array(options["save_t_frac_at"],
+                                                dtype=float)
+            _log("Will save the time at which mass history reaches = ",
+                 self.config["save_t_frac_at"])
+
         _log("Configuration done")
+
+    def get_t_frac_at(self, datablock, sfh_model, frac: float):
+        time = sfh_model.model.time_at_stellar_mass_frac(frac).to_value("Gyr"
+        )[0]
+        datablock["extra", f"t_frac_at_{frac:.4f}"] = time
+        return datablock
 
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
