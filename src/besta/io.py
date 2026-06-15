@@ -348,7 +348,7 @@ def read_results_file(path, delimiter="\t"):
         raise ValueError("Expected first line header starting with '#'.")
 
     columns = [col.strip().lower() for col in header.strip("# \n").split(delimiter)]
-    matrix = np.atleast_2d(np.loadtxt(path))
+    matrix = np.atleast_2d(np.loadtxt(path, delimiter=delimiter, comments="#"))
     table = Table()
     if matrix.size <= 1:
         return table
