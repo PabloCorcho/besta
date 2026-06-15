@@ -287,18 +287,21 @@ class BaseModule(ClassModule):
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
+            # A given rest-frame wavelength is observed at a redshifted wavelength
+            # so the instrumental LSF in the rest frame is given by interpolating
+            # the input LSF at the observed wavelength
             inst_lsf = np.interp(
                 ssp.wavelength,
-                self.config["wavelength"] / (1 + self.config["redshift"]),
+                self.config["wavelength"] * (1 + self.config["redshift"]),
                 self.config["lsf"])
 
             if options.has_value("SSPLSF"):
                 _log("Including SSP resolution")
+                # Load SSP LSF in the rest frame
                 ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(
                     os.path.expandvars(options["SSPLSF"]),
                     unpack=True, usecols=(0, 1))
-                ssp_lsf_fwhm = np.interp(ssp.wavelength,
-                                         ssp_lsf_wl << u.AA / (1 + self.config["redshift"]),
+                ssp_lsf_fwhm = np.interp(ssp.wavelength, ssp_lsf_wl << u.AA,
                                          ssp_lsf_fwhm)
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
@@ -306,6 +309,10 @@ class BaseModule(ClassModule):
             effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
 
             if (effective_lsf_disp < 0).any():
+                logger.error("Effective LSF dispersion has negative values. Check the input instrumental and SSP LSFs.")
+                logger.debug("Instrumental LSF (FWHM): %s", inst_lsf)
+                logger.debug("SSP LSF (FWHM): %s", ssp_lsf_fwhm)
+                logger.debug("Effective LSF dispersion: %s", effective_lsf_disp)
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)

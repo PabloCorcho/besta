@@ -72,7 +72,7 @@ class FullSpectralFitModule(SpectraFitModule):
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust_attenuation", "a_v"]
+            self.config["wavelength"], flux_model, a_v=block["dust.attenuation", "a_v"]
         ).value
 
         weights = self.config["weights"] * mask
@@ -92,6 +92,7 @@ class FullSpectralFitModule(SpectraFitModule):
         if not valid:
             # To track invalid samples users can set debug=T
             # logger.warning("Invalid sample")
+            logger.debug("Invalid sample: %s", block)
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
             block["extra", "stellar_mass"] = np.nan
             return 0
@@ -103,7 +104,7 @@ class FullSpectralFitModule(SpectraFitModule):
                              flux_model[good_pixels],
                              self.config["ivar"][good_pixels] * weights[good_pixels])
         # To make it compatible with photometric likelihoods
-        like /= np.sum(good_pixels)
+        like /= np.sum(weights[good_pixels])
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
         return 0
