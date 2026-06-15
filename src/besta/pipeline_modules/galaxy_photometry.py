@@ -58,6 +58,11 @@ class GalaxyPhotometryModule(PhotometryFitModule):
             normalization = 0
             block["extra", "stellar_mass"] = np.nan
 
+        # Save SFH mass-fraction times
+        if self.config.get("save_t_frac_at", False):
+            for frac in self.config.get("t_frac_at", []):
+                self.get_t_frac_at(block, self.config["sfh_model"], frac)
+
         # Mostly for visualization purposes
         if include_spec:
             full_spec = 1e10 * galaxy.emission_spectrum(to_obs_frame=True).to_value(
