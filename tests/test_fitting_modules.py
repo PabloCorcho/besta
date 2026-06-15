@@ -60,7 +60,7 @@ def test_full_spectral_fit_make_observable(tmp_path):
     spec = make_dummy_spectrum(tmp_path)
     block = DataBlock()
     all_params = {
-        "dust_attenuation": {"a_v": 0.0},
+        "dust.attenuation": {"a_v": 0.0},
         "kinematics":  {
         "los_vel": 0.0,
         "los_sigma": 100.0,
