@@ -80,6 +80,11 @@ class FullSpectralFitModule(SpectraFitModule):
             self.config["flux"][weights > 0] / flux_model[weights > 0]
         )
         block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        # Save SFH mass-fraction times
+        if self.config.get("save_t_frac_at", False):
+            for frac in self.config.get("t_frac_at", []):
+                self.get_t_frac_at(block, self.config["sfh_model"], frac)
+
         return flux_model * normalization, weights
 
     def execute(self, block):
