@@ -100,6 +100,12 @@ class FullSpectralFitModule(SpectraFitModule):
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
+        if good_pixels.sum() == 0:
+            logger.warning("No valid pixels for likelihood calculation.")
+            block[section_names.likelihoods, self.like_name] = -1e20
+            block["extra", "stellar_mass"] = np.nan
+            return 0
+
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
                              self.config["ivar"][good_pixels] * weights[good_pixels])
