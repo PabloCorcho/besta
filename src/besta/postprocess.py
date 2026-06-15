@@ -350,24 +350,24 @@ def histogram_pdf_1d(
     # Convert probability per bin -> density
     with np.errstate(divide="ignore", invalid="ignore"):
         pdf = hist / dx
-    centers = 0.5 * (edges[:-1] + edges[1:])
     # Ensure integrates to 1 (numerical)
     integral = np.nansum(pdf * dx)
     if integral > 0:
         pdf /= integral
-    return centers, pdf
+    return edges, pdf
 
 def kde_pdf_1d(
     x: np.ndarray,
     weights: np.ndarray,
-    grid: np.ndarray,
+    bins: np.ndarray,
 ) -> np.ndarray:
     """
     KDE PDF on a provided grid; returns NaNs on failure.
     """
     x = _as_float_array(x).ravel()
     w = _as_float_array(weights).ravel()
-    g = _as_float_array(grid).ravel()
+    edges = _as_float_array(bins).ravel()
+    g = 0.5 * (edges[:-1] + edges[1:])
     mask = np.isfinite(x) & np.isfinite(w)
     x = x[mask]
     w = w[mask]
@@ -449,6 +449,92 @@ def kde_or_hist_pdf_2d(
     if integral > 0:
         Z /= integral
     return xc, yc, Z
+
+def pit_from_pdf(x_edges, pdf, x_true):
+    """
+    Compute PIT value for a true value given a PDF defined by edges and values.
+
+    Parameters
+    ----------
+    x_edges : array shape (N+1,) bin edges
+    pdf : array shape (N,) PDF values for each bin, normalized to integrate to 1
+    x_true : scalar true value
+
+    Returns
+    -------
+    pit : scalar in [0,1] representing the cumulative probability up to ``x_true``
+    """
+    x_edges = _as_float_array(x_edges).ravel()
+    pdf = _as_float_array(pdf).ravel()
+    if x_edges.size != pdf.size + 1:
+        raise ValueError("x_edges must have one more element than pdf.")
+    if not np.isfinite(x_true):
+        raise ValueError("x_true must be finite.")
+    dx = np.diff(x_edges)
+    cdf = np.cumsum(pdf * dx)
+    if not np.isclose(cdf[-1], 1.0):
+        raise ValueError("pdf must be normalized to integrate to 1.")
+
+    return np.interp(x_true, x_edges, np.r_[0.0, cdf])
+
+def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
+              quantiles=None,
+              find_multimodal: bool = False) -> dict:
+    """
+    Compute summary stats from a discrete pdf over bin centers.
+
+    Parameters
+    ----------
+    edges : ndarray, shape (K,)
+        Bin edges.
+    pdf : ndarray, shape (K,)
+        PDF defined by the edges.
+    quantiles : tuple of float, optional
+        Quantiles to report (default 16, 50, 84 percent).
+    find_multimodal : bool, optional
+        If True, return rough modes by local-maximum search.
+
+    Returns
+    -------
+    stats : dict
+        Keys: mean, std, map, q, lo68, hi68, modes (optional).
+    """
+    # Ensure normalization
+    norm = np.sum(pdf * np.diff(edges))
+    pdf /= norm if norm > 0 else 1.0
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    # Trapecium integrals
+    mean = np.sum(pdf * centers * np.diff(edges))
+    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
+    std = var ** 0.5
+    k_map = np.argmax(pdf * np.diff(edges))
+    v_map = centers[k_map]
+
+    cdf = np.cumsum(pdf * np.diff(edges))
+    cdf = np.insert(cdf, 0, 0)
+
+    if quantiles is not None:
+        qs = np.array(quantiles, float)
+        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
+    else:
+        qvals = None
+
+    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
+    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
+    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
+
+    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
+           "median": median, "lo68": lo68, "hi68": hi68}
+
+    if find_multimodal:
+        modes = []
+        for i in range(1, len(pdf) - 1):
+            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
+                modes.append(centers[i])
+        if not modes:
+            modes = [v_map]
+        out["modes"] = np.asarray(modes)
+    return out
 
 # -----------------------------------------------------------------------------
 # Autocorrelation
@@ -863,6 +949,11 @@ class ResultsSummary:
         }
         return out
 
+    @classmethod
+    def from_json(cls):
+        #TODO
+        pass
+
     def write_json(self, path: str, *, overwrite: bool = True, indent: int = 2) -> str:
         """Write a JSON summary file."""
         if (not overwrite) and os.path.exists(path):
@@ -939,15 +1030,27 @@ class ResultsSummary:
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
-        # PDF1D table: store grid/pdf/kde per parameter as separate columns
+        # PDF1D table: store edges/pdf/kde per parameter as separate columns
         t_pdf1 = Table()
+        t_pdf1_edges = Table()
         for name, d in self.pdf_1d.items():
-            t_pdf1[f"{name}_x"] = _as_float_array(d["grid"])
-            t_pdf1[f"{name}_pdf"] = _as_float_array(d["hist_pdf"])
-            t_pdf1[f"{name}_kde"] = _as_float_array(d.get("kde_pdf", np.full_like(d["grid"], np.nan)))
+            edges = _as_float_array(d["edges"])
+            centers = _as_float_array(d.get("grid", 0.5 * (edges[:-1] + edges[1:])))
+            hist_pdf = _as_float_array(d["hist_pdf"])
+            kde_pdf = _as_float_array(d.get("kde_pdf", np.full_like(hist_pdf, np.nan)))
+
+            # FITS bin table columns must have consistent lengths across rows.
+            # Store centers/PDF/KDE in PDF1D (all length = n_bins).
+            t_pdf1[f"{name}_x"] = centers
+            t_pdf1[f"{name}_pdf"] = hist_pdf
+            t_pdf1[f"{name}_kde"] = kde_pdf
+            # Store raw histogram edges separately (length = n_bins + 1).
+            t_pdf1_edges[f"{name}_edges"] = edges
 
         if len(t_pdf1.colnames) > 0:
             hdus.append(fits.BinTableHDU(t_pdf1, name="PDF1D"))
+        if len(t_pdf1_edges.colnames) > 0:
+            hdus.append(fits.BinTableHDU(t_pdf1_edges, name="PDF1D_EDGES"))
 
         # PDF2D images
         for (n0, n1), d in self.pdf_2d.items():
@@ -967,9 +1070,10 @@ class ResultsSummary:
         hdul.writeto(path, overwrite=overwrite)
         return path
 
-    # -------------------------------------------------------------------------
-    # Plot helpers (optional)
-    # -------------------------------------------------------------------------
+    @classmethod
+    def from_fits(cls):
+        #TODO
+        pass
 
     def plot_1d_pdfs(
         self,
@@ -1063,15 +1167,7 @@ class ResultsSummary:
         dpi: int = 200,
         show: bool = False,
     ) -> str:
-        """
-        Lightweight corner plot without external dependencies.
-
-        Diagonal: 1D hist PDFs (weighted)
-        Off-diagonal: scatter of (subsampled) points colored by weight rank (simple)
-
-        For serious usage, consider adding an optional dependency later (corner/arviz),
-        but this is a decent built-in baseline.
-        """
+        """Build a corner plot"""
         npar = len(self.parameter_names)
         if npar == 0 or self.samples.size == 0:
             raise ValueError("No samples available to plot.")
@@ -1087,21 +1183,25 @@ class ResultsSummary:
         S = self.samples[:, idx]
         w = self.weights[idx]
 
-        fig, axes = plt.subplots(npar, npar, figsize=(2.2 * npar, 2.2 * npar), constrained_layout=True)
+        fig, axes = plt.subplots(
+            npar, npar, figsize=(2.2 * npar, 2.2 * npar),
+            sharex="col",
+            constrained_layout=True)
 
         for i in range(npar):
             for j in range(npar):
                 ax = axes[i, j]
                 if i == j:
                     x = self.samples[i, :]
-                    xc, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
+                    edges, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
+                    xc = 0.5 * (edges[:-1] + edges[1:])
                     ax.plot(xc, pdf, lw=1.2)
                     # mark mean/MAP
                     ax.axvline(self.mean[i], lw=1.0, alpha=0.8)
                     ax.axvline(self.map[i], lw=1.0, alpha=0.8)
                     ax.set_yticks([])
                 elif i > j:
-                    ax.scatter(S[j, :], S[i, :], s=2, alpha=0.25)
+                    ax.hist2d(S[j, :], S[i, :], weights=w)
                 else:
                     ax.axis("off")
 
@@ -1274,10 +1374,11 @@ def summarize_results(
     pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
     if compute_1d:
         for i, nm in enumerate(names):
-            grid, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
-            d = {"grid": grid, "hist_pdf": hist_pdf}
+            edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
+            centers = 0.5 * (edges[:-1] + edges[1:])
+            d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
-                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, grid)
+                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
             pdf1d[nm] = d
 
     # 2D PDFs
@@ -1475,100 +1576,6 @@ def weighted_quantiles(x: np.ndarray, w: np.ndarray,
     cdf = np.cumsum(w)
     cdf = cdf / cdf[-1]
     return np.interp(qs, cdf, x)
-
-def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
-              quantiles=None,
-              find_multimodal: bool = False) -> dict:
-    """
-    Compute summary stats from a discrete pdf over bin centers.
-
-    Parameters
-    ----------
-    edges : ndarray, shape (K,)
-        Bin edges.
-    pdf : ndarray, shape (K,)
-        PDF defined by the edges.
-    quantiles : tuple of float, optional
-        Quantiles to report (default 16, 50, 84 percent).
-    find_multimodal : bool, optional
-        If True, return rough modes by local-maximum search.
-
-    Returns
-    -------
-    stats : dict
-        Keys: mean, std, map, q, lo68, hi68, modes (optional).
-    """
-    # Ensure normalization
-    norm = np.sum(pdf * np.diff(edges))
-    pdf /= norm if norm > 0 else 1.0
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    # Trapecium integrals
-    mean = np.sum(pdf * centers * np.diff(edges))
-    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
-    std = var ** 0.5
-    k_map = np.argmax(pdf * np.diff(edges))
-    v_map = centers[k_map]
-
-    cdf = np.cumsum(pdf * np.diff(edges))
-    cdf = np.insert(cdf, 0, 0)
-
-    if quantiles is not None:
-        qs = np.array(quantiles, float)
-        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
-    else:
-        qvals = None
-
-    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
-    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
-    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
-
-    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
-           "median": median, "lo68": lo68, "hi68": hi68}
-
-    if find_multimodal:
-        modes = []
-        for i in range(1, len(pdf) - 1):
-            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
-                modes.append(centers[i])
-        if not modes:
-            modes = [v_map]
-        out["modes"] = np.asarray(modes)
-    return out
-
-
-def pit_from_discrete_posterior(z_true: np.ndarray,
-                                posts: np.ndarray,
-                                z_edges: np.ndarray) -> np.ndarray:
-    """
-    Probability Integral Transform for discrete posteriors on bins.
-
-    Assumes uniform density within each bin for within-bin interpolation.
-
-    Parameters
-    ----------
-    z_true : ndarray, shape (N,)
-        True values.
-    posts : ndarray, shape (N, K)
-        Row-normalised posteriors over K bins.
-    z_edges : ndarray, shape (K+1,)
-        Bin edges.
-
-    Returns
-    -------
-    pit : ndarray, shape (N,)
-        PIT values in [0, 1].
-    """
-    N, K = posts.shape
-    assert K == len(z_edges) - 1
-    cdf_bins = np.cumsum(posts, axis=1)
-    j = np.clip(np.digitize(z_true, z_edges) - 1, 0, K - 1)
-    idx = np.arange(N)
-    below = np.where(j > 0, cdf_bins[idx, j - 1], 0.0)
-    widths = z_edges[1:] - z_edges[:-1]
-    frac = np.clip((z_true - z_edges[j]) / widths[j], 0.0, 1.0)
-    pit = below + posts[idx, j] * frac
-    return np.clip(pit, 0.0, 1.0)
-
 
 def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     """
