@@ -16,6 +16,15 @@ class TestPipelineManagerFit(unittest.TestCase):
     def setUpClass(cls):
         # Setup stuff
 
+        # Remove stale artifacts so each run uses the current test configuration.
+        for path in [
+            "./FullSpectralFit_auto.ini",
+            "./full_fit_exponential_sfh.txt",
+            "./full_fit_exponential_sfh.maxlike.txt",
+        ]:
+            if os.path.exists(path):
+                os.remove(path)
+
         print("Creating test spectra using an exponential SFH")
         # Use the default SSP from PST
         ssp = PopStar(IMF="cha")
@@ -96,7 +105,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             "quiet": "F",
             "timing": "T",
             "debug": "T",
-            "extra_output": "extra/stellar_mass"
+            "extra_output": "extra/stellar_mass extra/t_frac_at_0.5000 extra/t_frac_at_0.9000 extra/t_frac_at_0.9900",
         },
 
         "FullSpectralFit": {
@@ -112,6 +121,7 @@ class TestPipelineManagerFit(unittest.TestCase):
                 "velscale": 100.0,
                 "ExtinctionLaw": "ccm89",
                 "use_features": "T",
+                "save_t_frac_at": [0.5, 0.9, 0.99]
                 }}
 
         t0 = time()
