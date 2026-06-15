@@ -828,10 +828,31 @@ class SpectraFitModule(BaseModule):
         self.config["continuum"] = continuum
         self.config["continuum_err"] = continuum_err
         # Favour features over/under continuum
+        z_continuum = np.where(
+            (continuum_err > 0) & (continuum > 0), 
+            (self.config["flux"] - continuum) / continuum_err,
+            0.0)
+
+        if options.get_bool("features_only_emission", default=False):
+            logger.info("Using only emission features for feature weights")
+            z_continuum = np.where(z_continuum > 0, z_continuum, 0.0)
+        elif options.get_bool("features_only_absorption", default=False):
+            logger.info("Using only absorption features for feature weights")
+            z_continuum = np.where(z_continuum < 0, z_continuum, 0.0)
+
+        # Prevent extreme values from dominating the weights
+        z_clip = options.get_double("feature_weight_zclip", 3.0)
+        z_continuum = np.clip(z_continuum, -z_clip, z_clip)
+        # Stretch the weights to favour pixels with strong features
         weight_powlaw = options.get_double("feature_weight_powlaw", 2.0)
-        w = (np.abs(self.config["flux"] - continuum) / continuum_err)**weight_powlaw
+        logger.info(f"Using feature weights with power-law exponent: {weight_powlaw}")
+        w = np.abs(z_continuum)**weight_powlaw
         w = np.where(np.isfinite(w), w, 0.0)
         w /= w.max()
+        # Clip to 0 those pixels that have a very low value
+        min_weight = options.get_double("feature_weight_min", 0.01)
+        logger.info(f"Clipping feature weights below {min_weight} to zero")
+        w = np.where(w < min_weight, 0.0, w)
         self.config["feature_weights"] = w
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
@@ -1060,7 +1081,7 @@ class SpectraFitModule(BaseModule):
         twax.fill_between(
             np.array(self.config["wavelength"]), 0.0, weights,
             color="lime", alpha=0.2, label="Weights")
-        twax.set_ylabel("Weight")
+        twax.set_ylabel("Weight", color="lime")
     
         ax = axs[1, 1]
         ax.hist(
