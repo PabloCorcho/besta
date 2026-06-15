@@ -676,7 +676,7 @@ class SpectraFitModule(BaseModule):
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
 
-        if options.get_bool("use_features", default=True):
+        if options.get_bool("use_features", default=False):
             self.get_feature_weights(options)
             self.config["weights"] *= self.config["feature_weights"]
         _log("Configuration done.")
