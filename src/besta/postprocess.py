@@ -1032,13 +1032,25 @@ class ResultsSummary:
 
         # PDF1D table: store edges/pdf/kde per parameter as separate columns
         t_pdf1 = Table()
+        t_pdf1_edges = Table()
         for name, d in self.pdf_1d.items():
-            t_pdf1[f"{name}_x"] = _as_float_array(d["edges"])
-            t_pdf1[f"{name}_pdf"] = _as_float_array(d["hist_pdf"])
-            t_pdf1[f"{name}_kde"] = _as_float_array(d.get("kde_pdf", np.full_like(d["edges"], np.nan)))
+            edges = _as_float_array(d["edges"])
+            centers = _as_float_array(d.get("grid", 0.5 * (edges[:-1] + edges[1:])))
+            hist_pdf = _as_float_array(d["hist_pdf"])
+            kde_pdf = _as_float_array(d.get("kde_pdf", np.full_like(hist_pdf, np.nan)))
+
+            # FITS bin table columns must have consistent lengths across rows.
+            # Store centers/PDF/KDE in PDF1D (all length = n_bins).
+            t_pdf1[f"{name}_x"] = centers
+            t_pdf1[f"{name}_pdf"] = hist_pdf
+            t_pdf1[f"{name}_kde"] = kde_pdf
+            # Store raw histogram edges separately (length = n_bins + 1).
+            t_pdf1_edges[f"{name}_edges"] = edges
 
         if len(t_pdf1.colnames) > 0:
             hdus.append(fits.BinTableHDU(t_pdf1, name="PDF1D"))
+        if len(t_pdf1_edges.colnames) > 0:
+            hdus.append(fits.BinTableHDU(t_pdf1_edges, name="PDF1D_EDGES"))
 
         # PDF2D images
         for (n0, n1), d in self.pdf_2d.items():
@@ -1181,7 +1193,8 @@ class ResultsSummary:
                 ax = axes[i, j]
                 if i == j:
                     x = self.samples[i, :]
-                    xc, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
+                    edges, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
+                    xc = 0.5 * (edges[:-1] + edges[1:])
                     ax.plot(xc, pdf, lw=1.2)
                     # mark mean/MAP
                     ax.axvline(self.mean[i], lw=1.0, alpha=0.8)
@@ -1362,7 +1375,8 @@ def summarize_results(
     if compute_1d:
         for i, nm in enumerate(names):
             edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
-            d = {"edges": edges, "hist_pdf": hist_pdf}
+            centers = 0.5 * (edges[:-1] + edges[1:])
+            d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
                 d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
             pdf1d[nm] = d
