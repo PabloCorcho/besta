@@ -33,7 +33,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             [ssp.wavelength, np.random.normal(sed, sed * 0.01), sed * 0.01]).T)
     
         # Create values file
-        text = """[dust_attenuation]
+        text = """[dust.attenuation]
         a_v = 0 0 1
         [stars.sfh]
         alpha_powerlaw = 0 1 10
@@ -109,7 +109,7 @@ class TestPipelineManagerFit(unittest.TestCase):
                 "SSPDir": "None",
                 "wlRange": [3500.0, 9000.0],
                 "SFHModel": "ExponentialSFH",
-                "velscale": 50.0,
+                "velscale": 100.0,
                 "ExtinctionLaw": "ccm89",
                 "use_features": "T",
                 }}
