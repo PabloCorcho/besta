@@ -333,7 +333,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         if not valid:
             # To track invalid samples users can set debug=T in the .ini file
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["extra", "stellar_mass"] = np.nan
+            # block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
         flux_model, weights = self.make_observable(block)
