@@ -71,9 +71,9 @@ class GalaxySpectraModule(SpectraFitModule):
             block["extra", "stellar_mass"] = np.log10(normalization)
         else:
             normalization = 1.0
-            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
-                sfh_model.today
-            ).to_value("Msun")
+            block["extra", "stellar_mass"] = np.log10(
+                sfh_model.model.stellar_mass_formed(
+                    sfh_model.today).to_value("Msun"))
         # Save SFH mass-fraction times
         if self.config.get("save_t_frac_at", False):
             for frac in self.config.get("t_frac_at", []):
