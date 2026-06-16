@@ -63,10 +63,17 @@ class GalaxySpectraModule(SpectraFitModule):
         mask = mask[pixels]
 
         weights = self.config["weights"] * mask
-        normalization = np.nanmedian(
-            self.config["flux"][weights > 0] / flux_model[weights > 0]
-        )
-        block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        sfh_model = self.config["sfh_model"]
+        if sfh_model.use_mass_normalization:
+            normalization = np.nanmedian(
+                self.config["flux"][weights > 0] / flux_model[weights > 0]
+            )
+            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        else:
+            normalization = 1.0
+            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
+                sfh_model.today
+            ).to_value("Msun")
         # Save SFH mass-fraction times
         if self.config.get("save_t_frac_at", False):
             for frac in self.config.get("t_frac_at", []):

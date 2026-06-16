@@ -49,14 +49,21 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         # Synthesis
         flux_model = 1e10 * galaxy.emission_photometry(to_obs_frame=True).to_value(
             self.config["photometry_flux_unit"])
-        non_zero = flux_model > 0
-        if non_zero.any():
-            normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
-            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        sfh_model = self.config["sfh_model"]
+        if sfh_model.use_mass_normalization:
+            non_zero = flux_model > 0
+            if non_zero.any():
+                normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
+                block["extra", "stellar_mass"] = np.log10(normalization) + 10
+            else:
+                logger.warning("All fluxes are zero")
+                normalization = 0
+                block["extra", "stellar_mass"] = np.nan
         else:
-            logger.warning("All fluxes are zero")
-            normalization = 0
-            block["extra", "stellar_mass"] = np.nan
+            normalization = 1.0
+            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
+                sfh_model.today
+            ).to_value("Msun")
 
         # Save SFH mass-fraction times
         if self.config.get("save_t_frac_at", False):
