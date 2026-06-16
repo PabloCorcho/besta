@@ -78,6 +78,7 @@ class SFHBase(ABC):
         self.redshift = kwargs.get("redshift", 0.0)
         self.today = kwargs.get("today", cosmology.age(self.redshift))
         self.use_transforms = kwargs.get("use_transforms", False)
+        self.use_mass_normalization = kwargs.get("use_mass_normalization", True)
 
     # --- Transform hooks ---
     def to_physical(self, latent):
@@ -192,31 +193,39 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.use_transforms:
+            self.use_mass_normalization = False
         logger.info("Initialising FixedTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
         )
-
+        use_mass_normalization = False
+        # Add the present time as the last bin
         self.lookback_time = np.insert(
             self.lookback_time,
-            (0, self.lookback_time.size),
-            (self.today.to(self.lookback_time.unit), 0 << self.lookback_time.unit),
+            self.lookback_time.size,
+            0 << self.lookback_time.unit,
         )
 
         self.time = self.today - self.lookback_time
         if (self.time < 0).any():
             logger.warning("lookback time bin larger than the age of the Universe")
 
-        logm_min = kwargs.get("logmass_min", -6)
+        logm_min = kwargs.get("logmass_min", 1.0)
+        logm_max = kwargs.get("logmass_max", 12.0)
         logger.info("Setting up free parameters")
         logger.info("Minimum log(M/Msun)=%s", logm_min)
+        logger.info("Maximum log(M/Msun)=%s", logm_max)
         self.sfh_bin_keys = []
-        for lbt in self.lookback_time[1:-1].to_value("Gyr"):
+        for lbt in self.lookback_time[:-1].to_value("Gyr"):
             # Initialise parameters assuming a constant star formation history
             k = f"logmass_at_{lbt:.3f}"
             self.sfh_bin_keys.append(k)
-            self.free_params[k] = [logm_min, self.today._to_value("Gyr") / lbt, 0.0]
+            self.free_params[k] = [logm_min,
+                                #    self.today._to_value("Gyr") / lbt,
+                                   6.0,
+                                   logm_max]
 
         # Initialise PST
         self.model = cem.TabularCEM_ZPowerLaw(
@@ -236,11 +245,17 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             # Enforce fractions that sum to one
             mass_frac = _softmax(logm_formed)
             cumulative = np.cumsum(mass_frac)
+
+            if cumulative[-1] > 1.0:
+                return 0, cumulative[-1]
+
+            cumulative = np.insert(cumulative, 0, 0)
+            # cumulative = np.append(cumulative, 1)
         else:
-            cumulative = np.cumsum(10**logm_formed)
-        if cumulative[-1] > 1.0:
-            return 0, cumulative[-1]
-        cumulative = np.insert(cumulative, (0, cumulative.size), (0, 1))
+            # no normalization is used; prepend 0 so length matches time array
+            mass_per_bin = 10**logm_formed
+            cumulative = np.insert(np.cumsum(mass_per_bin), 0, 0.0)
+
         # Update the mass of the tabular model
         self.model.table_mass = cumulative << u.Msun
         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
