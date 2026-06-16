@@ -966,10 +966,11 @@ class SpectraFitModule(BaseModule):
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
         # SNR information
-        snr = np.nanpercentile(
-            self.config["flux"] / np.sqrt(self.config["var"]),
-            (16, 50, 84)
-        )
+        with np.errstate(divide="ignore", invalid="ignore"):
+            snr = np.nanpercentile(
+                self.config["flux"] / np.sqrt(self.config["var"]),
+                (16, 50, 84)
+            )
         ax.annotate(f"SNR (16, 50, 84 percentiles): "
                     f"{snr[0]:.1f}, {snr[1]:.1f}, {snr[2]:.1f}",
                     xy=(0.02, 0.98), xycoords="axes fraction", va="top",
