@@ -174,7 +174,7 @@ class MainPipeline(object):
             reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
-            logger.info("MaxLike solution: %s", solution)
+            logger.info("MAP solution: %s", solution)
 
             if plot_result:
                 solution_datablock = reader.solution_to_datablock(
