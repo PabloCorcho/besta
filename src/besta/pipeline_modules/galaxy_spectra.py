@@ -46,7 +46,7 @@ class GalaxySpectraModule(SpectraFitModule):
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False)
         # Synthesis
-        flux_model = 1e10 * galaxy.emission_spectrum(
+        flux_model = galaxy.emission_spectrum(
             to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
 
         self._losvd_kernel.parse_parameters(block)
@@ -68,7 +68,7 @@ class GalaxySpectraModule(SpectraFitModule):
             normalization = np.nanmedian(
                 self.config["flux"][weights > 0] / flux_model[weights > 0]
             )
-            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+            block["extra", "stellar_mass"] = np.log10(normalization)
         else:
             normalization = 1.0
             block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
