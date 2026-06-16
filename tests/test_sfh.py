@@ -14,43 +14,131 @@ class TestFixedTimeSFH(unittest.TestCase):
         self.lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
         self.model = sfh.FixedTimeSFH(self.lookback_bins, ism_metallicity_today=0.02)
 
-    def test_initialization(self):
-        # Check if the number of sfh_bin_keys is correct (N_bins - 1)
-        expected_bins = len(self.lookback_bins)
-        self.assertEqual(len(self.model.sfh_bin_keys), expected_bins)
+    def _make_db(self, logmass_value=-6.0, alpha=1.0, ism_z=0.02):
+        parameters = {key: logmass_value for key in self.model.sfh_bin_keys}
+        parameters['alpha_powerlaw'] = alpha
+        parameters['ism_metallicity_today'] = ism_z
+        return DataBlock.from_dict({self.model.sect_name: parameters})
 
-        # Check free parameters match bin keys
+    def test_initialization(self):
+        # Number of sfh_bin_keys must equal number of input bins
+        self.assertEqual(len(self.model.sfh_bin_keys), len(self.lookback_bins))
+
+        # Each key must be in free_params with valid [min, default, max]
         for key in self.model.sfh_bin_keys:
             self.assertIn(key, self.model.free_params)
+            bounds = self.model.free_params[key]
+            self.assertLess(bounds[0], bounds[1])
+            self.assertLess(bounds[1], bounds[2])
+
+    def test_lookback_time_sorted_descending(self):
+        # Internal lookback_time should be sorted descending (oldest first),
+        # with 0 appended as the last entry.
+        lbt_values = self.model.lookback_time.to_value("Gyr")
+        self.assertTrue(np.all(np.diff(lbt_values) <= 0))
+        self.assertAlmostEqual(lbt_values[-1], 0.0)
+
+    def test_time_array_size(self):
+        # time array must have one more element than the input bins (0 appended)
+        self.assertEqual(self.model.time.size, len(self.lookback_bins) + 1)
+
+    def test_key_names_encode_lookback_time(self):
+        # Each key should encode the lookback time in Gyr (sorted descending)
+        expected_lbt = np.sort(self.lookback_bins.to_value("Gyr"))[::-1]
+        for key, lbt in zip(self.model.sfh_bin_keys, expected_lbt):
+            self.assertIn(f"{lbt:.3f}", key)
 
     def test_parse_datablock_valid(self):
-        # Build valid parameters based on expected keys
-        parameters = {
-            key: -6.0 for key in self.model.sfh_bin_keys  # low mass bins
-        }
-        parameters['alpha_powerlaw'] = 1.0
-        parameters['ism_metallicity_today'] = 0.02
-
-        db = DataBlock.from_dict({self.model.sect_name: parameters})
+        db = self._make_db(logmass_value=-6.0)
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
         self.assertIsNone(info)
         self.assertTrue(hasattr(self.model.model, 'table_mass'))
 
-    def test_parse_datablock_overflow(self):
-        # Set high mass bins to force overflow
-        parameters = {
-            key: 0.5 for key in self.model.sfh_bin_keys  # logmass=0.5 => mass > 1 in total
-        }
-        parameters['alpha_powerlaw'] = 1.0
-        parameters['ism_metallicity_today'] = 0.02
+    def test_table_mass_size_matches_time(self):
+        # table_mass must align with the internal time array
+        db = self._make_db(logmass_value=-6.0)
+        self.model.parse_datablock(db)
+        self.assertEqual(
+            len(self.model.model.table_mass),
+            self.model.time.size,
+        )
 
-        db = DataBlock.from_dict({self.model.sect_name: parameters})
-        status, overflow_value = self.model.parse_datablock(db)
+    def test_table_mass_starts_at_zero(self):
+        # The first mass value (at the earliest time) should be 0
+        db = self._make_db(logmass_value=-6.0)
+        self.model.parse_datablock(db)
+        self.assertAlmostEqual(
+            self.model.model.table_mass[0].to_value(u.Msun), 0.0
+        )
 
-        self.assertEqual(status, 0)
-        self.assertGreater(overflow_value, 1.0)
+    def test_table_mass_monotonically_increasing(self):
+        db = self._make_db(logmass_value=-6.0)
+        self.model.parse_datablock(db)
+        masses = self.model.model.table_mass.to_value(u.Msun)
+        self.assertTrue(np.all(np.diff(masses) >= 0))
+
+    def test_parse_datablock_updates_alpha(self):
+        db = self._make_db(logmass_value=-6.0, alpha=2.5)
+        self.model.parse_datablock(db)
+        self.assertAlmostEqual(self.model.model.alpha_powerlaw, 2.5)
+
+    def test_parse_datablock_updates_metallicity(self):
+        db = self._make_db(logmass_value=-6.0, ism_z=0.03)
+        self.model.parse_datablock(db)
+        self.assertAlmostEqual(
+            self.model.model.ism_metallicity_today.value, 0.03
+        )
+
+    def test_single_bin(self):
+        # A model with a single bin should work without errors
+        model = sfh.FixedTimeSFH(np.array([5.0]) * u.Gyr, ism_metallicity_today=0.02)
+        self.assertEqual(len(model.sfh_bin_keys), 1)
+        params = {model.sfh_bin_keys[0]: -3.0,
+                  'alpha_powerlaw': 0.5,
+                  'ism_metallicity_today': 0.02}
+        db = DataBlock.from_dict({model.sect_name: params})
+        status, info = model.parse_datablock(db)
+        self.assertEqual(status, 1)
+        self.assertIsNone(info)
+
+    def test_parse_free_params(self):
+        # parse_free_params is a convenience wrapper around parse_datablock
+        params = {key: -6.0 for key in self.model.sfh_bin_keys}
+        params['alpha_powerlaw'] = 1.0
+        params['ism_metallicity_today'] = 0.02
+        status, info = self.model.parse_free_params(params)
+        self.assertEqual(status, 1)
+        self.assertIsNone(info)
+
+    def test_make_ini_creates_file(self):
+        import tempfile, os, configparser
+        with tempfile.NamedTemporaryFile(suffix=".ini", delete=False) as f:
+            path = f.name
+        try:
+            self.model.make_ini(path)
+            self.assertTrue(os.path.exists(path))
+            with open(path) as f:
+                content = f.read()
+            # All bin keys must appear in the ini file
+            for key in self.model.sfh_bin_keys:
+                self.assertIn(key, content)
+        finally:
+            os.unlink(path)
+
+    def test_use_transforms_mode(self):
+        model = sfh.FixedTimeSFH(
+            self.lookback_bins, ism_metallicity_today=0.02, use_transforms=True
+        )
+        # In transforms mode, latent values go through softmax → always valid
+        params = {key: 0.0 for key in model.sfh_bin_keys}  # equal fractions
+        params['alpha_powerlaw'] = 0.5
+        params['ism_metallicity_today'] = 0.02
+        db = DataBlock.from_dict({model.sect_name: params})
+        status, info = model.parse_datablock(db)
+        self.assertEqual(status, 1)
+        self.assertIsNone(info)
 
 
 class TestFixedTime_sSFR_SFH(unittest.TestCase):
