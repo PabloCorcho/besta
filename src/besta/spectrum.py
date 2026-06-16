@@ -1052,9 +1052,10 @@ def estimate_continuum(
     knots_idx[-1] = len(wl) - 1
 
     if use_log:
-        log_flux = np.where(flux > 0, np.log(flux), np.nan)
-        log_flux_err = np.where(flux > 0, err / flux, np.nan)
-        weights = np.where((flux > 0) & (err > 0), weights / log_flux_err**2, 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_flux = np.where(flux > 0, np.log(flux), np.nan)
+            log_flux_err = np.where(flux > 0, err / flux, np.nan)
+            weights = np.where((flux > 0) & (err > 0), weights / log_flux_err**2, 0.0)
     else:
         log_flux = flux
         log_flux_err = err
