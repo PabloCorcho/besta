@@ -295,6 +295,65 @@ class TestExponentialSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(mass) >= 0))
 
 
+class TestBetaSFH(unittest.TestCase):
+
+    def setUp(self):
+        self.model = sfh.BetaSFH(
+            ism_metallicity_today=0.02,
+            alpha_powerlaw=1.0,
+        )
+
+    def _make_db(self, t_start=1.0, t_end=8.0, alpha=2.5, beta=4.0,
+                 alpha_powerlaw=1.5, ism_z=0.03):
+        parameters = {
+            "alpha": alpha,
+            "beta": beta,
+            "t_start": t_start,
+            "t_end": t_end,
+            "alpha_powerlaw": alpha_powerlaw,
+            "ism_metallicity_today": ism_z,
+        }
+        return DataBlock.from_dict({self.model.sect_name: parameters})
+
+    def test_initialization(self):
+        for key in ("alpha", "beta", "t_start", "t_end"):
+            self.assertIn(key, self.model.free_params)
+            bounds = self.model.free_params[key]
+            self.assertLess(bounds[0], bounds[1])
+            self.assertLess(bounds[1], bounds[2])
+
+        self.assertAlmostEqual(
+            self.model.model.t_end.value.to_value(u.Gyr),
+            self.model.today.to_value(u.Gyr),
+        )
+
+    def test_parse_datablock_valid(self):
+        status, info = self.model.parse_datablock(self._make_db())
+
+        self.assertEqual(status, 1)
+        self.assertIsNone(info)
+        self.assertAlmostEqual(self.model.model.alpha, 2.5)
+        self.assertAlmostEqual(self.model.model.beta, 4.0)
+        self.assertAlmostEqual(
+            self.model.model.t_start.value.to_value(u.Gyr), 1.0
+        )
+        self.assertAlmostEqual(
+            self.model.model.t_end.value.to_value(u.Gyr), 8.0
+        )
+        self.assertAlmostEqual(self.model.model.alpha_powerlaw.value, 1.5)
+        self.assertAlmostEqual(
+            self.model.model.ism_metallicity_today.value, 0.03
+        )
+
+    def test_parse_datablock_rejects_invalid_time_bounds(self):
+        status, overflow = self.model.parse_datablock(
+            self._make_db(t_start=8.0, t_end=1.0)
+        )
+
+        self.assertEqual(status, 0)
+        self.assertGreaterEqual(overflow, 0.0)
+
+
 class TestTransforms(unittest.TestCase):
 
     def test_fixed_time_softmax_roundtrip(self):

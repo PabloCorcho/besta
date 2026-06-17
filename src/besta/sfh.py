@@ -747,5 +747,74 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
         return 1, None
 
+class BetaSFH(ZPowerLawMixin, SFHBase):
+    """An analytical beta SFH model.
+
+    Description
+    -----------
+    The SFH of a galaxy is modelled as a beta function.
+
+    Attributes
+    ----------
+    time : astropy.units.Quantity
+        Time bins to evaluate the SFH.
+    lookback_time : astropy.units.Quantity
+
+    """
+
+    free_params = {
+        "alpha_powerlaw": [0, 1, 10],
+        "ism_metallicity_today": [0.005, 0.01, 0.08],
+        "alpha": [0.1, 2.0, 10.0],
+        "beta": [0.1, 2.0, 10.0],
+        "t_start": [0.0, 0.5, 5.0],
+        "t_end": [0.5, 5.0, 15.0],
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        logger.info("Initialising BetaSFH model")
+
+        self.free_params["t_start"] = kwargs.get(
+            "t_start", [0.0, 0.5 * self.today.to_value("Gyr"),
+                        self.today.to_value("Gyr")]
+        )
+        self.free_params["t_end"] = kwargs.get(
+            "t_end", [0.5 * self.today.to_value("Gyr"), self.today.to_value("Gyr"),
+                      2 * self.today.to_value("Gyr")]
+        )
+
+        self.model = cem.BetaZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
+            << u.dimensionless_unscaled,
+            alpha=1.0,
+            beta=1.0,
+            t_start=0 << u.Gyr,
+            t_end=self.today,
+        )
+
+    def parse_datablock(self, datablock: DataBlock):
+        """Update the beta SFH model from a CosmoSIS DataBlock."""
+
+        t_start = datablock[self.sect_name, "t_start"]
+        t_end = datablock[self.sect_name, "t_end"]
+        if t_start >= t_end:
+            return 0, t_start - t_end
+    
+        self.model = cem.BetaZPowerLawCEM(
+            today=self.today,
+            mass_today=1.0 << u.Msun,
+            alpha_powerlaw=datablock[self.sect_name, "alpha_powerlaw"],
+            ism_metallicity_today=datablock[self.sect_name, "ism_metallicity_today"]
+            << u.dimensionless_unscaled,
+            alpha=datablock[self.sect_name, "alpha"], 
+            beta=datablock[self.sect_name, "beta"],
+            t_start=t_start << u.Gyr,
+            t_end=t_end << u.Gyr,
+        )
+        return 1, None
 
 # Mr Krtxo \(ﾟ▽ﾟ)/
