@@ -89,12 +89,16 @@ def test_full_spectral_fit_make_observable(tmp_path):
             "velscale": 200.0,
             "ExtinctionLaw": "ccm89",
             "SFHModel": "ExponentialSFH",
+            "save_ssfr_over_tau": [0.1, 1.0],
         }
     }
     mod = FullSpectralFitModule(opts)
     flux_model, weights = mod.make_observable(block)
     assert flux_model.shape == mod.config["flux"].shape
     assert weights.shape == mod.config["flux"].shape
+    np.testing.assert_allclose(mod.config["ssfr_tau"], [0.1, 1.0])
+    assert np.isfinite(block["extra", "ssfr_over_tau_0.1000"])
+    assert np.isfinite(block["extra", "ssfr_over_tau_1.0000"])
 
 if __name__ == "__main__":
     import sys

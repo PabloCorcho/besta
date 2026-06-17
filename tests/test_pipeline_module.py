@@ -89,6 +89,7 @@ class TestPipelineModule(unittest.TestCase):
                 "velscale": 200.0,
                 "DustAttenuation": True,
                 "ExtinctionLaw": "ccm89",
+                "save_ssfr_over_tau": [0.1, 1.0],
             }}
 
         block = DataBlock()
@@ -106,6 +107,8 @@ class TestPipelineModule(unittest.TestCase):
         flux_model, normalization = module.make_observable(block, parse=True)
         self.assertTrue(np.isfinite(flux_model).all())
         self.assertTrue(np.isfinite(normalization).all())
+        self.assertTrue(np.isfinite(block["extra", "ssfr_over_tau_0.1000"]))
+        self.assertTrue(np.isfinite(block["extra", "ssfr_over_tau_1.0000"]))
         print("Module successfully executed")
 
     def test_galaxy_photometry(self):
