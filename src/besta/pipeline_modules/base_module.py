@@ -423,12 +423,26 @@ class BaseModule(ClassModule):
             _log("Will save the time at which mass history reaches = ",
                  self.config["save_t_frac_at"])
 
+        if options.has_value("save_ssfr_over_tau"):
+            self.config["save_ssfr_over_tau"] = True
+            self.config["ssfr_tau"] = np.array(
+                options["save_ssfr_over_tau"], dtype=float)
+            _log("Will save the SSFR over tau at times = ",
+                 self.config["ssfr_tau"])
         _log("Configuration done")
 
     def get_t_frac_at(self, datablock, sfh_model, frac: float):
         time = sfh_model.model.time_at_stellar_mass_frac(frac).to_value("Gyr"
         )[0]
         datablock["extra", f"t_frac_at_{frac:.4f}"] = time
+        return datablock
+
+    def get_ssfr_over_tau(self, datablock, sfh_model, tau: float):
+        tau = float(tau)
+        ssfr = sfh_model.model.average_ssfr_over_tau(
+            t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/Gyr")
+        ssfr = np.atleast_1d(ssfr)[0]
+        datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = ssfr
         return datablock
 
 class SpectraFitModule(BaseModule):

@@ -69,7 +69,9 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         if self.config.get("save_t_frac_at", False):
             for frac in self.config.get("t_frac_at", []):
                 self.get_t_frac_at(block, self.config["sfh_model"], frac)
-
+        if self.config.get("save_ssfr_over_tau", False):
+            for tau in self.config.get("ssfr_tau", []):
+                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
         # Mostly for visualization purposes
         if include_spec:
             full_spec = 1e10 * galaxy.emission_spectrum(to_obs_frame=True).to_value(
