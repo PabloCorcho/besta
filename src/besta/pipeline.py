@@ -191,6 +191,8 @@ class MainPipeline(object):
                     )
                     pipeline_module.plot_solution(solution_datablock,
                                              figname=figname)
+            # Check for section postprocess
+            #TODO
         return 0
 
 
