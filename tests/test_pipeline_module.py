@@ -57,6 +57,7 @@ class TestPipelineModule(unittest.TestCase):
                 "SFHModel": "ExponentialSFH",
                 "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
+                "save_chi2": True 
             }}
 
         block = DataBlock()
@@ -71,6 +72,7 @@ class TestPipelineModule(unittest.TestCase):
 
         module = module(config)
         self.assertFalse(module.execute(block))
+        self.assertTrue(block["extra", module.like_name + "_chi2"])
         print("Module successfully executed")
 
     def test_galaxy_spectra(self):
