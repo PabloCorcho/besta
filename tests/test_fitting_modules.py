@@ -93,7 +93,7 @@ def test_full_spectral_fit_make_observable(tmp_path):
         }
     }
     mod = FullSpectralFitModule(opts)
-    flux_model, weights = mod.make_observable(block)
+    flux_model, weights = mod.make_observable(block, parse=True)
     assert flux_model.shape == mod.config["flux"].shape
     assert weights.shape == mod.config["flux"].shape
     np.testing.assert_allclose(mod.config["ssfr_tau"], [0.1, 1.0])
