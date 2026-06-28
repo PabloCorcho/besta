@@ -440,9 +440,10 @@ class BaseModule(ClassModule):
     def get_ssfr_over_tau(self, datablock, sfh_model, tau: float):
         tau = float(tau)
         ssfr = sfh_model.model.average_ssfr_over_tau(
-            t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/Gyr")
+            t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/yr")
         ssfr = np.atleast_1d(ssfr)[0]
-        datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = ssfr
+        # TODO: match naming convention with SFH module
+        datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = np.log10(ssfr)
         return datablock
 
 class SpectraFitModule(BaseModule):
@@ -469,6 +470,13 @@ class SpectraFitModule(BaseModule):
         elif options.get_bool("is_inverse_variance", default=False):
             error = np.divide(1.0, error**0.5, out=error, where=error > 0)
             error[error <= 0] = np.inf
+
+        if options.get_double("snr_clip", default=np.inf) is not None:
+            snr_clip = options["snr_clip"]
+            _log(f"Applying SNR upper clipping with threshold: <{snr_clip}")
+            snr = np.divide(flux, error, out=np.zeros_like(flux), where=error > 0)
+            corr_snr = np.clip(snr / snr_clip, 1, None)
+            error *= corr_snr
 
         # Convert units if needed
         if options.has_value("wlUnits"):
@@ -549,53 +557,6 @@ class SpectraFitModule(BaseModule):
                                         dtype=float)
         else:
             instrumental_lsf = np.zeros_like(wavelength)
-        
-        # Optional masking of telluric regions
-        if options.has_value("mask_telluric") and options["mask_telluric"]:
-            telluric_pad = options.get_double("telluric_pad", default=0.0)
-            telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
-            _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
-            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
-                wavelength, weight=weights,
-                redshift=0.0,
-                pad=telluric_pad,
-                return_mask=True)
-            _log("Number of telluric-absorption masked pixels: ",
-                 np.count_nonzero(tell_mask))
-            weights *= weights_tell
-            self.config["telluric_mask"] = tell_mask
-            self.config["telluric_bands_used"] = bands_used
-
-        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
-            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
-            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
-            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
-            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
-                wavelength,
-                flux=flux, uncertainty=error,
-                weight=weights,
-                redshift=0.0,  # Mask in observed frame
-                pad=sky_line_pad,
-                return_mask=True, return_lines_masked=True)
-            _log("Number of sky-line masked pixels: ",
-                 np.count_nonzero(sky_mask))
-            weights *= weights_sky
-            self.config["sky_line_mask"] = sky_mask
-            self.config["sky_lines_used"] = lines_used
-
-        # Optional masking of emission lines
-        if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
-            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
-                wavelength, flux, error, weights,
-                redshift=redshift,
-                # line_list=emission_line_list,
-                # half_width=line_half_width,
-                return_mask=True, return_lines_masked=True)
-            weights *= weights_el
-            _log("Number of emission-line masked pixels: ",
-                 np.count_nonzero(line_mask))
-            self.config["emission_lines_mask"] = line_mask
-            self.config["emission_lines_used"] = lines_used
 
         # Apply redshift
         _log(f"Setting wavelength array to restframe (redshift: {redshift})")
@@ -675,6 +636,52 @@ class SpectraFitModule(BaseModule):
             dl_sq = 4 * np.pi * dl_sq * (1 + redshift)
         else:
             dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
+
+        # Optional masking of telluric regions
+        if options.has_value("mask_telluric") and options["mask_telluric"]:
+            telluric_pad = options.get_double("telluric_pad", default=0.0)
+            telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
+            _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
+            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
+                wavelength, weight=weights,
+                redshift=0.0,
+                pad=telluric_pad,
+                return_mask=True)
+            _log("Number of telluric-absorption masked pixels: ",
+                 np.count_nonzero(tell_mask))
+            weights *= weights_tell
+            self.config["telluric_mask"] = tell_mask
+            self.config["telluric_bands_used"] = bands_used
+        # Optional masking of sky emission lines
+        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
+            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
+            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
+            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
+            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
+                wavelength,
+                flux=flux, uncertainty=np.sqrt(cov),
+                weight=weights,
+                redshift=0.0,  # Mask in observed frame
+                pad=sky_line_pad,
+                return_mask=True, return_lines_masked=True)
+            _log("Number of sky-line masked pixels: ",
+                 np.count_nonzero(sky_mask))
+            weights *= weights_sky
+            self.config["sky_line_mask"] = sky_mask
+            self.config["sky_lines_used"] = lines_used
+        # Optional masking of emission lines
+        if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
+            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
+                wavelength, flux, np.sqrt(cov), weights,
+                redshift=redshift,
+                # line_list=emission_line_list,
+                # half_width=line_half_width,
+                return_mask=True, return_lines_masked=True)
+            weights *= weights_el
+            _log("Number of emission-line masked pixels: ",
+                 np.count_nonzero(line_mask))
+            self.config["emission_lines_mask"] = line_mask
+            self.config["emission_lines_used"] = lines_used
 
         self.config["flux"] = flux
         self.config["var"] = cov
@@ -902,10 +909,10 @@ class SpectraFitModule(BaseModule):
         wavelength = self.config["wavelength"].to_value("Angstrom")
         flux = self.config["flux"]
         flux_error = np.sqrt(self.config["var"])
-        flux_model, _ = self.make_observable(solution, parse=True)
+        flux_model, weights = self.make_observable(solution, parse=True)
         # Build a new weights array that only includes the masking of the sky
-        weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
-        weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
+        # weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
+        # weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
 
         line_table, line_segm_map = spectrum.find_emission_lines(
             wavelength, flux, flux_error, flux_model,
