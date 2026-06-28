@@ -583,6 +583,14 @@ class Reader(object):
         return self.get_module(self.modules[-1])
 
     @property
+    def samplers(self) -> list:
+        """List of samplers used in the pipeline."""
+        samplers = self.ini["runtime"]["sampler"]
+        if isinstance(samplers, str):
+            return [samplers]
+        return samplers
+
+    @property
     def config(self) -> dict:
         """Pipeline module configuration."""
         return self._config
@@ -611,6 +619,12 @@ class Reader(object):
     def results_file(self, value):
         """Set the path to the CosmoSIS results file."""
         self._results_file = value
+
+    @property
+    def walkers(self) -> list:
+        last_sampler = self.samplers[-1]
+        walkers = self.ini[last_sampler].get("walkers", None)
+        return walkers
 
     def __init__(self, ini_file=None, results_file=None):
 
