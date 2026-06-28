@@ -769,6 +769,21 @@ class EvidenceEstimate:
     logz_err: Optional[float] = None
     details: Dict[str, Any] = None
 
+
+#TODO
+#@dataclass
+#class Chain:
+#    """TODO"""
+#
+#    flat_samples: np.ndarray
+#    posterior: np.ndarray
+#    parameters : List[str]
+#    walkers: int = 1
+#    samples: int = None
+#
+#    def __post_init__(self):
+
+    
 # -----------------------------------------------------------------------------
 # ResultsSummary dataclass
 # -----------------------------------------------------------------------------
