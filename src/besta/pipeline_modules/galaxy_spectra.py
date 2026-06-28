@@ -108,6 +108,10 @@ class GalaxySpectraModule(SpectraFitModule):
         like /= np.sum(weights[good_pixels])
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
+
+        if self.config.get("save_chi2", False):
+            block["extra", self.like_name + "_chi2"] = -2 * like
+
         return 0
 
     def cleanup(self):

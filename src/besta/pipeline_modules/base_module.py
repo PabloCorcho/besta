@@ -118,6 +118,7 @@ class BaseModule(ClassModule):
 
         self.likelihood_kind = str(likelihood_kind).strip().lower()
         self.likelihood_method = str(likelihood_method or "auto").strip().lower()
+        self.config["save_chi2"] = options.get_bool("save_chi2", default=False)
 
         if self.likelihood_kind == "photometry":
             self.log_like = likelihoods.make_photometry_loglike(self.likelihood_method)
