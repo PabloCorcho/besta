@@ -47,6 +47,12 @@ def _as_float_array(x) -> np.ndarray:
     else:
         return np.asarray(x, dtype=float)
 
+def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
+    a = _as_float_array(a).ravel()
+    w = _as_float_array(w).ravel()
+    m = np.nanmax(a)
+    return float(m + np.log(np.nansum(w * np.exp(a - m))))
+
 def normalize_weights(weights: np.ndarray, *, allow_all_zero: bool = False) -> np.ndarray:
     """Normalize weights to sum=1 over finite entries."""
     w = _as_float_array(weights)
@@ -634,8 +640,8 @@ def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
 
     Parameters
     ----------
-    chains : list of ndarray, shape (nsamples, nwalkers)
-        List of MCMC chains for each parameter.
+    chains : ndarray, shape (nsamples, nwalkers, nparams)
+        Array of MCMC chains for each parameter.
     c : float, optional
         Windowing parameter. Larger values give more conservative estimates.
         Default is 5.0.
@@ -650,20 +656,45 @@ def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
     max_burn : int
         Maximum estimated burning-in period across all parameters.
     """
-    # Compute the integrated autocorrelation time for each parameter
     burn = []
-    for chain in chains:
+    burn_rel = []
+    # loop over parameters
+    nparams = chains.shape[2]
+    for ith in range(nparams):
         tau, acf_mean, reliable = integrated_autocorrelation_time(
-            chain, c=c, tol=tol)
+            chains[:, :, ith], c=c, tol=tol)
         if reliable and np.isfinite(tau):
+            burn_rel.append(reliable)
+        else:
             burn.append(int(kappa_act * tau))
-    max_burn = np.nanmax(burn) if burn else 0
+    if burn_rel:
+        max_burn = np.nanmax(burn_rel) if burn_rel else 0
+    else:
+        logger.warning("No reliable autocorrelation time estimates found.")
+        max_burn = np.nanmax(burn) if burn else 0
     return max_burn
 
 # -----------------------------------------------------------------------------
-# I/O helpers
+# I/O / manipulation helpers
 # -----------------------------------------------------------------------------
 def flat_chain_to_walkers(data, nwalkers, nsamples):
+    """
+    Reshape a flattened MCMC chain into a 3D array with shape (nsamples, nwalkers, -1).
+
+    Parameters
+    ----------
+    data : ndarray, shape (nrows, ...)
+        Flattened MCMC chain.
+    nwalkers : int
+        Number of walkers.
+    nsamples : int
+        Number of samples.
+
+    Returns
+    -------
+    chain : ndarray, shape (nsamples, nwalkers, -1)
+        Reshaped MCMC chain.
+    """
     nrows = data.shape[0]
     expected = nwalkers * nsamples
     if nrows != expected:
@@ -672,15 +703,8 @@ def flat_chain_to_walkers(data, nwalkers, nsamples):
         )
     return data.reshape((nsamples, nwalkers, -1))
 
-def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
-    a = _as_float_array(a).ravel()
-    w = _as_float_array(w).ravel()
-    m = np.nanmax(a)
-    return float(m + np.log(np.nansum(w * np.exp(a - m))))
-
 def effective_sample_size(weights: np.ndarray) -> float:
     """Return the standard importance-sampling effective sample size."""
-
     w = normalize_weights(weights)
     return float(1.0 / np.sum(w**2))
 
@@ -1265,14 +1289,32 @@ def summarize_results(
     -------
     ResultsSummary
     """
-    if burn_in > 0:
-        # discard the first burn_in samples per walker; assumes samples are ordered as (walker0, walker1, ..., walkerN, walker0, ...)
-        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
-
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
-    keys = io._select_parameter_keys(table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
+    keys = io._select_parameter_keys(
+        table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
+
+    if burn_in == "auto":
+        if nwalkers is None:
+            raise ValueError("nwalkers must be provided for auto burn-in estimation.")
+        # Reshape table into (nsamples, nwalkers, nparams)
+        logger.info("Estimating burn-in automatically from MCMC chains with nwalkers=%d.", nwalkers)
+        nsamples_guess = len(table) // nwalkers
+        if nsamples_guess * nwalkers != len(table):
+            raise ValueError(f"Unrecognized number of samples: {len(table)} is not divisible by nwalkers={nwalkers}.")
+        # Convert the table into MCMC chains
+        flat_chains = np.vstack([_as_float_array(table[k]) for k in keys]).T  # shape (nrows, nparams)
+        chains = flat_chain_to_walkers(flat_chains, nwalkers=nwalkers, nsamples=nsamples_guess)
+        burn_in = auto_burning_results(chains)
+        logger.info("Auto burn-in estimated as %d samples.", burn_in)
+    if burn_in > 0:
+        logger.info("Burning-in first %d samples from each walker.", burn_in)
+        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
+
+    extra_info = extra_info or {}
+    extra_info["burn_in"] = burn_in
+
     # Extract and filter samples
     logpost_all = _as_float_array(table[posterior_key])
     # Finite mask across posterior and all selected parameters
