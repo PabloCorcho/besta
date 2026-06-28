@@ -30,7 +30,7 @@ def load_reader(file, from_ini=False):
         reader = Reader(file)
     else:
         pprint("Loading results file", file)
-        reader= Reader.from_results(file)
+        reader= Reader.from_results_file(file)
     reader.load_results()
     return reader
 
@@ -55,10 +55,18 @@ def make_corner_plot(file, from_ini=False):
     reader = load_reader(file, from_ini)
     pass
 
+def make_chain_plots(file, from_ini=False):
+    reader = load_reader(file, from_ini)
+    pass
+
 def make_summary_statistics(file, from_ini=False, output=None):
     reader = load_reader(file, from_ini)
     results = summarize_results(reader.results_table)
     results.write_fits(output, overwrite=True)
+
+def interactive():
+    # GUI to visalize the input data and (optionally) the models from the chains
+    pass
 
 def main():
     parser = parser_setup()
@@ -66,10 +74,13 @@ def main():
     file = args.file
     from_ini = args.from_ini
     if args.make_best_fit:
+        print("Creating best-fit model plot")
         make_best_fit(file, from_ini)
     if args.make_corner_plot:
+        print("Creating corner plot")
         make_corner_plot(file, from_ini)
     if args.make_summary_statistics:
+        print("Creating summary statistics FITS")
         output = args.output
         make_summary_statistics(file, from_ini, output)
 
