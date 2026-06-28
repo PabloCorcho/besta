@@ -540,151 +540,125 @@ def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
 # Autocorrelation
 # -----------------------------------------------------------------------------
 
-
-def next_pow_two(n):
-    i = 1
-    while i < n:
-        i <<= 1
-    return i
-
-
-def autocorr_func_1d(x, norm=True):
+def autocorrelation_1d(x):
     """
-    Estimate the 1D autocorrelation function using FFT.
+    Estimate the normalized autocorrelation function of a 1D series using FFT.
 
     Parameters
     ----------
-    x : array_like, shape (n_sample,)
-        One chain, e.g. one walker for one parameter.
-    norm : bool
-        If True, normalize so acf[0] = 1.
+    x : array_like, shape (n,)
+        Input time series.
 
     Returns
     -------
-    acf : ndarray, shape (n_sample,)
-        Autocorrelation function.
+    acf : ndarray, shape (n,)
+        Normalized autocorrelation function, with acf[0] = 1.
     """
     x = np.asarray(x, dtype=float)
-
-    if x.ndim != 1:
-        raise ValueError("x must be one-dimensional")
-
-    if x.size < 2:
-        raise ValueError("x must contain at least two samples")
-
-    if not np.all(np.isfinite(x)):
-        raise ValueError("x contains NaN or infinite values")
+    n = len(x)
 
     x = x - np.mean(x)
 
-    if np.allclose(x, 0.0):
-        raise ValueError("cannot compute autocorrelation of a constant chain")
-
-    n = next_pow_two(len(x))
-
+    # Zero-pad to 2*n for efficient non-circular correlation
     f = np.fft.fft(x, n=2 * n)
-    acf = np.fft.ifft(f * np.conjugate(f))[: len(x)].real
+    acf = np.fft.ifft(f * np.conjugate(f))[:n].real
 
-    if norm:
-        acf /= acf[0]
+    # Normalize by number of overlapping pairs
+    acf /= np.arange(n, 0, -1)
+
+    # Normalize so that acf[0] = 1
+    acf /= acf[0]
 
     return acf
 
-
-def auto_window(taus, c=5.0):
+def integrated_autocorrelation_time(chain, c=5.0, tol=50):
     """
-    Automated windowing criterion.
-
-    Finds the first lag M where M >= c * tau(M).
-    """
-    taus = np.asarray(taus, dtype=float)
-
-    m = np.arange(len(taus)) < c * taus
-
-    if np.any(~m):
-        return np.argmin(m)
-
-    return len(taus) - 1
-
-def autocorr_time_one_dim(y, c=5.0):
-    """
-    Estimate autocorrelation time for one parameter.
+    Estimate the integrated autocorrelation time of an MCMC chain.
 
     Parameters
     ----------
-    y : ndarray, shape (n_walker, n_sample)
-        Chains for one parameter.
+    chain : ndarray, shape (nsamples, nwalkers)
+        MCMC samples for one parameter.
+    c : float, optional
+        Windowing parameter. Larger values give more conservative estimates.
+        Default is 5.0.
+    tol : float, optional
+        Minimum recommended ratio nsamples / tau. If nsamples < tol * tau,
+        the estimate is considered unreliable. Default is 50.
 
     Returns
     -------
     tau : float
-        Integrated autocorrelation time.
-    """
-    y = np.asarray(y, dtype=float)
-
-    if y.ndim != 2:
-        raise ValueError("y must have shape (n_walker, n_sample)")
-
-    n_walker, n_sample = y.shape
-
-    acf = np.zeros(n_sample)
-
-    for walker in range(n_walker):
-        acf += autocorr_func_1d(y[walker])
-
-    acf /= n_walker
-
-    taus = 2.0 * np.cumsum(acf) - 1.0
-
-    window = auto_window(taus, c=c)
-
-    return taus[window]
-
-def autocorr_time_chain(chain, c=5.0):
-    """
-    Estimate autocorrelation time for each dimension.
-
-    Parameters
-    ----------
-    chain : ndarray, shape (n_dim, n_walker, n_sample)
-        MCMC chain.
-
-    Returns
-    -------
-    taus : ndarray, shape (n_dim,)
-        Autocorrelation time for each parameter.
+        Estimated integrated autocorrelation time.
+    acf_mean : ndarray
+        Mean autocorrelation function averaged over walkers.
+    reliable : bool
+        Whether the chain is long enough according to nsamples > tol * tau.
     """
     chain = np.asarray(chain, dtype=float)
 
-    if chain.ndim != 3:
-        raise ValueError("chain must have shape (n_dim, n_walker, n_sample)")
+    if chain.ndim != 2:
+        raise ValueError("Expected chain with shape (nsamples, nwalkers).")
 
-    n_dim, n_walker, n_sample = chain.shape
+    nsamples, nwalkers = chain.shape
 
-    taus = np.empty(n_dim)
+    # Autocorrelation for each walker
+    acfs = np.array([autocorrelation_1d(chain[:, i]) for i in range(nwalkers)])
 
-    for dim in range(n_dim):
-        taus[dim] = autocorr_time_one_dim(chain[dim], c=c)
+    # Average over walkers
+    acf_mean = np.mean(acfs, axis=0)
 
-    return taus
+    # Cumulative estimate:
+    # tau(t) = 1 + 2 * sum_{lag=1}^{t} rho(lag)
+    taus = 1.0 + 2.0 * np.cumsum(acf_mean[1:])
 
-# Following the suggestion from Goodman & Weare (2010)
-def autocorr_gw2010(y, c=5.0):
-    f = autocorr_func_1d(np.mean(y, axis=0))
-    taus = 2.0 * np.cumsum(f) - 1.0
-    window = auto_window(taus, c)
-    return taus[window]
+    # Windowing criterion: stop when lag > c * tau(lag)
+    lags = np.arange(1, len(taus) + 1)
+    mask = lags < c * taus
+
+    if np.any(~mask):
+        window = np.argmax(~mask)
+    else:
+        window = len(taus) - 1
+
+    tau = taus[window]
+
+    reliable = nsamples > tol * tau
+
+    return tau, acf_mean, reliable
 
 
-def autocorr_new(y, c=5.0):
-    f = np.zeros(y.shape[1])
-    # Loop over all variables
-    for variable in y:
-        f += autocorr_func_1d(variable)
-    f /= y.shape[0]
-    taus = 2.0 * np.cumsum(f) - 1.0
-    window = auto_window(taus, c)
-    return taus[window]
+def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
+    """
+    Estimate the burning-in period for each parameter in the MCMC chains.
+
+    Parameters
+    ----------
+    chains : list of ndarray, shape (nsamples, nwalkers)
+        List of MCMC chains for each parameter.
+    c : float, optional
+        Windowing parameter. Larger values give more conservative estimates.
+        Default is 5.0.
+    tol : float, optional
+        Minimum recommended ratio nsamples / tau. If nsamples < tol * tau,
+        the estimate is considered unreliable. Default is 50.
+    kappa_act : float, optional
+        Safety factor for the burning-in period. Default is 3.0.
+
+    Returns
+    -------
+    max_burn : int
+        Maximum estimated burning-in period across all parameters.
+    """
+    # Compute the integrated autocorrelation time for each parameter
+    burn = []
+    for chain in chains:
+        tau, acf_mean, reliable = integrated_autocorrelation_time(
+            chain, c=c, tol=tol)
+        if reliable and np.isfinite(tau):
+            burn.append(int(kappa_act * tau))
+    max_burn = np.nanmax(burn) if burn else 0
+    return max_burn
 
 # -----------------------------------------------------------------------------
 # I/O helpers
