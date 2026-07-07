@@ -5,12 +5,69 @@ import tempfile
 
 import numpy as np
 from astropy.table import Table
+from astropy import units as u
 
 from besta.postprocess import (
     summarize_results,
     ResultsSummary,
 )
 from besta import io
+
+class TestPostprocessingUtils(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.test_dir = os.path.dirname(__file__)
+    
+    @classmethod
+    def tearDownClass(cls):
+        pass
+
+    def test_as_float_array_func(self):
+        from besta.postprocess import _as_float_array
+
+        # Test with a list of floats
+        arr = [1.0, 2.0, 3.0]
+        result = _as_float_array(arr)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.dtype, float)
+        np.testing.assert_array_equal(result, np.array(arr))
+
+        # Test with a astropy Quantity
+        arr = np.array([4.0, 5.0, 6.0]) << u.m
+        result = _as_float_array(arr)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.dtype, float)
+        np.testing.assert_array_equal(result, arr.value)
+
+    def test_normalize_weights(self):
+        from besta.postprocess import normalize_weights
+
+        # Test with uniform weights
+        weights = np.array([1.0, 1.0, 1.0])
+        normalized = normalize_weights(weights)
+        np.testing.assert_array_almost_equal(normalized, np.array([1/3, 1/3, 1/3]))
+
+        # Test with non-uniform weights
+        weights = np.array([0.5, 1.5, 2.0])
+        normalized = normalize_weights(weights)
+        expected = weights / np.sum(weights)
+        np.testing.assert_array_almost_equal(normalized, expected)
+
+    def test_check_multimodal_pdf(self):
+        from besta.postprocess import check_multimodal_pdf
+
+        # Create a simple bimodal distribution
+        x = np.linspace(-5, 5, 200)
+        delta_x = x[1] - x[0]
+        f = np.exp(-0.5 * ((x + 2) / 0.5) ** 2) + np.exp(-0.5 * ((x - 2) / 0.5) ** 2)
+
+        n_maxima, maxima_x, maxima_val = check_multimodal_pdf(x, f)
+
+        print(n_maxima, maxima_x, maxima_val, delta_x)
+        self.assertEqual(n_maxima, 2)
+        self.assertTrue(np.allclose(maxima_x, [2, -2], atol=delta_x / 3))
+        self.assertTrue(np.allclose(maxima_val, [1.0, 1.0], rtol=0.1))
 
 class TestPostprocessing(unittest.TestCase):
     """
