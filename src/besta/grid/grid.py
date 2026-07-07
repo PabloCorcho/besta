@@ -36,7 +36,7 @@ from .transforms import LinearStandardiser
 from besta.postprocess import (
     enclosed_fraction_map,
     pdf_stats,
-    weighted_quantiles,
+    weighted_quantile,
 )
 
 from besta.logging import get_logger
@@ -2357,7 +2357,7 @@ class GridFitter:
         q = np.zeros((D, 3))
         mu = np.zeros(D)
         for d in range(D):
-            q[d] = weighted_quantiles(Y[:, d], w, quantiles)
+            q[d] = weighted_quantile(Y[:, d], w, quantiles)
             mu[d] = np.sum(w * Y[:, d])
 
         # Diagonals
@@ -2366,7 +2366,7 @@ class GridFitter:
             ax = axes[i, i]
             bi = bins_list[i]
             if isinstance(bi, int):
-                lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
+                lo, mid, hi = weighted_quantile(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
                 min_v = max(mid - kappa_sigma_edges * (mid - lo), Y[:, i].min())
