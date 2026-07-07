@@ -911,10 +911,16 @@ class Reader(object):
         dict
             Parsed ini configuration stored in the results header.
         """
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"{path} not found")
+
         with open(path, "r") as file:
             file_lines = file.readlines()
-            line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
-                "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
+            try:
+                line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
+                    "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
+            except:
+                raise ValueError(f"START_OF_PARAMS_INI and END_OF_PARAMS_INI not found in {path}")
             content = "".join([l.replace("## ", "") for l in file_lines[line_start + 1:line_end]])
             return _ini_string_to_dict(content)
 
