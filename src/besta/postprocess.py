@@ -140,7 +140,7 @@ def weighted_quantile(x: np.ndarray, weights: np.ndarray, q: Sequence[float]) ->
     ws = w[idx]
     cdf = np.cumsum(ws)
     # Ensure cdf spans [0,1]
-    cdf[-1] = 1.0
+    cdf /= cdf[-1]
     return np.interp(np.asarray(q, dtype=float), cdf, xs)
 
 def weighted_hdi(
@@ -1602,21 +1602,6 @@ def make_plot_chains(
             fp = os.path.join(outdir, f"chain_{safe}.png")
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
             paths.append(fp)
-
-def weighted_quantiles(x: np.ndarray, w: np.ndarray,
-                        qs: Sequence[float]) -> np.ndarray:
-    """Compute weighted quantiles for a one-dimensional sample."""
-
-    x = np.asarray(x); w = np.asarray(w)
-    m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
-    if not m.any():
-        return np.array([np.nan] * len(qs))
-    x, w = x[m], w[m]
-    order = np.argsort(x)
-    x, w = x[order], w[order]
-    cdf = np.cumsum(w)
-    cdf = cdf / cdf[-1]
-    return np.interp(qs, cdf, x)
 
 def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     """
