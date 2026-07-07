@@ -26,6 +26,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
 from scipy.optimize import minimize
+from scipy.signal import find_peaks
 
 from astropy.io import fits
 from astropy.table import Table, Column
@@ -389,7 +390,7 @@ def kde_pdf_1d(
     except Exception:
         return np.full_like(g, np.nan)
 
-def check_multimodal_pdf(x, f):
+def check_multimodal_pdf(x, f, *, prominence=None, relative_prominence=0.01):
     """Check if a 1D PDF is multimodal by counting local maxima.
     
     Parameters
@@ -408,14 +409,31 @@ def check_multimodal_pdf(x, f):
     """
     x = _as_float_array(x).ravel()
     f = _as_float_array(f).ravel()
-    if x.size < 3 or f.size < 3:
-        return False
-    # Count local maxima
-    maxima = (f[1:-1] > f[:-2]) & (f[1:-1] > f[2:])
-    n_maxima = np.sum(maxima)
-    maxima = np.where(maxima)[0] + 1  # indices in original array
-    maxima_x = x[maxima]
-    return n_maxima, maxima_x
+    if x.size != f.size:
+        raise ValueError("`x` and `f` must have the same length.")
+
+    if x.size < 3:
+        return 0, np.empty(0), np.empty(0)
+
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(f)):
+        raise ValueError("`x` and `f` must contain only finite values.")
+
+    if prominence is None:
+        f_range = np.ptp(f)
+        prominence = relative_prominence * f_range
+
+    indices, properties = find_peaks(f, prominence=prominence)
+
+    maxima_x = x[indices]
+    maxima_val = f[indices]
+
+    order = np.argsort(maxima_val)[::-1]
+
+    return (
+        int(indices.size),
+        maxima_x[order],
+        maxima_val[order],
+    )
 
 def kde_or_hist_pdf_2d(
     x: np.ndarray,
@@ -1459,12 +1477,13 @@ def summarize_results(
             d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
                 d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
-                n_maxima, maxima_x = check_multimodal_pdf(centers, d["kde_pdf"])
+                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(centers, d["kde_pdf"])
             else:
                 bins = (edges[:-1] + edges[1:]) / 2
-                n_maxima, maxima_x = check_multimodal_pdf(bins, hist_pdf)
+                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(bins, hist_pdf)
             d["n_maxima"] = n_maxima
             d["map"] = maxima_x
+            d["map_values"] = maxima_val
             map_1d[nm] = maxima_x
             pdf1d[nm] = d
 
