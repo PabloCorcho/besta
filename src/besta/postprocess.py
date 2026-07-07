@@ -31,6 +31,8 @@ from astropy.io import fits
 from astropy.table import Table, Column
 from astropy import units as u
 
+from cosmosis.postprocessing import run_cosmosis_postprocess
+
 from besta import io
 from besta.logging import get_logger
 
@@ -386,6 +388,34 @@ def kde_pdf_1d(
         return kde(g)
     except Exception:
         return np.full_like(g, np.nan)
+
+def check_multimodal_pdf(x, f):
+    """Check if a 1D PDF is multimodal by counting local maxima.
+    
+    Parameters
+    ----------
+    x : array-like, shape (N,)
+        Grid points.
+    f : array-like, shape (N,)
+        PDF values at the grid points.
+    
+    Returns
+    -------
+    n_maxima : int
+        Number of local maxima found in the PDF.
+    maxima_x : ndarray
+        x-values of the local maxima.
+    """
+    x = _as_float_array(x).ravel()
+    f = _as_float_array(f).ravel()
+    if x.size < 3 or f.size < 3:
+        return False
+    # Count local maxima
+    maxima = (f[1:-1] > f[:-2]) & (f[1:-1] > f[2:])
+    n_maxima = np.sum(maxima)
+    maxima = np.where(maxima)[0] + 1  # indices in original array
+    maxima_x = x[maxima]
+    return n_maxima, maxima_x
 
 def kde_or_hist_pdf_2d(
     x: np.ndarray,
@@ -813,8 +843,9 @@ class ResultsSummary:
     percentiles : list of quantiles in [0,1]
     percentiles_values : array shape (n_params, n_percentiles)
     percentiles_logpost : array shape (n_params, n_percentiles)
-    hdi_mass : mass used for HDI
-    hdi_intervals : dict short_name -> list of (low, high)
+    hdi_intervals_68 : dict short_name -> list of (low, high) for 68% mass
+    hdi_intervals_95 : dict short_name -> list of (low, high) for 95% mass
+    map_1d : dict short_name -> array of 1D mode locations from PDF peaks
     pdf_1d : dict short_name -> dict with keys: grid, hist_pdf, kde_pdf
     pdf_2d : dict (short_i, short_j) -> dict with keys: xgrid, ygrid, pdf, enclosed_fraction
     extra_info : arbitrary metadata to include in exports
@@ -841,8 +872,9 @@ class ResultsSummary:
     percentiles_values: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=float))
     percentiles_logpost: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=float))
 
-    hdi_mass: float = 0.68
-    hdi_intervals: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    hdi_intervals_68: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    hdi_intervals_95: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    map_1d: Dict[str, np.ndarray] = field(default_factory=dict)
 
     evidence: Optional[EvidenceEstimate] = None
 
@@ -926,6 +958,12 @@ class ResultsSummary:
         def _tolist(a):
             if isinstance(a, np.ndarray):
                 return a.tolist()
+            if isinstance(a, np.generic):
+                return a.item()
+            if isinstance(a, dict):
+                return {k: _tolist(v) for k, v in a.items()}
+            if isinstance(a, (list, tuple)):
+                return [_tolist(v) for v in a]
             return a
 
         out: Dict[str, Any] = {
@@ -944,8 +982,9 @@ class ResultsSummary:
             "percentiles": _tolist(np.asarray(self.percentiles, dtype=float)),
             "percentiles_values": _tolist(self.percentiles_values),
             "percentiles_logpost": _tolist(self.percentiles_logpost),
-            "hdi_mass": float(self.hdi_mass),
-            "hdi_intervals": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals.items()},
+            "hdi_intervals_68": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals_68.items()},
+            "hdi_intervals_95": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals_95.items()},
+            "map_1d": {k: _tolist(v) for k, v in self.map_1d.items()},
             "evidence": None if self.evidence is None else {
                 "method": self.evidence.method,
                 "logz": self.evidence.logz,
@@ -1036,12 +1075,15 @@ class ResultsSummary:
 
         # Add HDI intervals as header cards on the percentiles HDU (compact)
         pct_hdr = fits.Header()
-        pct_hdr["HDIMASS"] = float(self.hdi_mass) if np.isfinite(self.hdi_mass) else "nan", "HDI mass"
-        for name, ivs in self.hdi_intervals.items():
-            # store up to 2 intervals by default
+        # Store 68% and 95% HDI intervals explicitly.
+        for name, ivs in self.hdi_intervals_68.items():
             for j, (lo, hi) in enumerate(ivs[:2]):
-                pct_hdr[f"{name[:6]}L{j}"] = float(lo) if np.isfinite(lo) else "nan", "lower limit"
-                pct_hdr[f"{name[:6]}H{j}"] = float(hi) if np.isfinite(hi) else "nan", "upper limit"
+                pct_hdr[f"{name[:4]}6L{j}"] = float(lo) if np.isfinite(lo) else "nan", "68% lower limit"
+                pct_hdr[f"{name[:4]}6H{j}"] = float(hi) if np.isfinite(hi) else "nan", "68% upper limit"
+        for name, ivs in self.hdi_intervals_95.items():
+            for j, (lo, hi) in enumerate(ivs[:2]):
+                pct_hdr[f"{name[:4]}9L{j}"] = float(lo) if np.isfinite(lo) else "nan", "95% lower limit"
+                pct_hdr[f"{name[:4]}9H{j}"] = float(hi) if np.isfinite(hi) else "nan", "95% upper limit"
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
@@ -1116,14 +1158,19 @@ class ResultsSummary:
             if self.percentiles_values.size:
                 for p, v in zip(self.percentiles, self.percentiles_values[i, :]):
                     ax.axvline(v, alpha=0.5)
-            # HDI
-            if name in self.hdi_intervals:
-                for lo, hi in self.hdi_intervals[name]:
-                    ax.axvspan(lo, hi, alpha=0.15)
+            # HDI 95% then 68% to keep narrower interval visible on top.
+            if name in self.hdi_intervals_95:
+                for lo, hi in self.hdi_intervals_95[name]:
+                    ax.axvspan(lo, hi, alpha=0.10, color="C0", label="HDI 95%")
+            if name in self.hdi_intervals_68:
+                for lo, hi in self.hdi_intervals_68[name]:
+                    ax.axvspan(lo, hi, alpha=0.20, color="C0", label="HDI 68%")
             ax.set_title(name)
             ax.set_xlabel(name)
             ax.set_ylabel("PDF")
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            uniq = dict(zip(labels, handles))
+            ax.legend(uniq.values(), uniq.keys())
 
             fp = os.path.join(outdir, f"pdf1d_{name}.png")
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
@@ -1259,11 +1306,10 @@ def summarize_results(
     posterior_key: str = "post",
     parameter_keys: Optional[Sequence[str]] = None,
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
-    hdi_mass: float = 0.68,
     compute_1d: bool = True,
     compute_2d: bool = False,
     parameter_key_pairs: Optional[Sequence[Tuple[str, str]]] = None,
-    pdf_bins_1d: int = 100,
+    pdf_bins_1d: int = 500,
     pdf_bins_2d: int = 80,
     estimate_evidence: bool = False,
     evidence_method: str = "laplace",
@@ -1295,8 +1341,7 @@ def summarize_results(
         containing parameter_prefix.
     percentiles : sequence of float
         Quantiles in [0,1].
-    hdi_mass : float
-        Target mass for HDI intervals.
+    HDI intervals are computed at fixed masses of 68% and 95%.
     compute_1d / compute_2d : bool
         Enable 1D/2D PDF products.
     parameter_key_pairs : list of (key1, key2), required if compute_2d=True
@@ -1389,36 +1434,38 @@ def summarize_results(
 
     pct_vals = np.full((npar, pct.size), np.nan, dtype=float)
     pct_lp = np.full((npar, pct.size), np.nan, dtype=float)
+    hdi_68 = {}
+    hdi_95 = {}
+    map_1d = {}
+    pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
 
-    for i in range(npar):
+    for i, nm in enumerate(names):
         x = samples[i, :]
         # Weighted quantiles
         pct_vals[i, :] = weighted_quantile(x, w, pct)
-
-        # For logpost at those percentiles: sort by x, build weighted cdf, and interp logpost along that ordering
         idx = np.argsort(x)
-        xs = x[idx]
         ws = w[idx]
         cdf = np.cumsum(ws)
-        cdf[-1] = 1.0
-        # logpost along sorted x
+        cdf /= cdf[-1]
         lps = logpost[idx]
         pct_lp[i, :] = np.interp(pct, cdf, lps)
-
-    # HDI intervals
-    hdi: Dict[str, List[Tuple[float, float]]] = {}
-    for i, nm in enumerate(names):
-        hdi[nm] = weighted_hdi(samples[i, :], w, mass=hdi_mass, max_intervals=2)
-
-    # 1D PDFs
-    pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
-    if compute_1d:
-        for i, nm in enumerate(names):
+        # Highest density intervals (HDI) for 68% and 95%
+        hdi_68[nm] = weighted_hdi(samples[i, :], w, mass=0.68, max_intervals=2)
+        hdi_95[nm] = weighted_hdi(samples[i, :], w, mass=0.95, max_intervals=2)
+        # 1D PDFs
+        if compute_1d:
             edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
             centers = 0.5 * (edges[:-1] + edges[1:])
             d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
                 d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
+                n_maxima, maxima_x = check_multimodal_pdf(centers, d["kde_pdf"])
+            else:
+                bins = (edges[:-1] + edges[1:]) / 2
+                n_maxima, maxima_x = check_multimodal_pdf(bins, hist_pdf)
+            d["n_maxima"] = n_maxima
+            d["map"] = maxima_x
+            map_1d[nm] = maxima_x
             pdf1d[nm] = d
 
     # 2D PDFs
@@ -1469,8 +1516,9 @@ def summarize_results(
         percentiles=list(map(float, pct.tolist())),
         percentiles_values=pct_vals,
         percentiles_logpost=pct_lp,
-        hdi_mass=float(hdi_mass),
-        hdi_intervals=hdi,
+        hdi_intervals_68=hdi_68,
+        hdi_intervals_95=hdi_95,
+        map_1d=map_1d,
         pdf_1d=pdf1d,
         pdf_2d=pdf2d,
         extra_info=dict(extra_info) if extra_info is not None else {},
@@ -1511,6 +1559,32 @@ def summarize_results_file(
     return summarize_results(
         tab, output_fits=output_fits, output_json=output_json, **kwargs)
 
+def summarize_results_cosmosis(
+    results_path: str,
+    burn_in: int = 0,
+    output_fits: Optional[str] = None
+    ):
+
+    processor = run_cosmosis_postprocess([results_path], no_plots=True, burn=burn_in)
+
+    tables = {}
+    for key, output in processor.outputs.items():
+        if hasattr(output, "value") and key != "citations":
+            try:
+                tables[key] = output.value.to_astropy()
+            except Exception as e:
+                logger.warning("Failed to convert output '%s' to astropy table.", key)
+                logger.debug("Error: %s", e)
+                continue
+
+    # Save all tables in a FITS
+    if output_fits is not None:
+        hdus = [fits.PrimaryHDU()]
+        for k, t in tables.items():
+            hdus.append(fits.BinTableHDU(t, name=f"{k}"))
+        fits.HDUList(hdus).writeto(output_fits, overwrite=True)
+
+    return tables
 
 def compute_chain_percentiles(
     chain_results: Mapping[str, Any],

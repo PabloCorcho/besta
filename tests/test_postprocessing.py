@@ -142,6 +142,23 @@ class TestPostprocessing(unittest.TestCase):
                 self.assertIn(nm, summary.pdf_1d)
                 self.assertIn("grid", summary.pdf_1d[nm])
                 self.assertIn("hist_pdf", summary.pdf_1d[nm])
+                self.assertIn("n_maxima", summary.pdf_1d[nm])
+                self.assertIn("map", summary.pdf_1d[nm])
+
+                # New summary products: fixed-mass HDIs and 1D mode locations
+                self.assertIn(nm, summary.hdi_intervals_68)
+                self.assertIn(nm, summary.hdi_intervals_95)
+                self.assertIn(nm, summary.map_1d)
+
+                self.assertIsInstance(summary.hdi_intervals_68[nm], list)
+                self.assertIsInstance(summary.hdi_intervals_95[nm], list)
+                self.assertGreaterEqual(len(summary.hdi_intervals_68[nm]), 1)
+                self.assertGreaterEqual(len(summary.hdi_intervals_95[nm]), 1)
+
+                self.assertEqual(
+                    np.asarray(summary.map_1d[nm]).shape,
+                    np.asarray(summary.pdf_1d[nm]["map"]).shape,
+                )
 
             # FITS and JSON outputs exist
             self.assertTrue(os.path.isfile(out_fits), "FITS summary not written")
@@ -154,6 +171,16 @@ class TestPostprocessing(unittest.TestCase):
             self.assertIn("mean", payload)
             self.assertIn("covariance", payload)
             self.assertIn("pdf_1d", payload)
+            self.assertIn("hdi_intervals_68", payload)
+            self.assertIn("hdi_intervals_95", payload)
+            self.assertIn("map_1d", payload)
+            self.assertNotIn("hdi_intervals", payload)
+            self.assertNotIn("hdi_mass", payload)
+
+            for nm in summary.parameter_names:
+                self.assertIn(nm, payload["hdi_intervals_68"])
+                self.assertIn(nm, payload["hdi_intervals_95"])
+                self.assertIn(nm, payload["map_1d"])
 
             # Evidence: only validate if prior exists and estimation was enabled
             if estimate_evidence:
