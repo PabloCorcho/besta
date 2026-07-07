@@ -666,7 +666,9 @@ def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
         if reliable and np.isfinite(tau):
             burn_rel.append(reliable)
         else:
-            burn.append(int(kappa_act * tau))
+            tau = np.ceil(kappa_act * tau)
+            burn.append(int(tau) if np.isfinite(tau) else 0)
+
     if burn_rel:
         max_burn = np.nanmax(burn_rel) if burn_rel else 0
     else:
