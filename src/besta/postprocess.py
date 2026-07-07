@@ -1210,20 +1210,27 @@ class ResultsSummary:
                     x = self.samples[i, :]
                     edges, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
                     xc = 0.5 * (edges[:-1] + edges[1:])
-                    ax.plot(xc, pdf, lw=1.2)
+                    ax.plot(xc, pdf, lw=1.2, color="black")
                     # mark mean/MAP
-                    ax.axvline(self.mean[i], lw=1.0, alpha=0.8)
-                    ax.axvline(self.map[i], lw=1.0, alpha=0.8)
+                    ax.axvline(self.mean[i], lw=1.0, alpha=0.8, color="r")
+                    ax.axvline(self.map[i], lw=1.0, alpha=0.8, color="b")
                     ax.set_yticks([])
                 elif i > j:
-                    ax.hist2d(S[j, :], S[i, :], weights=w)
+                    H, xedges, yedges = np.histogram2d(S[j, :], S[i, :], weights=w, bins=bins, density=True)
+                    
+                    fraction = enclosed_fraction_map(H, xedges=xedges, yedges=yedges)
+                    xbins = 0.5 * (xedges[:-1] + xedges[1:])
+                    ybins = 0.5 * (yedges[:-1] + yedges[1:])
+                    ax.contourf(xbins, ybins, fraction.T, levels=[0.0, 0.68, 0.95],
+                                cmap="Spectral")
                 else:
                     ax.axis("off")
 
-                if i == npar - 1 and j <= i:
+                if i == npar - 1:
                     ax.set_xlabel(self.parameter_names[j])
-                else:
-                    ax.set_xticks([])
+                elif i < npar - 1:
+                    pass
+                    # ax.set_xticks([])
                 if j == 0 and i >= j:
                     ax.set_ylabel(self.parameter_names[i])
                 else:
@@ -1423,7 +1430,7 @@ def summarize_results(
         key_to_idx = {k: i for i, k in enumerate(keys)}
         for k0, k1 in parameter_key_pairs:
             if k0 not in key_to_idx or k1 not in key_to_idx:
-                raise KeyError(f"Pair ({k0}, {k1}) not in selected parameter keys.")
+                raise KeyError(f"Pair ({k0}, {k1}) not in selected parameter keys:", key_to_idx)
             i0 = key_to_idx[k0]
             i1 = key_to_idx[k1]
             n0 = names[i0]
@@ -1501,7 +1508,8 @@ def summarize_results_file(
 ) -> ResultsSummary:
     """Read a results file and summarize it (passes kwargs to summarize_results)."""
     tab = io.read_results_file(results_path, delimiter=delimiter)
-    return summarize_results(tab, output_fits=output_fits, output_json=output_json, **kwargs)
+    return summarize_results(
+        tab, output_fits=output_fits, output_json=output_json, **kwargs)
 
 
 def compute_chain_percentiles(
