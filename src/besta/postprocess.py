@@ -1040,9 +1040,7 @@ class ResultsSummary:
         hdr["MAP_IDX"] = int(self.map_index)
         hdr["POSTKEY"] = self.posterior_key
 
-        # Per-parameter header cards (best effort: keep short names)
         for i, (full_key, sect, name) in enumerate(zip(self.parameter_keys, self.parameter_sections, self.parameter_names)):
-            # FITS keyword length limits: use e.g. P000NM, P000SC, P000MN, P000MP
             tag = f"P{i:03d}"
             hdr[f"{tag}NM"] = name[:68]
             hdr[f"{tag}SC"] = sect[:68]
@@ -1059,8 +1057,10 @@ class ResultsSummary:
                     hdr[f"{tag}MP"] = "nan", "map not finite"
 
         if self.evidence is not None and np.isfinite(self.evidence.logz):
-            prim.header["LOGZ"] = float(self.evidence.logz)
-            prim.header["LOGZMET"] = self.evidence.method[:20]
+            prim.header["LOGZ"] = float(self.evidence.logz), "log-evidence estimate"
+            if self.evidence.logz_err is not None and np.isfinite(self.evidence.logz_err):
+                prim.header["LOGZERR"] = float(self.evidence.logz_err), "log-evidence error"
+            prim.header["LOGZMET"] = self.evidence.method[:20], "evidence estimation method"
 
         hdus: List[fits.hdu.base.ExtensionHDU] = [prim]
         hdus.append(fits.ImageHDU(data=_as_float_array(self.covariance), header=hdr, name="COVARIANCE"))
@@ -1078,12 +1078,12 @@ class ResultsSummary:
         # Store 68% and 95% HDI intervals explicitly.
         for name, ivs in self.hdi_intervals_68.items():
             for j, (lo, hi) in enumerate(ivs[:2]):
-                pct_hdr[f"{name[:4]}6L{j}"] = float(lo) if np.isfinite(lo) else "nan", "68% lower limit"
-                pct_hdr[f"{name[:4]}6H{j}"] = float(hi) if np.isfinite(hi) else "nan", "68% upper limit"
+                pct_hdr[f"HIERARCH {name}_68L{j}"] = float(lo) if np.isfinite(lo) else "nan", "68% lower limit"
+                pct_hdr[f"HIERARCH {name}_68U{j}"] = float(hi) if np.isfinite(hi) else "nan", "68% upper limit"
         for name, ivs in self.hdi_intervals_95.items():
             for j, (lo, hi) in enumerate(ivs[:2]):
-                pct_hdr[f"{name[:4]}9L{j}"] = float(lo) if np.isfinite(lo) else "nan", "95% lower limit"
-                pct_hdr[f"{name[:4]}9H{j}"] = float(hi) if np.isfinite(hi) else "nan", "95% upper limit"
+                pct_hdr[f"HIERARCH {name}_95L{j}"] = float(lo) if np.isfinite(lo) else "nan", "95% lower limit"
+                pct_hdr[f"HIERARCH {name}_95U{j}"] = float(hi) if np.isfinite(hi) else "nan", "95% upper limit"
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
