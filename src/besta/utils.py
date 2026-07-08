@@ -192,3 +192,38 @@ def expand_env_vars(arg_spec=0):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+def time_func_call(func):
+    """
+    Decorator to measure the execution time of a function.
+
+    Parameters
+    ----------
+    func : callable
+        The function to be timed.
+
+    Returns
+    -------
+    callable
+        A wrapper function that measures and prints the execution time.
+
+    Examples
+    --------
+    >>> @time_func_call
+    ... def compute():
+    ...     sum(range(1000000))
+    >>> compute()
+    Execution time of 'compute': 0.123 seconds
+    """
+    import time
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Execution time of '{func.__name__}': {elapsed_time:.3f} seconds")
+        return result
+
+    return wrapper
