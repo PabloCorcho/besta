@@ -890,7 +890,7 @@ class SpectraFitModule(BaseModule):
         _log("Configuration done")
 
     def get_feature_weights(self, options):
-        """TODO"""
+        """Compute feature weights from input spectra."""
         logger.info("Computing feature weights from input spectra")
         # Estimate the continuum
         continuum, continuum_err = spectrum.estimate_continuum(
