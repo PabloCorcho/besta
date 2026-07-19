@@ -200,30 +200,23 @@ def weighted_hdi(
     used = np.zeros(xs.size, dtype=bool)
 
     def _find_best_interval(available_mask: np.ndarray) -> Optional[Tuple[int, int]]:
-        # Work on contiguous segments of availability. This keeps interval definition meaningful.
+
         best = None
         best_width = np.inf
-
         # Identify contiguous runs
         avail = available_mask.astype(int)
         # runs: start indices where diff==1, end where diff==-1
         starts = np.where(np.diff(np.r_[0, avail]) == 1)[0]
         ends = np.where(np.diff(np.r_[avail, 0]) == -1)[0]
-
         for s, e in zip(starts, ends):
-            # Consider sub-array xs[s:e], ws[s:e]
             sub_ws = ws[s:e]
             if sub_ws.size == 0:
                 continue
             sub_cdf = np.cumsum(sub_ws)
             sub_cdf[-1] = np.sum(sub_ws)
-            # Normalize to segment mass; but we want absolute mass, so compare to `mass` directly.
-            # Since total mass across all samples is 1, segment mass might be < mass; skip then.
             if sub_cdf[-1] < mass:
                 continue
-
             sub_cdf0 = np.concatenate([[0.0], sub_cdf])
-            # Two-pointer to find minimal width interval >= mass in this segment
             i = 0
             for j in range(1, sub_cdf0.size):
                 while (sub_cdf0[j] - sub_cdf0[i]) >= mass and i < j:
@@ -244,10 +237,8 @@ def weighted_hdi(
         used[i : j + 1] = True
 
         # If the first interval already covers the full mass approximately, stop.
-        # (We approximate by computing mass inside that interval.)
         m = np.sum(ws[(xs >= xs[i]) & (xs <= xs[j])])
         if m >= mass:
-            # Good enough — returning single interval is typical.
             break
 
     # Merge close intervals if requested
@@ -423,6 +414,11 @@ def check_multimodal_pdf(x, f, *, prominence=None, relative_prominence=0.01):
         prominence = relative_prominence * f_range
 
     indices, properties = find_peaks(f, prominence=prominence)
+    if indices.size == 0:
+        # Check if the PDF is flat or has a single peak at the edge
+        if np.allclose(f, f[0]):
+            return 0, np.empty(0), np.empty(0)
+        indices = np.array([np.argmax(f)])
 
     maxima_x = x[indices]
     maxima_val = f[indices]
@@ -1415,7 +1411,8 @@ def summarize_results(
     max_lp = np.max(logpost)
     w = np.exp(logpost - max_lp)
     w = normalize_weights(w)
-
+    # Effective sample size
+    extra_info["ess"] = effective_sample_size(w)
     # Samples matrix (D, N)
     samples = np.vstack([_as_float_array(table[k])[mask] for k in keys])
     # Filter NaN in samples
