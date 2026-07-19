@@ -667,7 +667,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
 
 @dataclass
 class CompositePrior(Prior):
-    """
+    r"""
     Composite prior combining multiple target-only Priors.
 
     The total log prior is defined as a weighted sum of component
@@ -762,7 +762,7 @@ class CompositePrior(Prior):
 
 @dataclass
 class ObservableCompositePrior(ObservableDependentPrior):
-    """
+    r"""
     Same as :class:`CompositePrior`, but including :class:`ObservableDependentPrior`.
 
     The total log prior is defined as a weighted sum of component
@@ -949,7 +949,7 @@ class GaussianProductLikelihood(Likelihood):
 
 @dataclass
 class SplitGaussianProductLikelihood(Likelihood):
-    """Independent per-dimension split Gaussian likelihood
+    r"""Independent per-dimension split Gaussian likelihood
 
     The likelihood along each dimension is given by
 
