@@ -2,6 +2,8 @@
 
 import os
 import functools
+from copy import deepcopy
+from typing import Any, Callable
 import numpy as np
 import psutil
 
@@ -224,6 +226,32 @@ def time_func_call(func):
         end_time = time.time()
         elapsed_time = end_time - start_time
         print(f"Execution time of '{func.__name__}': {elapsed_time:.3f} seconds")
+        return result
+
+    return wrapper
+
+def store_method_output(
+    method: Callable[..., Any],
+    output_list: list[Any],
+    *,
+    copy_output: bool = False,
+) -> Callable[..., Any]:
+    """Wrap a bound method and append each returned value to a list."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        result = method(*args, **kwargs)
+
+        # For tuple outputs, persist only the model observable.
+        result_to_store = result[0] if isinstance(result, tuple) and len(result) > 0 else result
+
+        if copy_output:
+            try:
+                result_to_store = result_to_store.copy()
+            except AttributeError:
+                result_to_store = deepcopy(result_to_store)
+
+        output_list.append(result_to_store)
         return result
 
     return wrapper
