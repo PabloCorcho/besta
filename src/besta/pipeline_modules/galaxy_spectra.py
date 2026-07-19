@@ -5,7 +5,6 @@ import numpy as np
 
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
-from besta import kinematics
 from besta import spectrum
 from besta.logging import get_logger
 
