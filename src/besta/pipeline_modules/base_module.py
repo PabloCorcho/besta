@@ -94,6 +94,23 @@ class BaseModule(ClassModule):
                       overwrite=logging_overwrite,
                       console=logging_console)
 
+        # Profiling
+        if options.has_value("profile"):
+            if options.get_bool("profile", default=False):
+                # Add decorator
+                logger.info("Profiling enabled for module execute() function")
+                self.execute = utils.time_func_call(self.execute)
+
+        # Save observables
+        self._observables_list = []
+        if options.has_value("save_observables"):
+            if options.get_bool("save_observables", default=False):
+                logger.info("Saving observables to module attribute _observables_list")
+                self.make_observable = utils.store_method_output(
+                    self.make_observable, output_list=self._observables_list,
+                    copy_output=True
+                )
+
         self.config = {}
         # Likelihood name
         if options.has_value("like_name"):
