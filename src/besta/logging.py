@@ -10,6 +10,11 @@ from typing import Optional
 DEFAULT_FORMAT = '\x1b[33;20m %(asctime)s|%(levelname)s\x1b[0m \x1b[1;32m[%(name)s]\x1b[0m: %(message)s'
 DATE_FORMAT = '%H:%M/%d-%m-%Y'
 
+# Basic configuration for the base logger
+BASE_LOGGER = logging.getLogger("besta")
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(logging.Formatter(DEFAULT_FORMAT, DATE_FORMAT))
+BASE_LOGGER.addHandler(stream_handler)
 
 def setup_logging(
     level: str = "INFO",
@@ -31,7 +36,7 @@ def setup_logging(
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
-    logger = logging.getLogger("besta")
+    logger = BASE_LOGGER
     logger.setLevel(numeric_level)
     logger.propagate = False  # prevent duplicate logs
 
@@ -58,7 +63,7 @@ def setup_logging(
 
 def get_logger(module_name: str) -> logging.Logger:
     """Return a child logger under the ``besta`` namespace."""
-    base = logging.getLogger("besta")
+    base = BASE_LOGGER
     if module_name.startswith("besta."):
         return base.getChild(module_name[len("besta."):])
     return base.getChild(module_name)
