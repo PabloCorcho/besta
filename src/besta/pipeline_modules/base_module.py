@@ -716,8 +716,14 @@ class SpectraFitModule(BaseModule):
             self.config["lsf"] = instrumental_lsf
 
         if options.get_bool("use_features", default=False):
-            self.get_feature_weights(options)
-            self.config["weights"] *= self.config["feature_weights"]
+            feature_type = options.get_string("use_features_type", default="auto")
+            if feature_type == "auto":
+                self.get_feature_weights(options)
+                self.config["weights"] *= self.config["feature_weights"]
+            elif feature_type == "atlas":
+                self.get_atlas_feature_weights(options)
+                self.config["weights"] *= self.config["feature_weights"]
+
         _log("Configuration done.")
 
     def prepare_galaxy(self, options):
@@ -907,6 +913,16 @@ class SpectraFitModule(BaseModule):
         logger.info(f"Clipping feature weights below {min_weight} to zero")
         w = np.where(w < min_weight, 0.0, w)
         self.config["feature_weights"] = w
+
+    def get_atlas_feature_weights(self, options):
+        """Use an atlas of spectral features to compute feature weights for the input spectra."""
+        logger.info("Computing feature weights from ATLAS spectral features")
+        from pst.observables import _load_ew_atlas
+        atlas = _load_ew_atlas()
+        wl = self.config["wavelength"].to_value("AA")
+        spectral_windows = [(wl >= r["central_wl_begin"]) & (wl <= r["central_wl_end"]) for r in atlas]
+        collapsed_mask = np.sum(spectral_windows, axis=0) > 0
+        self.config["feature_weights"] = collapsed_mask.astype(float)
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
         """Measure emission line fluxes and EWs from the best-fit solution.
