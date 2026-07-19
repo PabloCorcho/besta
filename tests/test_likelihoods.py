@@ -41,6 +41,38 @@ class _DummyPhotometryModule(BaseModule):
         raise NotImplementedError
 
 
+class _DummyObservableSpectraModule(BaseModule):
+    name = "DummyObservableSpectra"
+
+    def __init__(self, options):
+        super().__init__(options, likelihood_kind="spectra")
+
+    def make_observable(self, flux):
+        return flux, np.ones_like(flux)
+
+    def execute(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def plot_solution(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+class _DummyObservablePhotometryModule(BaseModule):
+    name = "DummyObservablePhotometry"
+
+    def __init__(self, options):
+        super().__init__(options, likelihood_kind="photometry")
+
+    def make_observable(self, flux):
+        return flux, np.ones_like(flux)
+
+    def execute(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def plot_solution(self, *args, **kwargs):
+        raise NotImplementedError
+
+
 @pytest.mark.skipif(not likelihoods.NUMBA_AVAILABLE, reason="numba is not available")
 def test_likelihood_method_selection_from_init():
     spectra_mod = _DummySpectraModule({"DummySpectra": {"likelihood_method": "numba"}})
@@ -126,3 +158,34 @@ def test_likelihood_backends_match_and_report_performance(capsys):
 
     captured = capsys.readouterr()
     assert "Likelihood timing report" in captured.out
+
+
+@pytest.mark.parametrize(
+    ("module_cls", "section"),
+    [
+        (_DummyObservableSpectraModule, "DummyObservableSpectra"),
+        (_DummyObservablePhotometryModule, "DummyObservablePhotometry"),
+    ],
+)
+def test_save_observables_stores_first_tuple_element(module_cls, section):
+    module = module_cls({section: {"save_observables": True}})
+    flux = np.array([1.0, 2.0, 3.0])
+
+    returned = module.make_observable(flux)
+    assert isinstance(returned, tuple)
+    assert len(module._observables_list) == 1
+
+    stored = module._observables_list[0]
+    assert isinstance(stored, np.ndarray)
+    np.testing.assert_allclose(stored, np.array([1.0, 2.0, 3.0]))
+
+    # Returned tuple values can be modified without mutating stored history.
+    returned[0][0] = 99.0
+    np.testing.assert_allclose(module._observables_list[0], np.array([1.0, 2.0, 3.0]))
+
+
+def test_save_observables_disabled_keeps_empty_storage():
+    module = _DummyObservableSpectraModule({"DummyObservableSpectra": {"save_observables": False}})
+    _ = module.make_observable(np.array([1.0, 2.0]))
+
+    assert module._observables_list == []
