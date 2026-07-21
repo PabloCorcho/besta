@@ -700,25 +700,34 @@ def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
     max_burn : int
         Maximum estimated burning-in period across all parameters.
     """
-    burn = []
-    burn_rel = []
-    # loop over parameters
+    burn_reliable = []
+    burn_unreliable = []
+
+    # Loop over parameters and convert ACT to burn-in with a safety factor.
     nparams = chains.shape[2]
     for ith in range(nparams):
-        tau, acf_mean, reliable = integrated_autocorrelation_time(
+        tau, _, reliable = integrated_autocorrelation_time(
             chains[:, :, ith], c=c, tol=tol)
-        if reliable and np.isfinite(tau):
-            burn_rel.append(reliable)
-        else:
-            tau = np.ceil(kappa_act * tau)
-            burn.append(int(tau) if np.isfinite(tau) else 0)
 
-    if burn_rel:
-        max_burn = np.nanmax(burn_rel) if burn_rel else 0
-    else:
+        if not np.isfinite(tau) or tau <= 0:
+            logger.warning("Invalid ACT estimate for parameter index %d: %s", ith, tau)
+            continue
+
+        burn_i = int(np.ceil(kappa_act * tau))
+        if reliable:
+            burn_reliable.append(burn_i)
+        else:
+            burn_unreliable.append(burn_i)
+
+    if burn_reliable:
+        return int(np.max(burn_reliable))
+
+    if burn_unreliable:
         logger.warning("No reliable autocorrelation time estimates found.")
-        max_burn = np.nanmax(burn) if burn else 0
-    return max_burn
+        return int(np.max(burn_unreliable))
+
+    logger.warning("No finite autocorrelation time estimates found. Using burn-in=0.")
+    return 0
 
 # -----------------------------------------------------------------------------
 # I/O / manipulation helpers
