@@ -49,7 +49,7 @@ def make_best_fit(file, from_ini=False):
                     )
         pipeline_module.plot_solution(solution_datablock,
                                       figname=figname)
-    pprint("Plots generated successfully")
+        pprint("  Plot generated successfully at", figname)
 
 def make_corner_plot(file, from_ini=False):
     reader = load_reader(file, from_ini)
