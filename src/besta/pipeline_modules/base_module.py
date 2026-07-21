@@ -1468,139 +1468,139 @@ class EquivalentWidthFitModule(BaseModule):
         """
         pass
 
-class GridFitMixin:
-    """Mixin class for grid-based fitting modules in BESTA."""
+# class GridFitMixin:
+#     """Mixin class for grid-based fitting modules in BESTA."""
 
-    def _load_callable_from_file(self,
-        file_path: str | pathlib.Path,
-        func_name: str,
-        *,
-        module_name: Optional[str] = None,
-    ) -> Callable:
-        """
-        Load a callable named `func_name` from a Python source file at `file_path`.
+#     def _load_callable_from_file(self,
+#         file_path: str | pathlib.Path,
+#         func_name: str,
+#         *,
+#         module_name: Optional[str] = None,
+#     ) -> Callable:
+#         """
+#         Load a callable named `func_name` from a Python source file at `file_path`.
 
-        Parameters
-        ----------
-        file_path
-            Path to the .py file (does not need to be importable / on PYTHONPATH).
-        func_name
-            Name of the function (or other callable) defined in that file.
-        module_name
-            Optional module name to assign during loading. If None, a unique
-            name is generated from the filename.
+#         Parameters
+#         ----------
+#         file_path
+#             Path to the .py file (does not need to be importable / on PYTHONPATH).
+#         func_name
+#             Name of the function (or other callable) defined in that file.
+#         module_name
+#             Optional module name to assign during loading. If None, a unique
+#             name is generated from the filename.
 
-        Returns
-        -------
-        func
-            The loaded callable object.
+#         Returns
+#         -------
+#         func
+#             The loaded callable object.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the file does not exist.
-        ImportError
-            If the module cannot be loaded.
-        AttributeError
-            If func_name is not found in the module.
-        TypeError
-            If the loaded attribute is not callable.
-        """
-        file_path = pathlib.Path(file_path).expanduser().resolve()
-        if not file_path.exists():
-            raise FileNotFoundError(str(file_path))
-        if file_path.suffix != ".py":
-            raise ImportError(f"Expected a .py file, got: {file_path}")
+#         Raises
+#         ------
+#         FileNotFoundError
+#             If the file does not exist.
+#         ImportError
+#             If the module cannot be loaded.
+#         AttributeError
+#             If func_name is not found in the module.
+#         TypeError
+#             If the loaded attribute is not callable.
+#         """
+#         file_path = pathlib.Path(file_path).expanduser().resolve()
+#         if not file_path.exists():
+#             raise FileNotFoundError(str(file_path))
+#         if file_path.suffix != ".py":
+#             raise ImportError(f"Expected a .py file, got: {file_path}")
 
-        # Give the module a deterministic-ish name to help debugging and caching
-        if module_name is None:
-            module_name = f"_user_boundary_{file_path.stem}"
+#         # Give the module a deterministic-ish name to help debugging and caching
+#         if module_name is None:
+#             module_name = f"_user_boundary_{file_path.stem}"
 
-        spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not create import spec for: {file_path}")
+#         spec = importlib.util.spec_from_file_location(module_name, str(file_path))
+#         if spec is None or spec.loader is None:
+#             raise ImportError(f"Could not create import spec for: {file_path}")
 
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)  # type: ignore[attr-defined]
-        except Exception as e:
-            raise ImportError(f"Error importing {file_path}: {e}") from e
+#         module = importlib.util.module_from_spec(spec)
+#         try:
+#             spec.loader.exec_module(module)  # type: ignore[attr-defined]
+#         except Exception as e:
+#             raise ImportError(f"Error importing {file_path}: {e}") from e
 
-        obj = getattr(module, func_name)  # may raise AttributeError
-        if not callable(obj):
-            raise TypeError(f"{func_name!r} in {file_path} is not callable (got {type(obj)})")
+#         obj = getattr(module, func_name)  # may raise AttributeError
+#         if not callable(obj):
+#             raise TypeError(f"{func_name!r} in {file_path} is not callable (got {type(obj)})")
 
-        return obj
+#         return obj
 
-    def prepare_grid_model(self, options):
-        """Prepare the model grid.
+#     def prepare_grid_model(self, options):
+#         """Prepare the model grid.
 
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-            Input options to initialise the model.
-        """
-        logger.info("Configuring model grid")
-        if not options.has_value("modelGridFile"):
-            raise ValueError("No input model grid file provided.")
-        grid_file = os.path.expandvars(options["modelGridFile"])
-        logger.info("Loading model grid from file: %s", grid_file)
-        if not os.path.isfile(grid_file):
-            raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
-        logger.info("Reading model grid... fluxes must be in microJansky / Msun")
-        model_grid = ModelGrid.load_auto(grid_file)
+#         Parameters
+#         ----------
+#         options : :class:`DataBlock`
+#             Input options to initialise the model.
+#         """
+#         logger.info("Configuring model grid")
+#         if not options.has_value("modelGridFile"):
+#             raise ValueError("No input model grid file provided.")
+#         grid_file = os.path.expandvars(options["modelGridFile"])
+#         logger.info("Loading model grid from file: %s", grid_file)
+#         if not os.path.isfile(grid_file):
+#             raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
+#         logger.info("Reading model grid... fluxes must be in microJansky / Msun")
+#         model_grid = ModelGrid.load_auto(grid_file)
 
-        if options.has_value("boundaryFunctionFile"):
-            boundary_file = os.path.expandvars(
-                options["boundaryFunctionFile"])
-            logger.info("Loading boundary function from file: %s", boundary_file)
-            # Split the path to the file and the function name given by []
-            mthd_s = boundary_file.find("[")
-            mthd_e = boundary_file.find("]")
-            boundary_func_name = boundary_file[mthd_s + 1:mthd_e]
-            boundary_file = boundary_file[:mthd_s]
-            boundary_func = self._load_callable_from_file(
-                boundary_file, boundary_func_name)
-            model_grid.check_boundaries = boundary_func
-            logger.info("Applied boundary function to model grid.")
+#         if options.has_value("boundaryFunctionFile"):
+#             boundary_file = os.path.expandvars(
+#                 options["boundaryFunctionFile"])
+#             logger.info("Loading boundary function from file: %s", boundary_file)
+#             # Split the path to the file and the function name given by []
+#             mthd_s = boundary_file.find("[")
+#             mthd_e = boundary_file.find("]")
+#             boundary_func_name = boundary_file[mthd_s + 1:mthd_e]
+#             boundary_file = boundary_file[:mthd_s]
+#             boundary_func = self._load_callable_from_file(
+#                 boundary_file, boundary_func_name)
+#             model_grid.check_boundaries = boundary_func
+#             logger.info("Applied boundary function to model grid.")
 
-        self.config["model_grid"] = model_grid
+#         self.config["model_grid"] = model_grid
         
-        if options.has_value("knn"):
-            self.config["knn"] = options["knn"]
-        else:
-            self.config["knn"] = int(4 * model_grid.n_targets)
-        logger.info("Configuration done.")
+#         if options.has_value("knn"):
+#             self.config["knn"] = options["knn"]
+#         else:
+#             self.config["knn"] = int(4 * model_grid.n_targets)
+#         logger.info("Configuration done.")
 
 
-class EmulatorMixin:
-    """Mixin class for modules using ML emulators in BESTA."""
+# class EmulatorMixin:
+#     """Mixin class for modules using ML emulators in BESTA."""
 
-    def prepare_emulator(self, options):
-        """Prepare the ML emulator.
+#     def prepare_emulator(self, options):
+#         """Prepare the ML emulator.
 
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-            Input options to initialise the model.
+#         Parameters
+#         ----------
+#         options : :class:`DataBlock`
+#             Input options to initialise the model.
         
-        Notes
-        -----
-        The ML emulator is expected to be stored in a joblib (.joblib) file.
-        """
-        try:
-            import joblib
-        except ImportError:
-            raise ImportError("joblib is required to load ML emulators."
-                              "Please install joblib and try again.")
-        logger.info("Configuring ML emulator")
-        if not options.has_value("emulatorFile"):
-            raise ValueError("No input emulator file provided.")
-        emulator_file = os.path.expandvars(options["emulatorFile"])
-        logger.info("Loading ML emulator from file: %s", emulator_file)
-        if not os.path.isfile(emulator_file):
-            raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
-        logger.info("Reading ML emulator...")
-        ml_emulator = joblib.load(emulator_file)
-        self.config["ml_emulator"] = ml_emulator
-        logger.info("Configuration done.")
+#         Notes
+#         -----
+#         The ML emulator is expected to be stored in a joblib (.joblib) file.
+#         """
+#         try:
+#             import joblib
+#         except ImportError:
+#             raise ImportError("joblib is required to load ML emulators."
+#                               "Please install joblib and try again.")
+#         logger.info("Configuring ML emulator")
+#         if not options.has_value("emulatorFile"):
+#             raise ValueError("No input emulator file provided.")
+#         emulator_file = os.path.expandvars(options["emulatorFile"])
+#         logger.info("Loading ML emulator from file: %s", emulator_file)
+#         if not os.path.isfile(emulator_file):
+#             raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
+#         logger.info("Reading ML emulator...")
+#         ml_emulator = joblib.load(emulator_file)
+#         self.config["ml_emulator"] = ml_emulator
+#         logger.info("Configuration done.")
