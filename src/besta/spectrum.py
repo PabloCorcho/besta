@@ -1745,9 +1745,6 @@ def find_emission_lines(
     if to_rest_frame:
         output_table["center"] = output_table["center"] / (1 + redshift)
         output_table["sigma"] = output_table["sigma"] / (1 + redshift)
-        if lines is not None:
-            output_table["velocity"] = output_table["velocity"]
-            output_table["velocity_dispersion"] = output_table["velocity_dispersion"]
         output_table.meta["rest_frame"] = True
         output_table.meta["redshift"] = redshift
 
