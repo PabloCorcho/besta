@@ -489,13 +489,6 @@ class SpectraFitModule(BaseModule):
             error = np.divide(1.0, error**0.5, out=error, where=error > 0)
             error[error <= 0] = np.inf
 
-        if options.get_double("snr_clip", default=np.inf) is not None:
-            snr_clip = options["snr_clip"]
-            _log(f"Applying SNR upper clipping with threshold: <{snr_clip}")
-            snr = np.divide(flux, error, out=np.zeros_like(flux), where=error > 0)
-            corr_snr = np.clip(snr / snr_clip, 1, None)
-            error *= corr_snr
-
         # Convert units if needed
         if options.has_value("wlUnits"):
             _log("Converting wavelength units to Angstrom")
