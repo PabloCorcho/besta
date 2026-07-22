@@ -35,6 +35,7 @@ from besta import spectrum
 from besta import kinematics
 from besta import sfh
 from besta import io
+from besta import noise as noise_models
 from besta import utils
 from besta.grid import ModelGrid
 from . import likelihoods
@@ -136,6 +137,7 @@ class BaseModule(ClassModule):
         self.likelihood_kind = str(likelihood_kind).strip().lower()
         self.likelihood_method = str(likelihood_method or "auto").strip().lower()
         self.config["save_chi2"] = options.get_bool("save_chi2", default=False)
+        self.noise_model = None
 
         if self.likelihood_kind == "photometry":
             self.log_like = likelihoods.make_photometry_loglike(self.likelihood_method)
@@ -145,6 +147,24 @@ class BaseModule(ClassModule):
             raise ValueError(
                 f"Unknown likelihood_kind={self.likelihood_kind!r}; expected 'spectra' or 'photometry'."
             )
+
+    def prepare_noise_model(self, options):
+        """Prepare the noise model used to compute effective inverse variance."""
+        if self.likelihood_kind != "spectra":
+            return
+        if "ivar" not in self.config:
+            raise ValueError("Noise model initialization requires 'ivar' in module config.")
+
+        model_name = options.get_string("NoiseModel", default="NoiseModel")
+        self.noise_model = noise_models.make_noise_model(model_name, self.config)
+        self.config["noise_model"] = model_name
+        _log("Using noise model: ", model_name)
+
+    def get_effective_ivar(self, block):
+        """Return effective inverse variance for the current sample."""
+        if self.noise_model is None:
+            return self.config["ivar"]
+        return self.noise_model.inverse_variance(block)
 
     @abstractmethod
     def make_observable(self, *args, **kwargs):
@@ -654,7 +674,8 @@ class SpectraFitModule(BaseModule):
             telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
             _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
             weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
-                wavelength, weight=weights,
+                wavelength * (1 + redshift),  # Mask in observed frame
+                weight=weights,
                 redshift=0.0,
                 pad=telluric_pad,
                 return_mask=True)
@@ -669,7 +690,7 @@ class SpectraFitModule(BaseModule):
             sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
             _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
             weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
-                wavelength,
+                wavelength * (1 + redshift),  # Mask in observed frame
                 flux=flux, uncertainty=np.sqrt(cov),
                 weight=weights,
                 redshift=0.0,  # Mask in observed frame
@@ -707,6 +728,8 @@ class SpectraFitModule(BaseModule):
         self.config["weights"] = weights
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
+
+        self.prepare_noise_model(options)
 
         if options.get_bool("use_features", default=False):
             feature_type = options.get_string("use_features_type", default="auto")
@@ -1030,6 +1053,21 @@ class SpectraFitModule(BaseModule):
             color="k",
             alpha=0.5,
         )
+
+        # If noise model 
+        if hasattr(self, 'noise_model') and self.noise_model is not None:
+            ivar_eff = self.get_effective_ivar(solution)
+            
+            var_eff = np.divide(1.0, ivar_eff, out=np.zeros_like(ivar_eff), where=ivar_eff > 0)
+            ax.fill_between(
+                self.config["wavelength"].value,
+                flux_model - var_eff ** 0.5,
+                flux_model + var_eff ** 0.5,
+                color="b",
+                alpha=0.3,
+                label="Model uncertainty"
+            )
+
         ax.plot(
             self.config["wavelength"], self.config["flux"], c="k",
             label="Observed", lw=0.7)
@@ -1125,14 +1163,16 @@ class SpectraFitModule(BaseModule):
         ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
-        chi2 = (flux_model - self.config["flux"]) ** 2 * self.config["ivar"]
+        ivar_eff = self.get_effective_ivar(solution)
+        chi2 = (flux_model - self.config["flux"]) ** 2 * ivar_eff
         mean_chi2 = np.nanmean(chi2[good_pixels])
         median_chi2 = np.nanmedian(chi2[good_pixels])
         nmad_chi2 = 1.4826 * np.nanmedian(
             np.abs(chi2[good_pixels] - median_chi2))
         loglike = self.log_like(self.config["flux"][good_pixels],
                                 flux_model[good_pixels],
-                                self.config["ivar"][good_pixels] * weights[good_pixels])
+                                ivar_eff[good_pixels] * weights[good_pixels],
+                                include_norm=True)
         ax = axs[1, 0]
         ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)
         ax.grid(visible=True)
