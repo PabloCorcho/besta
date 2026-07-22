@@ -322,21 +322,24 @@ def photometry_loglike_numpy(
     loglike : float
         The computed log-likelihood value.
     """
-    # (
-    #     data,
-    #     model,
-    #     var,
-    #     weights,
-    #     is_upper,
-    #     is_lower,
-    # ) = _validate_photometry_inputs(
-    #     data,
-    #     model,
-    #     var,
-    #     weights,
-    #     is_upper,
-    #     is_lower,
-    # )
+    if weights is None:
+        weights = np.ones_like(data, dtype=float)
+
+    # Fast path: no limit masks provided.
+    if is_upper is None and is_lower is None:
+        residual2_over_var = (data - model) ** 2 / var
+        logp = -0.5 * residual2_over_var
+
+        if include_norm:
+            logp -= 0.5 * (_LOG_2PI + np.log(var))
+
+        return np.sum(weights * logp)
+
+    if is_upper is None:
+        is_upper = np.zeros_like(data, dtype=bool)
+
+    if is_lower is None:
+        is_lower = np.zeros_like(data, dtype=bool)
 
     sigma = np.sqrt(var)
     logp = np.empty_like(data, dtype=float)
@@ -423,21 +426,24 @@ def make_photometry_loglike(method: str = "auto") -> Callable:
             is_lower=None,
             include_norm=True,
         ):
-            # (
-            #     data,
-            #     model,
-            #     var,
-            #     weights,
-            #     is_upper,
-            #     is_lower,
-            # ) = _validate_photometry_inputs(
-            #     data,
-            #     model,
-            #     var,
-            #     weights,
-            #     is_upper,
-            #     is_lower,
-            # )
+            if weights is None:
+                weights = np.ones_like(data, dtype=float)
+
+            # Fast path: no limit masks provided.
+            if is_upper is None and is_lower is None:
+                return photometry_loglike_numba_no_limits(
+                    data.ravel(),
+                    model.ravel(),
+                    var.ravel(),
+                    weights.ravel(),
+                    include_norm,
+                )
+
+            if is_upper is None:
+                is_upper = np.zeros_like(data, dtype=bool)
+
+            if is_lower is None:
+                is_lower = np.zeros_like(data, dtype=bool)
 
             if not np.any(is_upper | is_lower):
                 return photometry_loglike_numba_no_limits(
