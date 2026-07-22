@@ -166,6 +166,10 @@ class LOSVDPixelKernel:
         """
         raise NotImplementedError("This method should be implemented by subclasses to parse parameters from the kernel model.")
 
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        raise NotImplementedError("This method should be implemented by subclasses to provide default INI values.")
 
 class GaussianPixelKernel(LOSVDPixelKernel):
     """Single-Gaussian LOSVD kernel in pixel space."""
@@ -220,6 +224,15 @@ class GaussianPixelKernel(LOSVDPixelKernel):
     def __cumulative_distribution(self, x, sigma_pixel, vel_pixel):
         return 0.5 * (1 + erf((x - vel_pixel) / (sigma_pixel * SQRT2)))
 
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(self.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma = 50 100 500\n")
+        return ini_file
 
 class SplitGaussianPixelKernel(LOSVDPixelKernel):
     """Split-Gaussian LOSVD kernel in pixel space.
@@ -277,6 +290,16 @@ class SplitGaussianPixelKernel(LOSVDPixelKernel):
 
         self._cached_kernel(key, build_kernel)
 
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma_blue = 50 100 500\n")
+            file.write(f"los_sigma_red = 50 100 500\n")
+        return ini_file
 
 class GaussHermitePixelKernel(LOSVDPixelKernel):
     """Gauss-Hermite LOSVD kernel in pixel space.
@@ -355,6 +378,19 @@ class GaussHermitePixelKernel(LOSVDPixelKernel):
             )
         )
         return g
+    
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma = 50 100 500\n")
+            file.write(f"los_h3 = -0.1 0.0 0.1\n")
+            file.write(f"los_h4 = -0.1 0.0 0.1\n")
+        return ini_file
+
 
 class PieceWisePixelKernel(LOSVDPixelKernel):
     """Piecewise-constant LOSVD kernel defined in velocity bins.
@@ -406,6 +442,17 @@ class PieceWisePixelKernel(LOSVDPixelKernel):
         )
         self.edge_pixels = int(np.ceil(np.max(np.abs(self.x_pixel_edges))))
         self.kernel_weight = np.diff(cum_kernel)
+
+    @classmethod
+    def make_ini(cls, ini_file: str, velocity_min: float, velocity_max: float, velocity_bin_size: float) -> str:
+        """Return default INI values for this kernel."""
+        n_bins = int(np.ceil((velocity_max - velocity_min) / velocity_bin_size))
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            for ith in range(n_bins):
+                file.write(f"vel_bin_{ith} = 0.0 1.0 10.0\n")
+        return ini_file
 
 
 def normal_cdf(x, mu=0.0, sigma=1.0):
