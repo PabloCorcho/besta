@@ -108,7 +108,7 @@ class SFHBase(ABC):
                 for key, val in zip(self.sfh_bin_keys, sfh_values):
                     free_params[key] = [-5, val, 5]
 
-        with open(ini_file, "w", encoding="utf-8") as file:
+        with open(ini_file, "a", encoding="utf-8") as file:
             file.write(f"; Default prior file for SFH model: {str(self.__class__)}\n")
             file.write(f"; use_transforms: {str(self.use_transforms)}\n")
             file.write(f"[{self.sect_name}]\n")
