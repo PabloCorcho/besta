@@ -1062,11 +1062,11 @@ class SpectraFitModule(BaseModule):
             var_eff = np.divide(1.0, ivar_eff, out=np.zeros_like(ivar_eff), where=ivar_eff > 0)
             ax.fill_between(
                 self.config["wavelength"].value,
-                flux_model - var_eff ** 0.5,
-                flux_model + var_eff ** 0.5,
+                self.config["flux"] - var_eff ** 0.5,
+                self.config["flux"] + var_eff ** 0.5,
                 color="b",
-                alpha=0.3,
-                label="Model uncertainty"
+                alpha=0.1,
+                label="Noise model"
             )
 
         ax.plot(
@@ -1176,6 +1176,7 @@ class SpectraFitModule(BaseModule):
                                 include_norm=True)
         ax = axs[1, 0]
         ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)
+        ax.plot(self.config["wavelength"], chi2 * nan_mask, c="r", lw=0.7)
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
         ax.set_yscale("symlog", linthresh=1.0)
@@ -1189,13 +1190,13 @@ class SpectraFitModule(BaseModule):
     
         ax = axs[1, 1]
         ax.hist(
-            chi2,
+            chi2[weights > 0],
             bins=np.geomspace(0.01, 100),
             orientation="horizontal",
-            color="k",
+            color="r",
             histtype="step"
         )
-        ax.annotate(f"Median chi2: {np.nanmedian(chi2):.1f}"
+        ax.annotate(f"Median chi2: {median_chi2:.1f}"
                     + f"\nMean chi2: {mean_chi2:.1f}"
                     + f"\nNMAD chi2: {nmad_chi2:.1f}"
                     + f"\nLog-likelihood: {loglike:.1f}",
