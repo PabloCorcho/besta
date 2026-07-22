@@ -58,20 +58,10 @@ Galaxy Spectra
    :show-inheritance:
    :exclude-members: module
 
-SFH Photometry Grid
--------------------
+Likelihood Helpers
+------------------
 
-.. automodule:: besta.pipeline_modules.sfh_photometry_grid
+.. automodule:: besta.pipeline_modules.likelihoods
    :members:
    :undoc-members:
    :show-inheritance:
-   :exclude-members: module
-
-SFH Photometry Emulator
------------------------
-
-.. automodule:: besta.pipeline_modules.sfh_photometry_emu
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :exclude-members: module

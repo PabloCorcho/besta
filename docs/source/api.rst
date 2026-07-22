@@ -39,6 +39,20 @@ Pipeline Modules
 
    besta.pipeline_modules
 
+Sampler Extensions
+******************
+
+.. automodule:: besta.samplers.pymc_sampler
+   :members:
+   :show-inheritance:
+
+Command-Line Interface
+**********************
+
+.. automodule:: besta.cli.best
+   :members:
+   :show-inheritance:
+
 Kinematics
 **********
 

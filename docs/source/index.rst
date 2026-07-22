@@ -67,7 +67,9 @@ If you use BESTA in your research, please cite the following papers:
    installation
    modules
    configuration
+   samplers
    manager
+   cli
    postprocessing
    grid
    contributing
