@@ -110,7 +110,7 @@ def spectra_loglike_numpy(
     data,
     model,
     ivar,
-    include_norm=False,
+    include_norm=True,
 ):
     """Inverse-variance Gaussian log-likelihood for spectra.
     
@@ -133,12 +133,12 @@ def spectra_loglike_numpy(
         The computed log-likelihood value.
     """
     # Ensure inputs are arrays of floats
-    data = np.asarray(data, dtype=float)
-    model = np.asarray(model, dtype=float)
-    ivar = np.asarray(ivar, dtype=float)
+    # data = np.asarray(data, dtype=float)
+    # model = np.asarray(model, dtype=float)
+    # ivar = np.asarray(ivar, dtype=float)
 
     # Validate format
-    _validate_spectra_inputs(data, model, ivar)
+    # _validate_spectra_inputs(data, model, ivar)
 
     valid = ivar > 0
     residual = data[valid] - model[valid]
@@ -185,7 +185,7 @@ if NUMBA_AVAILABLE:
         data,
         model,
         ivar,
-        include_norm=False,
+        include_norm=True,
     ):
         """Fast numba-compiled inverse-variance Gaussian log-likelihood for spectra.
 
@@ -211,11 +211,11 @@ if NUMBA_AVAILABLE:
         --------
         spectra_loglike_numpy : Numpy-based implementation of the same likelihood.
         """
-        data = np.asarray(data, dtype=float)
-        model = np.asarray(model, dtype=float)
-        ivar = np.asarray(ivar, dtype=float)
+        # data = np.asarray(data, dtype=float)
+        # model = np.asarray(model, dtype=float)
+        # ivar = np.asarray(ivar, dtype=float)
 
-        _validate_spectra_inputs(data, model, ivar)
+        # _validate_spectra_inputs(data, model, ivar)
 
         return _spectra_loglike_numba_kernel(
             data.ravel(),
@@ -322,21 +322,21 @@ def photometry_loglike_numpy(
     loglike : float
         The computed log-likelihood value.
     """
-    (
-        data,
-        model,
-        var,
-        weights,
-        is_upper,
-        is_lower,
-    ) = _validate_photometry_inputs(
-        data,
-        model,
-        var,
-        weights,
-        is_upper,
-        is_lower,
-    )
+    # (
+    #     data,
+    #     model,
+    #     var,
+    #     weights,
+    #     is_upper,
+    #     is_lower,
+    # ) = _validate_photometry_inputs(
+    #     data,
+    #     model,
+    #     var,
+    #     weights,
+    #     is_upper,
+    #     is_lower,
+    # )
 
     sigma = np.sqrt(var)
     logp = np.empty_like(data, dtype=float)
@@ -423,21 +423,21 @@ def make_photometry_loglike(method: str = "auto") -> Callable:
             is_lower=None,
             include_norm=True,
         ):
-            (
-                data,
-                model,
-                var,
-                weights,
-                is_upper,
-                is_lower,
-            ) = _validate_photometry_inputs(
-                data,
-                model,
-                var,
-                weights,
-                is_upper,
-                is_lower,
-            )
+            # (
+            #     data,
+            #     model,
+            #     var,
+            #     weights,
+            #     is_upper,
+            #     is_lower,
+            # ) = _validate_photometry_inputs(
+            #     data,
+            #     model,
+            #     var,
+            #     weights,
+            #     is_upper,
+            #     is_lower,
+            # )
 
             if not np.any(is_upper | is_lower):
                 return photometry_loglike_numba_no_limits(

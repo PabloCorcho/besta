@@ -122,9 +122,11 @@ class FullSpectralFitModule(SpectraFitModule):
             block["extra", "stellar_mass"] = np.nan
             return 0
 
+        ivar_eff = self.get_effective_ivar(block)
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
-                             self.config["ivar"][good_pixels] * weights[good_pixels])
+                             ivar_eff[good_pixels] * weights[good_pixels],
+                             include_norm=True)
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
 
