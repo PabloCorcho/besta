@@ -53,6 +53,8 @@ class TestPipelineManagerFit(unittest.TestCase):
         los_sigma = 50 100 500
         los_h3 = 0
         los_h4 = 0
+        [noise]
+        beta = 0.1 1.0 10
         """
         with open("values.ini", "w") as file:
             file.write(text)
@@ -110,6 +112,8 @@ class TestPipelineManagerFit(unittest.TestCase):
 
         "FullSpectralFit": {
                 "file": FullSpectralFitModule.get_path(),
+                "profile": True,
+                "likelihood_method": "numba",
                 "redshift": 0.0,
                 "inputSpectrum": "./test_spectra_exp_sfh.dat",
                 #"mask": "./a2744_65_mask.txt",
@@ -120,8 +124,9 @@ class TestPipelineManagerFit(unittest.TestCase):
                 "SFHModel": "ExponentialSFH",
                 "velscale": 100.0,
                 "ExtinctionLaw": "ccm89",
-                "use_features": "T",
-                "save_t_frac_at": [0.5, 0.9, 0.99]
+                "use_features": "F",
+                "save_t_frac_at": [0.5, 0.9, 0.99],
+                "NoiseModel": "MultiplicativeNoiseModel",
                 }}
 
         t0 = time()
