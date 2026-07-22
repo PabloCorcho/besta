@@ -26,20 +26,14 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
 from scipy.optimize import minimize
-<<<<<<< HEAD
 from scipy.signal import find_peaks
-=======
->>>>>>> cd02727 (autocorrelation times)
 
 from astropy.io import fits
 from astropy.table import Table, Column
 from astropy import units as u
 
-<<<<<<< HEAD
 from cosmosis.postprocessing import run_cosmosis_postprocess
 
-=======
->>>>>>> cd02727 (autocorrelation times)
 from besta import io
 from besta.logging import get_logger
 
