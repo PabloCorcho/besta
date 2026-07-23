@@ -624,8 +624,13 @@ class SpectraFitModule(BaseModule):
             ln_wave = np.arange(np.log(wl_range[0]), np.log(wl_range[1]) + dlnlam,
                             dlnlam)
 
-            flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
-            cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
+            flux, cov = flux_conserving_interpolation(
+                ln_wave,
+                np.log(wavelength),
+                flux,
+                spectra_err=np.sqrt(cov),
+            )
+
             weights = np.interp(ln_wave, np.log(wavelength), weights).clip(0, None)
             bad_cov = cov <= 0
             bad_flux = ~np.isfinite(flux)
