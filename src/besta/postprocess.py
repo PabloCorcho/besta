@@ -621,7 +621,7 @@ def autocorrelation_1d(x):
 
     return acf
 
-def integrated_autocorrelation_time(chain, c=5.0, tol=50):
+def integrated_autocorrelation_time(chain, c=5.0, tol=30):
     """
     Estimate the integrated autocorrelation time of an MCMC chain.
 
@@ -678,7 +678,7 @@ def integrated_autocorrelation_time(chain, c=5.0, tol=50):
     return tau, acf_mean, reliable
 
 
-def auto_burning_results(chains, c=5.0, tol=50, kappa_act=3.0):
+def auto_burning_results(chains, c=5.0, tol=30, kappa_act=3.0):
     """
     Estimate the burning-in period for each parameter in the MCMC chains.
 
@@ -1092,9 +1092,10 @@ class ResultsSummary:
         # Percentiles table
         t_pct = Table()
         t_pct["percentile"] = np.asarray(self.percentiles, dtype=float)
-        for i, name in enumerate(self.parameter_names):
-            t_pct[f"{name}_val"] = _as_float_array(self.percentiles_values[i, :]) if self.percentiles_values.size else np.full(len(self.percentiles), np.nan)
-            t_pct[f"{name}_logp"] = _as_float_array(self.percentiles_logpost[i, :]) if self.percentiles_logpost.size else np.full(len(self.percentiles), np.nan)
+        for i, (name, section) in enumerate(zip(self.parameter_names, self.parameter_sections)):
+            k = ".".join([section, name])
+            t_pct[f"{k}_val"] = _as_float_array(self.percentiles_values[i, :]) if self.percentiles_values.size else np.full(len(self.percentiles), np.nan)
+            t_pct[f"{k}_logp"] = _as_float_array(self.percentiles_logpost[i, :]) if self.percentiles_logpost.size else np.full(len(self.percentiles), np.nan)
 
         # Add HDI intervals as header cards on the percentiles HDU (compact)
         pct_hdr = fits.Header()
@@ -1381,22 +1382,6 @@ def summarize_results(
     -------
     ResultsSummary
     """
-    if burn_in > 0:
-        # discard the first burn_in samples per walker; assumes samples are ordered as (walker0, walker1, ..., walkerN, walker0, ...)
-        nrows = len(table)
-        if nwalkers is None:
-            raise ValueError("burn_in > 0 requires nwalkers to be specified.")
-        expected = nwalkers * burn_in
-        if nrows < expected:
-            raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
-        # Keep rows after burn-in for each walker
-        mask = np.ones(nrows, dtype=bool)
-        for w in range(nwalkers):
-            start = w * burn_in
-            end = (w + 1) * burn_in
-            mask[start:end] = False
-        table = table[mask]
-
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
@@ -1479,7 +1464,8 @@ def summarize_results(
     map_1d = {}
     pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
 
-    for i, nm in enumerate(names):
+    for i, (name, sect) in enumerate(zip(names, sections)):
+        nm = ".".join([sect, name])
         x = samples[i, :]
         # Weighted quantiles
         pct_vals[i, :] = weighted_quantile(x, w, pct)
@@ -1515,6 +1501,7 @@ def summarize_results(
         if parameter_key_pairs is None:
             raise ValueError("compute_2d=True requires parameter_key_pairs.")
         # Convert full keys to indices
+        # TODO: account for section names
         key_to_idx = {k: i for i, k in enumerate(keys)}
         for k0, k1 in parameter_key_pairs:
             if k0 not in key_to_idx or k1 not in key_to_idx:
