@@ -89,13 +89,15 @@ class SFHBase(ABC):
         """Map physical parameters back to latent space (default: identity)."""
         return physical
 
-    def make_ini(self, ini_file):
+    def make_ini(self, ini_file, mode="a"):
         """Create a cosmosis .ini file.
 
         Parameters
         ----------
         ini_file : str
             Path to the output .ini file.
+        mode : str, optional, default="a"
+            Mode for opening the file.
         """
         logger.info("Making ini file: %s", ini_file)
 
@@ -108,7 +110,7 @@ class SFHBase(ABC):
                 for key, val in zip(self.sfh_bin_keys, sfh_values):
                     free_params[key] = [-5, val, 5]
 
-        with open(ini_file, "a", encoding="utf-8") as file:
+        with open(ini_file, mode, encoding="utf-8") as file:
             file.write(f"; Default prior file for SFH model: {str(self.__class__)}\n")
             file.write(f"; use_transforms: {str(self.use_transforms)}\n")
             file.write(f"[{self.sect_name}]\n")
