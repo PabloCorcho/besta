@@ -11,6 +11,7 @@ class NoiseModel:
     """Base noise model returning the input inverse variance unchanged."""
 
     def __init__(self, config):
+        self.name = config.get("NoiseModelName", "noise")
         self.ivar = np.asarray(config["ivar"], dtype=float)
 
     def parse_parameters(self, block):
@@ -26,7 +27,7 @@ class MultiplicativeNoiseModel(NoiseModel):
     """Scale inverse variance by a sampled factor ``noise/beta``."""
 
     def parse_parameters(self, block):
-        beta = block["noise", "beta"]
+        beta = block[self.name, "beta"]
         if not np.isfinite(beta) or beta <= 0:
             raise ValueError("Noise parameter 'noise/beta' must be finite and > 0.")
         return beta
