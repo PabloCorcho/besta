@@ -155,10 +155,13 @@ class BaseModule(ClassModule):
         if "ivar" not in self.config:
             raise ValueError("Noise model initialization requires 'ivar' in module config.")
 
-        model_name = options.get_string("NoiseModel", default="NoiseModel")
-        self.noise_model = noise_models.make_noise_model(model_name, self.config)
-        self.config["noise_model"] = model_name
-        _log("Using noise model: ", model_name)
+        model = options.get_string("NoiseModel", default="NoiseModel")
+        self.config["NoiseModelName"] = options.get_string("NoiseModelName",
+                                                           default="noise")
+        self.noise_model = noise_models.make_noise_model(model, self.config)
+        self.config["NoiseModel"] = model
+        _log("Using noise model: ", model)
+        _log("Noise model section name: ", self.config["NoiseModelName"])
 
     def get_effective_ivar(self, block):
         """Return effective inverse variance for the current sample."""
