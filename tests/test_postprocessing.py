@@ -194,8 +194,14 @@ class TestPostprocessing(unittest.TestCase):
             # Percentiles shape
             self.assertEqual(summary.percentiles_values.shape, (len(summary.parameter_keys), len(summary.percentiles)))
 
-            # 1D PDF presence (by short names)
-            for nm in summary.parameter_names:
+            # 1D PDF presence (by section-qualified names)
+            qualified_names = [
+                ".".join((section, name))
+                for section, name in zip(
+                    summary.parameter_sections, summary.parameter_names
+                )
+            ]
+            for nm in qualified_names:
                 self.assertIn(nm, summary.pdf_1d)
                 self.assertIn("grid", summary.pdf_1d[nm])
                 self.assertIn("hist_pdf", summary.pdf_1d[nm])
@@ -234,7 +240,7 @@ class TestPostprocessing(unittest.TestCase):
             self.assertNotIn("hdi_intervals", payload)
             self.assertNotIn("hdi_mass", payload)
 
-            for nm in summary.parameter_names:
+            for nm in qualified_names:
                 self.assertIn(nm, payload["hdi_intervals_68"])
                 self.assertIn(nm, payload["hdi_intervals_95"])
                 self.assertIn(nm, payload["map_1d"])

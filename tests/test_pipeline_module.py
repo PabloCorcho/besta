@@ -95,7 +95,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust.attenuation', 'a_v'] = 0
+        block['dust.attenuation', 'a_v'] = 0.5
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -106,6 +106,9 @@ class TestPipelineModule(unittest.TestCase):
 
         module = module(config)
         self.assertFalse(module.execute(block))
+        self.assertEqual(
+            module.config["galaxy"].dust_attenuation.a_v.to_value(), 0.5
+        )
         flux_model, normalization = module.make_observable(block, parse=True)
         self.assertTrue(np.isfinite(flux_model).all())
         self.assertTrue(np.isfinite(normalization).all())
@@ -129,7 +132,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust_attenuation', 'a_v'] = 0
+        block['dust.attenuation', 'a_v'] = 0.5
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -144,6 +147,9 @@ class TestPipelineModule(unittest.TestCase):
             print("SVO filter query probably failed: skipping")
             return
         self.assertFalse(module.execute(block))
+        self.assertEqual(
+            module.config["galaxy"].dust_attenuation.a_v.to_value(), 0.5
+        )
         flux_model = module.make_observable(block, parse=True)
         self.assertTrue(np.isfinite(flux_model).all())
         print("Module successfully executed")
