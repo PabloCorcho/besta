@@ -1328,6 +1328,7 @@ def summarize_results(
     burn_in: int = 0,
     parameter_prefix: str = "--",
     posterior_key: str = "post",
+    use_posterior_weights: bool = False,
     parameter_keys: Optional[Sequence[str]] = None,
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
     compute_1d: bool = True,
@@ -1419,8 +1420,11 @@ def summarize_results(
     logpost = logpost_all[mask]
     # Stabilized weights from log-posterior
     max_lp = np.max(logpost)
-    w = np.exp(logpost - max_lp)
-    w = normalize_weights(w)
+    if use_posterior_weights:
+        w = np.exp(logpost - max_lp)
+        w = normalize_weights(w)
+    else:
+        w = np.ones_like(logpost, dtype=float)
     # Effective sample size
     extra_info["ess"] = effective_sample_size(w)
     # Samples matrix (D, N)
