@@ -169,6 +169,33 @@ class BaseModule(ClassModule):
             return self.config["ivar"]
         return self.noise_model.inverse_variance(block)
 
+    def get_galaxy_parameters(self, block):
+        """Extract from the DataBlock the PST galaxy parameter paths."""
+        parameters = {}
+        sfh_section = self.config["sfh_model"].sect_name
+        for section, name in block.keys():
+            if sfh_section in section:
+                continue
+            # TODO: temporary fix to handle the dust attenuation section name
+            internal_section = (
+                "dust_attenuation"
+                if section == "dust.attenuation"
+                else section
+            )
+            parameters[f"{internal_section}.{name}"] = block[section, name]
+        return parameters
+
+    @staticmethod
+    def get_galaxy_sections(parameter_paths):
+        """Return public DataBlock paths while preserving top-level parameters."""
+        sections = []
+        for path in parameter_paths:
+            parts = path.rsplit(".", 1)
+            if len(parts) == 2 and parts[0] == "dust_attenuation":
+                parts[0] = "dust.attenuation"
+            sections.append(parts)
+        return sections
+
     @abstractmethod
     def make_observable(self, *args, **kwargs):
         """Create an observable from an input set of model parameters."""
@@ -483,7 +510,7 @@ class BaseModule(ClassModule):
         tau = float(tau)
         ssfr = sfh_model.model.average_ssfr_over_tau(
             t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/yr")
-        ssfr = np.atleast_1d(ssfr)[0]
+        ssfr = np.atleast_1d(ssfr)[0].clip(min=1e-20, max=1e-5)
         # TODO: match naming convention with SFH module
         datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = np.log10(ssfr)
         return datablock
@@ -807,7 +834,7 @@ class SpectraFitModule(BaseModule):
                            cosmology=cosmology)
 
         params = galaxy.build_param_index(include_fixed=False, prefix="")
-        sections = [s.rsplit(".", 1) for s in params]
+        sections = self.get_galaxy_sections(params)
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
@@ -1372,7 +1399,8 @@ class PhotometryFitModule(BaseModule):
                            filters=filters)
 
         params = galaxy.build_param_index(include_fixed=False, prefix="")
-        sections = [s.rsplit(".", 1) for s in params]
+        # TODO: This is a temporary fix to handle the dust attenuation section name
+        sections = self.get_galaxy_sections(params)
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
