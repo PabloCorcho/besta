@@ -37,10 +37,7 @@ class GalaxySpectraModule(SpectraFitModule):
             self.config["sfh_model"].parse_datablock(block)
 
         # Update parameters for each remaining component
-        keys = block.keys()
-        values = [block[s, k] for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        keys = [".".join((s, k)) for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        parameters = dict(zip(keys, values))
+        parameters = self.get_galaxy_parameters(block)
 
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False)
