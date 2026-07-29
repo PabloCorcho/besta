@@ -778,7 +778,7 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
         logger.info("Initialising BetaSFH model")
 
         self.free_params["t_start"] = kwargs.get(
-            "t_start", [0.0, 0.5 * self.today.to_value("Gyr"),
+            "t_start", [0.0, min(0.1, 0.5 * self.today.to_value("Gyr")),
                         self.today.to_value("Gyr")]
         )
         self.free_params["t_end"] = kwargs.get(
