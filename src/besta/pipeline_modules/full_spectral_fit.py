@@ -55,6 +55,15 @@ class FullSpectralFitModule(SpectraFitModule):
         flux_model = 1e10 * luminosity_model.to_value(self._default_luminosity_units
         ) / self.config["dl_sq"]
 
+        # Apply dust extinction in the rest frame, before LOSVD convolution.
+        dust_model = self.config["extinction_law"]
+        if dust_model is not None:
+            flux_model = dust_model.apply_extinction(
+                self.config["ssp_model"].wavelength,
+                flux_model,
+                a_v=block["dust.attenuation", "a_v"],
+            ).value
+
         # Kinematics
         self._losvd_kernel.parse_parameters(block)
         # Perform the convolution
@@ -68,12 +77,6 @@ class FullSpectralFitModule(SpectraFitModule):
         pixels = slice(extra_pixels, -extra_pixels)
         flux_model = flux_model[pixels]
         mask = mask[pixels]
-
-        # Apply dust extinction
-        dust_model = self.config["extinction_law"]
-        flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust.attenuation", "a_v"]
-        ).value
 
         weights = self.config["weights"] * mask
         # Compute normalization and stellar mass
