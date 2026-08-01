@@ -107,12 +107,15 @@ class FullSpectralFitModule(SpectraFitModule):
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
         """
-        valid, penalty = self.config["sfh_model"].parse_datablock(block)
+        valid, prior_penalty = self.config["sfh_model"].parse_datablock(block)
+        # TODO: Temporary fix
+        if prior_penalty is None:
+            prior_penalty = 0.0
         if not valid:
             # To track invalid samples users can set debug=T
             # logger.warning("Invalid sample")
             logger.debug("Invalid sample: %s", block)
-            block[section_names.likelihoods, self.like_name] = -1e20 * penalty
+            block[section_names.likelihoods, self.like_name] = prior_penalty
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
@@ -131,7 +134,7 @@ class FullSpectralFitModule(SpectraFitModule):
                              ivar_eff[good_pixels] * weights[good_pixels],
                              include_norm=True)
         # Final posterior for sampling
-        block[section_names.likelihoods, self.like_name] = like
+        block[section_names.likelihoods, self.like_name] = like + prior_penalty
 
         if self.config.get("save_chi2", False):
             block["extra", self.like_name + "_chi2"] = -2 * like
