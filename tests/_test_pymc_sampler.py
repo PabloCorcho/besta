@@ -29,6 +29,12 @@ def test_pymc_sampler_smoke_with_dummy_pipeline(tmp_path):
             # Varied params + one extra output.
             return ["p0", "p1", "extra0"]
 
+        def start_vector(self):
+            return np.zeros(2)
+
+        def normalize_vector(self, p):
+            return (np.asarray(p, dtype=float) + 2.0) / 4.0
+
         def denormalize_vector(self, u):
             # Map unit-cube to a bounded physical space.
             return 4.0 * np.asarray(u, dtype=float) - 2.0
@@ -81,6 +87,12 @@ def test_pymc_sampler_accepts_slice_step_method(tmp_path):
         def output_names(self):
             return ["p0", "p1", "extra0"]
 
+        def start_vector(self):
+            return np.zeros(2)
+
+        def normalize_vector(self, p):
+            return (np.asarray(p, dtype=float) + 2.0) / 4.0
+
         def denormalize_vector(self, u):
             return 4.0 * np.asarray(u, dtype=float) - 2.0
 
@@ -126,6 +138,12 @@ def test_pymc_sampler_rejects_gradient_step_methods(tmp_path):
 
         def output_names(self):
             return ["p0", "p1", "extra0"]
+
+        def start_vector(self):
+            return np.zeros(2)
+
+        def normalize_vector(self, p):
+            return (np.asarray(p, dtype=float) + 2.0) / 4.0
 
         def denormalize_vector(self, u):
             return 4.0 * np.asarray(u, dtype=float) - 2.0
