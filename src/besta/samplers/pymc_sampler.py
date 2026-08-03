@@ -1,4 +1,4 @@
-"""PyMC sampler compatible with modern PyMC versions.
+"""PyMC sampler.
 
 This module is designed to be loaded by CosmoSIS using the runtime option
 `import_samplers = /path/to/pymc_sampler.py`.
@@ -45,7 +45,7 @@ def _build_logpost_op(pipeline):
 
 
 class PymcSampler(ParallelSampler):
-    """Modern PyMC sampler for CosmoSIS pipelines.
+    """PyMC sampler for CosmoSIS pipeline.
 
     Notes
     -----

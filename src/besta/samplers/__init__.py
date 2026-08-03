@@ -1,4 +1,4 @@
-"""Custom sampler implementations shipped with BESTA."""
+"""Custom sampler implementations compatible with CosmoSIS."""
 
 from .pymc_sampler import PymcSampler, PyMCSampler
 
