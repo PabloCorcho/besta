@@ -84,6 +84,83 @@ class PymcSampler(ParallelSampler):
             "Valid options are: metropolis, demetropolis, demetropolisz, slice."
         )
 
+    def _posterior_at_unit_point(self, theta_unit: np.ndarray) -> float:
+        """Evaluate the posterior used to validate a proposed chain start."""
+        params = self.pipeline.denormalize_vector(theta_unit)
+        return float(self.pipeline.run_results(params).post)
+
+    def _build_initial_points(self) -> list[np.ndarray]:
+        """Build valid per-chain starts using the standard CosmoSIS policy.
+
+        ``Sampler.start_estimate`` prefers a distribution hint from an earlier
+        sampler (for example MaxLike), then honors ``start_method`` and
+        ``start_input``, and finally falls back to the values-file start.
+        """
+        start = np.asarray(self.start_estimate(), dtype=float)
+        if start.shape != (self.ndim,):
+            raise ValueError(
+                "The PyMC starting point has shape "
+                f"{start.shape}; expected ({self.ndim},)."
+            )
+
+        center = np.asarray(self.pipeline.normalize_vector(start), dtype=float)
+        if not np.all(np.isfinite(center)):
+            raise ValueError("The PyMC starting point contains non-finite values.")
+        if np.any(center < 0.0) or np.any(center > 1.0):
+            raise ValueError("The PyMC starting point lies outside the parameter bounds.")
+
+        # PyMC transforms bounded variables internally, so exact boundary
+        # values would map to infinite unconstrained coordinates.
+        center = np.clip(center, self.start_edge_buffer, 1.0 - self.start_edge_buffer)
+        center_post = self._posterior_at_unit_point(center)
+        if not np.isfinite(center_post) or center_post <= self.start_min_posterior:
+            raise ValueError(
+                "The selected PyMC starting point is invalid: "
+                f"posterior={center_post:.6g}. Run an optimizer first or select "
+                "another [pymc] start_method/start_input."
+            )
+
+        points = [center]
+        if self.chains == 1:
+            return points
+
+        if self.start_jitter == 0.0:
+            if self.step_method_name in {"demetropolis", "demetropolisz"}:
+                raise ValueError(
+                    "DEMetropolis methods require dispersed chain starts; set "
+                    "[pymc] start_jitter to a positive value."
+                )
+            return [center.copy() for _ in range(self.chains)]
+
+        rng = np.random.default_rng(self.random_seed)
+        for chain_index in range(1, self.chains):
+            for _ in range(self.start_attempts):
+                candidate = center + rng.normal(
+                    loc=0.0,
+                    scale=self.start_jitter,
+                    size=self.ndim,
+                )
+                candidate = np.clip(
+                    candidate,
+                    self.start_edge_buffer,
+                    1.0 - self.start_edge_buffer,
+                )
+                candidate_post = self._posterior_at_unit_point(candidate)
+                if (
+                    np.isfinite(candidate_post)
+                    and candidate_post > self.start_min_posterior
+                ):
+                    points.append(candidate)
+                    break
+            else:
+                raise ValueError(
+                    "Could not generate a valid initial point for PyMC chain "
+                    f"{chain_index + 1} after {self.start_attempts} attempts. "
+                    "Reduce [pymc] start_jitter or provide a better start."
+                )
+
+        return points
+
     def config(self):
         try:
             import pymc as pm
@@ -105,6 +182,19 @@ class PymcSampler(ParallelSampler):
         self.progressbar = bool(self.read_ini("progressbar", bool, False))
         self.step_method_name = self.read_ini("step_method", str, "demetropolisz").strip().lower()
 
+        self.start_jitter = self.read_ini("start_jitter", float, 1.0e-3)
+        self.start_attempts = self.read_ini("start_attempts", int, 1000)
+        self.start_edge_buffer = self.read_ini("start_edge_buffer", float, 1.0e-6)
+        self.start_min_posterior = self.read_ini(
+            "start_min_posterior", float, -1.0e19
+        )
+        if self.start_jitter < 0.0:
+            raise ValueError("[pymc] start_jitter must be non-negative.")
+        if self.start_attempts < 1:
+            raise ValueError("[pymc] start_attempts must be at least one.")
+        if not 0.0 < self.start_edge_buffer < 0.5:
+            raise ValueError("[pymc] start_edge_buffer must lie between 0 and 0.5.")
+
         fburn = self.read_ini("burn_fraction", float, 0.0)
         if 0.0 <= fburn < 1.0:
             self.nburn = int(fburn * self.samples)
@@ -114,14 +204,29 @@ class PymcSampler(ParallelSampler):
         seed_raw = self.read_ini("seed", int, -1)
         self.random_seed = None if seed_raw < 0 else seed_raw
 
+        self.initial_points_unit = self._build_initial_points()
+        initial_values = [
+            {"theta_unit": point.copy()} for point in self.initial_points_unit
+        ]
+
+        logs.overview(
+            "Initialized PyMC chains from the CosmoSIS starting point "
+            f"with unit-cube jitter={self.start_jitter:.6g}"
+        )
+
         self._logpost_op = _build_logpost_op(self.pipeline)
 
         with self.pm.Model() as model:
             theta_unit = self.pm.Uniform(
-                "theta_unit", lower=0.0, upper=1.0, shape=(self.ndim,)
+                "theta_unit",
+                lower=0.0,
+                upper=1.0,
+                shape=(self.ndim,),
+                initval=self.initial_points_unit[0],
             )
             self.pm.Potential("cosmosis_logpost", self._logpost_op(theta_unit))
         self._model = model
+        self._initial_values = initial_values
 
     def _evaluate_samples(self, theta_unit: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Evaluate pipeline diagnostics for sampled points and stream to output."""
@@ -180,6 +285,7 @@ class PymcSampler(ParallelSampler):
                 discard_tuned_samples=True,
                 return_inferencedata=True,
                 step=self._make_step_method(),
+                initvals=self._initial_values,
             )
 
         theta = np.asarray(idata.posterior["theta_unit"])
