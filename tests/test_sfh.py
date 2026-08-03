@@ -7,6 +7,92 @@ from besta import sfh
 
 import pst
 
+
+class TestSFHSmoothnessPriors(unittest.TestCase):
+
+    def setUp(self):
+        self.time_edges = np.array([0.0, 1.0, 4.0, 10.0, 13.0])
+        self.delta_t = np.diff(self.time_edges)
+        self.time_centres = 0.5 * (
+            self.time_edges[:-1] + self.time_edges[1:]
+        )
+
+    def test_robust_time_curvature_is_default(self):
+        model = sfh.FixedTimeSFH(
+            np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
+            ism_metallicity_today=0.02,
+            use_sfh_smoothness_prior=True,
+        )
+        self.assertIsInstance(
+            model.sfh_smoothness_prior,
+            sfh.SFHRobustTimeCurvaturePrior,
+        )
+        self.assertAlmostEqual(model.sfh_smoothness_prior.sigma_dex, 0.3)
+        self.assertAlmostEqual(model.sfh_smoothness_prior.dof, 3.0)
+        self.assertAlmostEqual(
+            model.sfh_smoothness_prior.relative_sfr_floor,
+            1e-4,
+        )
+
+    def test_legacy_index_gaussian_remains_available(self):
+        model = sfh.FixedTimeSFH(
+            np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
+            ism_metallicity_today=0.02,
+            use_sfh_smoothness_prior=True,
+            sfh_smoothness_prior_type="legacy_index_gaussian",
+        )
+        self.assertIsInstance(model.sfh_smoothness_prior, sfh.SFHSmoothnessPrior)
+        self.assertAlmostEqual(model.sfh_smoothness_prior.sigma_dex, 0.5)
+        self.assertEqual(model.sfh_smoothness_prior.order, 2)
+
+    def test_prior_is_invariant_to_mass_normalization(self):
+        prior = sfh.SFHRobustTimeCurvaturePrior()
+        masses = np.array([0.4, 0.3, 0.2, 0.1])
+        value = prior(masses, self.time_edges)
+        rescaled_value = prior(1e10 * masses, self.time_edges)
+        self.assertAlmostEqual(value, rescaled_value, places=12)
+
+    def test_physical_time_linear_history_is_preferred(self):
+        prior = sfh.SFHRobustTimeCurvaturePrior(
+            relative_sfr_floor=1e-12,
+        )
+        physical_log_sfr = 0.1 * self.time_centres
+        physical_masses = 10**physical_log_sfr * self.delta_t
+
+        index_log_sfr = np.linspace(
+            physical_log_sfr[0],
+            physical_log_sfr[-1],
+            physical_log_sfr.size,
+        )
+        index_masses = 10**index_log_sfr * self.delta_t
+
+        self.assertGreater(
+            prior(physical_masses, self.time_edges),
+            prior(index_masses, self.time_edges),
+        )
+
+    def test_burst_has_finite_heavy_tailed_penalty(self):
+        prior = sfh.SFHRobustTimeCurvaturePrior()
+        smooth_masses = self.delta_t.copy()
+        burst_masses = smooth_masses.copy()
+        burst_masses[1] *= 1e4
+
+        smooth_value = prior(smooth_masses, self.time_edges)
+        burst_value = prior(burst_masses, self.time_edges)
+        self.assertTrue(np.isfinite(burst_value))
+        self.assertLess(burst_value, smooth_value)
+        self.assertGreater(burst_value, -100.0)
+
+    def test_invalid_prior_type_is_rejected(self):
+        with self.assertRaises(ValueError):
+            sfh.FixedTimeSFH(
+                np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
+                ism_metallicity_today=0.02,
+                use_sfh_smoothness_prior=True,
+                sfh_smoothness_prior_type="unknown",
+            )
+
+
 class TestFixedTimeSFH(unittest.TestCase):
 
     def setUp(self):
@@ -53,7 +139,7 @@ class TestFixedTimeSFH(unittest.TestCase):
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(info == 0.0)
         self.assertTrue(hasattr(self.model.model, 'table_mass'))
 
     def test_table_mass_size_matches_time(self):
@@ -101,7 +187,7 @@ class TestFixedTimeSFH(unittest.TestCase):
         db = DataBlock.from_dict({model.sect_name: params})
         status, info = model.parse_datablock(db)
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(info == 0.0)
 
     def test_parse_free_params(self):
         # parse_free_params is a convenience wrapper around parse_datablock
@@ -110,7 +196,7 @@ class TestFixedTimeSFH(unittest.TestCase):
         params['ism_metallicity_today'] = 0.02
         status, info = self.model.parse_free_params(params)
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(info == 0.0)
 
     def test_make_ini_creates_file(self):
         import tempfile, os, configparser
@@ -138,7 +224,7 @@ class TestFixedTimeSFH(unittest.TestCase):
         db = DataBlock.from_dict({model.sect_name: params})
         status, info = model.parse_datablock(db)
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(info == 0.0)
 
 
 class TestFixedTime_sSFR_SFH(unittest.TestCase):
@@ -172,9 +258,33 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertEqual(info, 0.0)
         self.assertTrue(hasattr(self.model.model, "table_mass"))
         self.assertEqual(len(self.model.model.table_mass), len(self.model.lookback_time) + 2)
+
+    def test_smoothness_prior_is_applied(self):
+        model = sfh.FixedTime_sSFR_SFH(
+            self.lookback_bins,
+            ism_metallicity_today=0.02,
+            use_sfh_smoothness_prior=True,
+        )
+        values = [-10.0, -10.0, -10.0]
+        parameters = {
+            key: val for key, val in zip(model.sfh_bin_keys, values)
+        }
+        parameters["alpha_powerlaw"] = 1.0
+        parameters["ism_metallicity_today"] = 0.02
+
+        status, log_prior = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: parameters})
+        )
+
+        self.assertEqual(status, 1)
+        self.assertTrue(np.isfinite(log_prior))
+        self.assertIsInstance(
+            model.sfh_smoothness_prior,
+            sfh.SFHRobustTimeCurvaturePrior,
+        )
 
     def test_parse_datablock_monotonicity_error(self):
         # Use large sSFR to force decreasing cumulative mass (non-monotonic)
@@ -186,10 +296,10 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         parameters["ism_metallicity_today"] = 0.02
 
         db = DataBlock.from_dict({self.model.sect_name: parameters})
-        status, overflow_val = self.model.parse_datablock(db)
+        status, prior_penalty = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
-        self.assertGreaterEqual(overflow_val, 1.0)
+        self.assertGreaterEqual(prior_penalty, -1e20)
 
 
 class TestFixedMassFracSFH(unittest.TestCase):
@@ -223,10 +333,10 @@ class TestFixedMassFracSFH(unittest.TestCase):
         parameters["ism_metallicity_today"] = 0.02
 
         db = DataBlock.from_dict({self.model.sect_name: parameters})
-        status, info = self.model.parse_datablock(db)
+        status, prior_penalty = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(prior_penalty == 0.0)
         self.assertTrue(hasattr(self.model.model, "table_t"))
         self.assertEqual(len(self.model.model.table_t), len(self.mass_fractions) + 2)
 
@@ -241,10 +351,10 @@ class TestFixedMassFracSFH(unittest.TestCase):
         parameters["ism_metallicity_today"] = 0.02
 
         db = DataBlock.from_dict({self.model.sect_name: parameters})
-        status, overflow = self.model.parse_datablock(db)
+        status, prior_penalty = self.model.parse_datablock(db)
 
         self.assertEqual(status, 0)
-        self.assertGreaterEqual(overflow, 1.0)
+        self.assertGreaterEqual(prior_penalty, -1e20)
 
 
 class TestExponentialSFH(unittest.TestCase):
@@ -271,10 +381,10 @@ class TestExponentialSFH(unittest.TestCase):
             "ism_metallicity_today": 0.02,
         }
         db = DataBlock.from_dict({self.model.sect_name: parameters})
-        status, info = self.model.parse_datablock(db)
+        status, prior_penalty = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(prior_penalty == 0.0 or prior_penalty is None)
 
         # Ensure table_mass is normalized and positive
         mass = self.model.model.table_mass.to_value(u.Msun)
@@ -328,10 +438,10 @@ class TestBetaSFH(unittest.TestCase):
         )
 
     def test_parse_datablock_valid(self):
-        status, info = self.model.parse_datablock(self._make_db())
+        status, prior_penalty = self.model.parse_datablock(self._make_db())
 
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(prior_penalty == 0.0 or prior_penalty is None)
         self.assertAlmostEqual(self.model.model.alpha, 2.5)
         self.assertAlmostEqual(self.model.model.beta, 4.0)
         self.assertAlmostEqual(
@@ -346,12 +456,12 @@ class TestBetaSFH(unittest.TestCase):
         )
 
     def test_parse_datablock_rejects_invalid_time_bounds(self):
-        status, overflow = self.model.parse_datablock(
+        status, prior_penalty = self.model.parse_datablock(
             self._make_db(t_start=8.0, t_end=1.0)
         )
 
         self.assertEqual(status, 0)
-        self.assertGreaterEqual(overflow, 0.0)
+        self.assertGreaterEqual(prior_penalty, -1e20)
 
 
 class TestTransforms(unittest.TestCase):
@@ -370,9 +480,9 @@ class TestTransforms(unittest.TestCase):
         params = {k: v for k, v in zip(model.sfh_bin_keys, latent)}
         params["alpha_powerlaw"] = 1.0
         params["ism_metallicity_today"] = 0.02
-        status, info = model.parse_datablock(DataBlock.from_dict({model.sect_name: params}))
+        status, prior_penalty = model.parse_datablock(DataBlock.from_dict({model.sect_name: params}))
         self.assertEqual(status, 1)
-        self.assertIsNone(info)
+        self.assertTrue(prior_penalty == 0.0)
         self.assertAlmostEqual(model.model.table_mass.to_value(u.Msun)[-1], 1.0, places=6)
 
     def test_fixed_time_ssfr_softmax_roundtrip(self):
