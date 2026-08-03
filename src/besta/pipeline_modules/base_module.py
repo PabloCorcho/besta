@@ -278,7 +278,7 @@ class BaseModule(ClassModule):
             # Grid parameters
             velscale = options["velscale"]
             dlnlam = velscale / spectrum.constants.c.to("km/s").value
-            extra_offset_pixel = int(velocity_buffer / velscale)
+            extra_offset_pixel = int(np.ceil(velocity_buffer / velscale))
             self.config["velscale"] = velscale
             self.config["extra_pixels"] = extra_offset_pixel
             _log("Configuration done.")
@@ -418,10 +418,17 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
-            _log("Saving SSP model to ", options["SaveSSPModel"])
-            ssp.to_pickle(os.path.expandvars(options["SaveSSPModel"]))
+            self.save_ssp_model(os.path.expandvars(options["SaveSSPModel"]))
         _log("Configuration done.")
         return
+
+    def save_ssp_model(self, filename):
+        """Save the SSP model to a pickle file."""
+        if "ssp_model" not in self.config:
+            raise ValueError("SSP model is not configured; cannot save.")
+        ssp = self.config["ssp_model"]
+        ssp.to_pickle(filename)
+        _log("SSP model saved to ", filename)
 
     def prepare_extinction_law(self, options):
         """Prepare a dust extinction model.
@@ -478,6 +485,35 @@ class BaseModule(ClassModule):
             self.config["use_transforms"] = bool(options["use_transforms"])
         if self.config["use_transforms"]:
             _log("Enabling parameter transforms inside SFH model")
+
+        self.config["use_sfh_smoothness_prior"] = options.get_bool(
+            "use_sfh_smoothness_prior",
+            default=False,
+        )
+        if options.has_value("sfh_smoothness_prior_type"):
+            self.config["sfh_smoothness_prior_type"] = options.get_string(
+                "sfh_smoothness_prior_type"
+            )
+        if options.has_value("sfh_smoothness_sigma_dex"):
+            self.config["sfh_smoothness_sigma_dex"] = options.get_double(
+                "sfh_smoothness_sigma_dex"
+            )
+        if options.has_value("sfh_smoothness_dof"):
+            self.config["sfh_smoothness_dof"] = options.get_double(
+                "sfh_smoothness_dof"
+            )
+        if options.has_value("sfh_smoothness_relative_floor"):
+            self.config["sfh_smoothness_relative_floor"] = options.get_double(
+                "sfh_smoothness_relative_floor"
+            )
+        if options.has_value("sfh_smoothness_order"):
+            self.config["sfh_smoothness_order"] = options.get_int(
+                "sfh_smoothness_order"
+            )
+        if options.has_value("sfh_smoothness_min_sfr"):
+            self.config["sfh_smoothness_min_sfr"] = options.get_double(
+                "sfh_smoothness_min_sfr"
+            )
 
         _log("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
