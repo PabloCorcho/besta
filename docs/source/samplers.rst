@@ -50,6 +50,18 @@ The following configuration keys are supported by
   ``demetropolisz``, or ``slice``.
 - ``progressbar``: enable/disable PyMC progress bar.
 - ``seed``: random seed (negative values disable explicit seeding).
+- ``start_method`` and ``start_input``: standard CosmoSIS starting-point
+  controls. A peak supplied by a preceding sampler takes precedence, matching
+  the behavior of other CosmoSIS MCMC samplers.
+- ``start_jitter``: standard deviation of the Gaussian perturbation applied in
+  unit-cube coordinates to initialize additional chains (default: ``1e-3``).
+- ``start_attempts``: maximum attempts to find each valid perturbed chain start
+  (default: ``1000``).
+- ``start_edge_buffer``: minimum distance between initial values and the unit
+  cube boundaries (default: ``1e-6``).
+- ``start_min_posterior``: minimum posterior accepted for a chain start
+  (default: ``-1e19``), chosen to reject BESTA's ``-1e20`` invalid-model
+  sentinel.
 
 Notes
 ^^^^^
@@ -58,3 +70,6 @@ Notes
   sampler because the wrapped pipeline posterior currently does not provide gradients.
 - Samples are drawn in normalized unit-cube coordinates and denormalized
   through the CosmoSIS pipeline before evaluating the posterior.
+- Each chain starts from the standard CosmoSIS estimate. When samplers are
+  chained as ``maxlike pymc``, this is the MaxLike peak. Additional chains are
+  initialized with small, independently validated perturbations.
