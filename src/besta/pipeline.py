@@ -51,12 +51,16 @@ class MainPipeline(object):
         else:
             self.n_cores_list = n_cores_list
 
+        logger.info(f"Pipeline cores: {self.n_cores_list}")
+
         if ini_files is None:
+            logger.info("No INI file provided")
             self.ini_files = [ini_files] * len(pipeline_configuration_list)
         else:
             self.ini_files = ini_files
 
         if ini_values_files is None:
+            logger.info("No INI values file provided")
             self.ini_values_files = [ini_values_files] * len(
                 pipeline_configuration_list
             )
@@ -170,7 +174,7 @@ class MainPipeline(object):
 
             # Extract best solution
             logger.info("Extracting results from the run")
-            reader = io.Reader(ini_filename)
+            reader = io.Reader(ini_file=ini_filename)
             reader.load_results()
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
