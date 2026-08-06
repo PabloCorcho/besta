@@ -378,7 +378,7 @@ def read_results_file(path, delimiter="\t"):
                 line = line.strip("# \n")
                 if "=" in line:
                     key, value = line.split("=", 1)
-                    table.meta[key.strip()] = value.strip()
+                    table.meta[key.strip()] = _parse_scalar(value.strip())
             else:
                 break
     return table
