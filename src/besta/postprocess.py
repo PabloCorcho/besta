@@ -23,11 +23,18 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+from matplotlib import pyplot as plt
+from scipy import stats
+from scipy.optimize import minimize
+from scipy.signal import find_peaks
+
 from astropy.io import fits
 from astropy.table import Table, Column
 from astropy import units as u
-from matplotlib import pyplot as plt
-from scipy import stats
+
+from cosmosis.postprocessing import run_cosmosis_postprocess
+
+from besta import io
 from besta.logging import get_logger
 
 logger = get_logger(__name__)
@@ -42,6 +49,12 @@ def _as_float_array(x) -> np.ndarray:
         return x.value
     else:
         return np.asarray(x, dtype=float)
+
+def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
+    a = _as_float_array(a).ravel()
+    w = _as_float_array(w).ravel()
+    m = np.nanmax(a)
+    return float(m + np.log(np.nansum(w * np.exp(a - m))))
 
 def normalize_weights(weights: np.ndarray, *, allow_all_zero: bool = False) -> np.ndarray:
     """Normalize weights to sum=1 over finite entries."""
@@ -130,7 +143,7 @@ def weighted_quantile(x: np.ndarray, weights: np.ndarray, q: Sequence[float]) ->
     ws = w[idx]
     cdf = np.cumsum(ws)
     # Ensure cdf spans [0,1]
-    cdf[-1] = 1.0
+    cdf /= cdf[-1]
     return np.interp(np.asarray(q, dtype=float), cdf, xs)
 
 def weighted_hdi(
@@ -187,30 +200,23 @@ def weighted_hdi(
     used = np.zeros(xs.size, dtype=bool)
 
     def _find_best_interval(available_mask: np.ndarray) -> Optional[Tuple[int, int]]:
-        # Work on contiguous segments of availability. This keeps interval definition meaningful.
+
         best = None
         best_width = np.inf
-
         # Identify contiguous runs
         avail = available_mask.astype(int)
         # runs: start indices where diff==1, end where diff==-1
         starts = np.where(np.diff(np.r_[0, avail]) == 1)[0]
         ends = np.where(np.diff(np.r_[avail, 0]) == -1)[0]
-
         for s, e in zip(starts, ends):
-            # Consider sub-array xs[s:e], ws[s:e]
             sub_ws = ws[s:e]
             if sub_ws.size == 0:
                 continue
             sub_cdf = np.cumsum(sub_ws)
             sub_cdf[-1] = np.sum(sub_ws)
-            # Normalize to segment mass; but we want absolute mass, so compare to `mass` directly.
-            # Since total mass across all samples is 1, segment mass might be < mass; skip then.
             if sub_cdf[-1] < mass:
                 continue
-
             sub_cdf0 = np.concatenate([[0.0], sub_cdf])
-            # Two-pointer to find minimal width interval >= mass in this segment
             i = 0
             for j in range(1, sub_cdf0.size):
                 while (sub_cdf0[j] - sub_cdf0[i]) >= mass and i < j:
@@ -231,10 +237,8 @@ def weighted_hdi(
         used[i : j + 1] = True
 
         # If the first interval already covers the full mass approximately, stop.
-        # (We approximate by computing mass inside that interval.)
         m = np.sum(ws[(xs >= xs[i]) & (xs <= xs[j])])
         if m >= mass:
-            # Good enough — returning single interval is typical.
             break
 
     # Merge close intervals if requested
@@ -346,24 +350,24 @@ def histogram_pdf_1d(
     # Convert probability per bin -> density
     with np.errstate(divide="ignore", invalid="ignore"):
         pdf = hist / dx
-    centers = 0.5 * (edges[:-1] + edges[1:])
     # Ensure integrates to 1 (numerical)
     integral = np.nansum(pdf * dx)
     if integral > 0:
         pdf /= integral
-    return centers, pdf
+    return edges, pdf
 
 def kde_pdf_1d(
     x: np.ndarray,
     weights: np.ndarray,
-    grid: np.ndarray,
+    bins: np.ndarray,
 ) -> np.ndarray:
     """
     KDE PDF on a provided grid; returns NaNs on failure.
     """
     x = _as_float_array(x).ravel()
     w = _as_float_array(weights).ravel()
-    g = _as_float_array(grid).ravel()
+    edges = _as_float_array(bins).ravel()
+    g = 0.5 * (edges[:-1] + edges[1:])
     mask = np.isfinite(x) & np.isfinite(w)
     x = x[mask]
     w = w[mask]
@@ -376,6 +380,56 @@ def kde_pdf_1d(
         return kde(g)
     except Exception:
         return np.full_like(g, np.nan)
+
+def check_multimodal_pdf(x, f, *, prominence=None, relative_prominence=0.01):
+    """Check if a 1D PDF is multimodal by counting local maxima.
+    
+    Parameters
+    ----------
+    x : array-like, shape (N,)
+        Grid points.
+    f : array-like, shape (N,)
+        PDF values at the grid points.
+    
+    Returns
+    -------
+    n_maxima : int
+        Number of local maxima found in the PDF.
+    maxima_x : ndarray
+        x-values of the local maxima.
+    """
+    x = _as_float_array(x).ravel()
+    f = _as_float_array(f).ravel()
+    if x.size != f.size:
+        raise ValueError("`x` and `f` must have the same length.")
+
+    if x.size < 3:
+        return 0, np.empty(0), np.empty(0)
+
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(f)):
+        raise ValueError("`x` and `f` must contain only finite values.")
+
+    if prominence is None:
+        f_range = np.ptp(f)
+        prominence = relative_prominence * f_range
+
+    indices, properties = find_peaks(f, prominence=prominence)
+    if indices.size == 0:
+        # Check if the PDF is flat or has a single peak at the edge
+        if np.allclose(f, f[0]):
+            return 0, np.empty(0), np.empty(0)
+        indices = np.array([np.argmax(f)])
+
+    maxima_x = x[indices]
+    maxima_val = f[indices]
+
+    order = np.argsort(maxima_val)[::-1]
+
+    return (
+        int(indices.size),
+        maxima_x[order],
+        maxima_val[order],
+    )
 
 def kde_or_hist_pdf_2d(
     x: np.ndarray,
@@ -446,71 +500,266 @@ def kde_or_hist_pdf_2d(
         Z /= integral
     return xc, yc, Z
 
-# -----------------------------------------------------------------------------
-# I/O helpers
-# -----------------------------------------------------------------------------
-
-def read_results_file(path: str, *, delimiter: str = "\t") -> Table:
+def pit_from_pdf(x_edges, pdf, x_true):
     """
-    Read a CosmoSIS-style text results file:
-    - First line is a commented header starting with '#'
-    - Columns are delimiter-separated
-    - Remaining lines numeric
+    Compute PIT value for a true value given a PDF defined by edges and values.
 
-    Returns an Astropy Table with lowercase column names.
+    Parameters
+    ----------
+    x_edges : array shape (N+1,) bin edges
+    pdf : array shape (N,) PDF values for each bin, normalized to integrate to 1
+    x_true : scalar true value
+
+    Returns
+    -------
+    pit : scalar in [0,1] representing the cumulative probability up to ``x_true``
     """
-    with open(path, "r", encoding="utf-8") as f:
-        header = f.readline()
-    if not header.startswith("#"):
-        raise ValueError("Expected first line header starting with '#'.")
+    x_edges = _as_float_array(x_edges).ravel()
+    pdf = _as_float_array(pdf).ravel()
+    if x_edges.size != pdf.size + 1:
+        raise ValueError("x_edges must have one more element than pdf.")
+    if not np.isfinite(x_true):
+        raise ValueError("x_true must be finite.")
+    dx = np.diff(x_edges)
+    cdf = np.cumsum(pdf * dx)
+    if not np.isclose(cdf[-1], 1.0):
+        raise ValueError("pdf must be normalized to integrate to 1.")
 
-    columns = header.strip("# \n").split(delimiter)
-    matrix = np.atleast_2d(np.loadtxt(path))
-    tab = Table()
-    if matrix.size <= 1:
-        return tab
-    if matrix.shape[1] != len(columns):
-        raise ValueError(
-            f"Data has {matrix.shape[1]} columns but header lists {len(columns)}."
-        )
-    for i, c in enumerate(columns):
-        tab[c.strip().lower()] = matrix[:, i]
-    return tab
+    return np.interp(x_true, x_edges, np.r_[0.0, cdf])
 
-def _select_parameter_keys(
-    table: Table,
-    *,
-    parameter_prefix: str = "--",
-    parameter_keys: Optional[Sequence[str]] = None,
-) -> List[str]:
-    if parameter_keys is not None:
-        keys = list(parameter_keys)
+def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
+              quantiles=None,
+              find_multimodal: bool = False) -> dict:
+    """
+    Compute summary stats from a discrete pdf over bin centers.
+
+    Parameters
+    ----------
+    edges : ndarray, shape (K,)
+        Bin edges.
+    pdf : ndarray, shape (K,)
+        PDF defined by the edges.
+    quantiles : tuple of float, optional
+        Quantiles to report (default 16, 50, 84 percent).
+    find_multimodal : bool, optional
+        If True, return rough modes by local-maximum search.
+
+    Returns
+    -------
+    stats : dict
+        Keys: mean, std, map, q, lo68, hi68, modes (optional).
+    """
+    # Ensure normalization
+    norm = np.sum(pdf * np.diff(edges))
+    pdf /= norm if norm > 0 else 1.0
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    # Trapecium integrals
+    mean = np.sum(pdf * centers * np.diff(edges))
+    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
+    std = var ** 0.5
+    k_map = np.argmax(pdf * np.diff(edges))
+    v_map = centers[k_map]
+
+    cdf = np.cumsum(pdf * np.diff(edges))
+    cdf = np.insert(cdf, 0, 0)
+
+    if quantiles is not None:
+        qs = np.array(quantiles, float)
+        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
     else:
-        keys = [k for k in table.colnames if parameter_prefix in k]
-    if len(keys) == 0:
-        raise ValueError("No parameter keys found/selected.")
-    return keys
+        qvals = None
 
-def _split_param_key(key: str, prefix: str = "--") -> Tuple[str, str]:
+    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
+    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
+    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
+
+    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
+           "median": median, "lo68": lo68, "hi68": hi68}
+
+    if find_multimodal:
+        modes = []
+        for i in range(1, len(pdf) - 1):
+            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
+                modes.append(centers[i])
+        if not modes:
+            modes = [v_map]
+        out["modes"] = np.asarray(modes)
+    return out
+
+# -----------------------------------------------------------------------------
+# Autocorrelation
+# -----------------------------------------------------------------------------
+
+def autocorrelation_1d(x):
     """
-    Split a parameter key into (section, name) using the delimiter/prefix.
+    Estimate the normalized autocorrelation function of a 1D series using FFT.
 
-    If the key cannot be split, returns ("", key).
+    Parameters
+    ----------
+    x : array_like, shape (n,)
+        Input time series.
+
+    Returns
+    -------
+    acf : ndarray, shape (n,)
+        Normalized autocorrelation function, with acf[0] = 1.
     """
-    if prefix in key:
-        sect, name = key.split(prefix, 1)
-        return sect, name
-    return "", key
+    x = np.asarray(x, dtype=float)
+    n = len(x)
 
-def _logsumexp_weighted(a: np.ndarray, w: np.ndarray) -> float:
-    a = _as_float_array(a).ravel()
-    w = _as_float_array(w).ravel()
-    m = np.nanmax(a)
-    return float(m + np.log(np.nansum(w * np.exp(a - m))))
+    x = x - np.mean(x)
+
+    # Zero-pad to 2*n for efficient non-circular correlation
+    f = np.fft.fft(x, n=2 * n)
+    acf = np.fft.ifft(f * np.conjugate(f))[:n].real
+
+    # Normalize by number of overlapping pairs
+    acf /= np.arange(n, 0, -1)
+
+    # Normalize so that acf[0] = 1
+    acf /= acf[0]
+
+    return acf
+
+def integrated_autocorrelation_time(chain, c=5.0, tol=30):
+    """
+    Estimate the integrated autocorrelation time of an MCMC chain.
+
+    Parameters
+    ----------
+    chain : ndarray, shape (nsamples, nwalkers)
+        MCMC samples for one parameter.
+    c : float, optional
+        Windowing parameter. Larger values give more conservative estimates.
+        Default is 5.0.
+    tol : float, optional
+        Minimum recommended ratio nsamples / tau. If nsamples < tol * tau,
+        the estimate is considered unreliable. Default is 50.
+
+    Returns
+    -------
+    tau : float
+        Estimated integrated autocorrelation time.
+    acf_mean : ndarray
+        Mean autocorrelation function averaged over walkers.
+    reliable : bool
+        Whether the chain is long enough according to nsamples > tol * tau.
+    """
+    chain = np.asarray(chain, dtype=float)
+
+    if chain.ndim != 2:
+        raise ValueError("Expected chain with shape (nsamples, nwalkers).")
+
+    nsamples, nwalkers = chain.shape
+
+    # Autocorrelation for each walker
+    acfs = np.array([autocorrelation_1d(chain[:, i]) for i in range(nwalkers)])
+
+    # Average over walkers
+    acf_mean = np.mean(acfs, axis=0)
+
+    # Cumulative estimate:
+    # tau(t) = 1 + 2 * sum_{lag=1}^{t} rho(lag)
+    taus = 1.0 + 2.0 * np.cumsum(acf_mean[1:])
+
+    # Windowing criterion: stop when lag > c * tau(lag)
+    lags = np.arange(1, len(taus) + 1)
+    mask = lags < c * taus
+
+    if np.any(~mask):
+        window = np.argmax(~mask)
+    else:
+        window = len(taus) - 1
+
+    tau = taus[window]
+
+    reliable = nsamples > tol * tau
+
+    return tau, acf_mean, reliable
+
+
+def auto_burning_results(chains, c=5.0, tol=30, kappa_act=3.0):
+    """
+    Estimate the burning-in period for each parameter in the MCMC chains.
+
+    Parameters
+    ----------
+    chains : ndarray, shape (nsamples, nwalkers, nparams)
+        Array of MCMC chains for each parameter.
+    c : float, optional
+        Windowing parameter. Larger values give more conservative estimates.
+        Default is 5.0.
+    tol : float, optional
+        Minimum recommended ratio nsamples / tau. If nsamples < tol * tau,
+        the estimate is considered unreliable. Default is 50.
+    kappa_act : float, optional
+        Safety factor for the burning-in period. Default is 3.0.
+
+    Returns
+    -------
+    max_burn : int
+        Maximum estimated burning-in period across all parameters.
+    """
+    burn_reliable = []
+    burn_unreliable = []
+
+    # Loop over parameters and convert ACT to burn-in with a safety factor.
+    nparams = chains.shape[2]
+    for ith in range(nparams):
+        tau, _, reliable = integrated_autocorrelation_time(
+            chains[:, :, ith], c=c, tol=tol)
+
+        if not np.isfinite(tau) or tau <= 0:
+            logger.warning("Invalid ACT estimate for parameter index %d: %s", ith, tau)
+            continue
+
+        burn_i = int(np.ceil(kappa_act * tau))
+        if reliable:
+            burn_reliable.append(burn_i)
+        else:
+            burn_unreliable.append(burn_i)
+
+    if burn_reliable:
+        return int(np.max(burn_reliable))
+
+    if burn_unreliable:
+        logger.warning("No reliable autocorrelation time estimates found.")
+        return int(np.max(burn_unreliable))
+
+    logger.warning("No finite autocorrelation time estimates found. Using burn-in=0.")
+    return 0
+
+# -----------------------------------------------------------------------------
+# I/O / manipulation helpers
+# -----------------------------------------------------------------------------
+def flat_chain_to_walkers(data, nwalkers, nsamples):
+    """
+    Reshape a flattened MCMC chain into a 3D array with shape (nsamples, nwalkers, -1).
+
+    Parameters
+    ----------
+    data : ndarray, shape (nrows, ...)
+        Flattened MCMC chain.
+    nwalkers : int
+        Number of walkers.
+    nsamples : int
+        Number of samples.
+
+    Returns
+    -------
+    chain : ndarray, shape (nsamples, nwalkers, -1)
+        Reshaped MCMC chain.
+    """
+    nrows = data.shape[0]
+    expected = nwalkers * nsamples
+    if nrows != expected:
+        raise ValueError(
+            f"Cannot reshape chain with {nrows} rows into (nsteps={nsamples}, nwalkers={nwalkers})."
+        )
+    return data.reshape((nsamples, nwalkers, -1))
 
 def effective_sample_size(weights: np.ndarray) -> float:
     """Return the standard importance-sampling effective sample size."""
-
     w = normalize_weights(weights)
     return float(1.0 / np.sum(w**2))
 
@@ -575,6 +824,21 @@ class EvidenceEstimate:
     logz_err: Optional[float] = None
     details: Dict[str, Any] = None
 
+
+#TODO
+#@dataclass
+#class Chain:
+#    """TODO"""
+#
+#    flat_samples: np.ndarray
+#    posterior: np.ndarray
+#    parameters : List[str]
+#    walkers: int = 1
+#    samples: int = None
+#
+#    def __post_init__(self):
+
+    
 # -----------------------------------------------------------------------------
 # ResultsSummary dataclass
 # -----------------------------------------------------------------------------
@@ -602,8 +866,9 @@ class ResultsSummary:
     percentiles : list of quantiles in [0,1]
     percentiles_values : array shape (n_params, n_percentiles)
     percentiles_logpost : array shape (n_params, n_percentiles)
-    hdi_mass : mass used for HDI
-    hdi_intervals : dict short_name -> list of (low, high)
+    hdi_intervals_68 : dict short_name -> list of (low, high) for 68% mass
+    hdi_intervals_95 : dict short_name -> list of (low, high) for 95% mass
+    map_1d : dict short_name -> array of 1D mode locations from PDF peaks
     pdf_1d : dict short_name -> dict with keys: grid, hist_pdf, kde_pdf
     pdf_2d : dict (short_i, short_j) -> dict with keys: xgrid, ygrid, pdf, enclosed_fraction
     extra_info : arbitrary metadata to include in exports
@@ -630,8 +895,9 @@ class ResultsSummary:
     percentiles_values: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=float))
     percentiles_logpost: np.ndarray = field(default_factory=lambda: np.empty((0, 0), dtype=float))
 
-    hdi_mass: float = 0.68
-    hdi_intervals: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    hdi_intervals_68: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    hdi_intervals_95: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    map_1d: Dict[str, np.ndarray] = field(default_factory=dict)
 
     evidence: Optional[EvidenceEstimate] = None
 
@@ -715,6 +981,12 @@ class ResultsSummary:
         def _tolist(a):
             if isinstance(a, np.ndarray):
                 return a.tolist()
+            if isinstance(a, np.generic):
+                return a.item()
+            if isinstance(a, dict):
+                return {k: _tolist(v) for k, v in a.items()}
+            if isinstance(a, (list, tuple)):
+                return [_tolist(v) for v in a]
             return a
 
         out: Dict[str, Any] = {
@@ -733,8 +1005,9 @@ class ResultsSummary:
             "percentiles": _tolist(np.asarray(self.percentiles, dtype=float)),
             "percentiles_values": _tolist(self.percentiles_values),
             "percentiles_logpost": _tolist(self.percentiles_logpost),
-            "hdi_mass": float(self.hdi_mass),
-            "hdi_intervals": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals.items()},
+            "hdi_intervals_68": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals_68.items()},
+            "hdi_intervals_95": {k: [list(iv) for iv in v] for k, v in self.hdi_intervals_95.items()},
+            "map_1d": {k: _tolist(v) for k, v in self.map_1d.items()},
             "evidence": None if self.evidence is None else {
                 "method": self.evidence.method,
                 "logz": self.evidence.logz,
@@ -752,6 +1025,11 @@ class ResultsSummary:
             "extra_info": self.extra_info,
         }
         return out
+
+    @classmethod
+    def from_json(cls):
+        #TODO
+        pass
 
     def write_json(self, path: str, *, overwrite: bool = True, indent: int = 2) -> str:
         """Write a JSON summary file."""
@@ -785,9 +1063,7 @@ class ResultsSummary:
         hdr["MAP_IDX"] = int(self.map_index)
         hdr["POSTKEY"] = self.posterior_key
 
-        # Per-parameter header cards (best effort: keep short names)
         for i, (full_key, sect, name) in enumerate(zip(self.parameter_keys, self.parameter_sections, self.parameter_names)):
-            # FITS keyword length limits: use e.g. P000NM, P000SC, P000MN, P000MP
             tag = f"P{i:03d}"
             hdr[f"{tag}NM"] = name[:68]
             hdr[f"{tag}SC"] = sect[:68]
@@ -804,8 +1080,10 @@ class ResultsSummary:
                     hdr[f"{tag}MP"] = "nan", "map not finite"
 
         if self.evidence is not None and np.isfinite(self.evidence.logz):
-            prim.header["LOGZ"] = float(self.evidence.logz)
-            prim.header["LOGZMET"] = self.evidence.method[:20]
+            prim.header["LOGZ"] = float(self.evidence.logz), "log-evidence estimate"
+            if self.evidence.logz_err is not None and np.isfinite(self.evidence.logz_err):
+                prim.header["LOGZERR"] = float(self.evidence.logz_err), "log-evidence error"
+            prim.header["LOGZMET"] = self.evidence.method[:20], "evidence estimation method"
 
         hdus: List[fits.hdu.base.ExtensionHDU] = [prim]
         hdus.append(fits.ImageHDU(data=_as_float_array(self.covariance), header=hdr, name="COVARIANCE"))
@@ -814,30 +1092,46 @@ class ResultsSummary:
         # Percentiles table
         t_pct = Table()
         t_pct["percentile"] = np.asarray(self.percentiles, dtype=float)
-        for i, name in enumerate(self.parameter_names):
-            t_pct[f"{name}_val"] = _as_float_array(self.percentiles_values[i, :]) if self.percentiles_values.size else np.full(len(self.percentiles), np.nan)
-            t_pct[f"{name}_logp"] = _as_float_array(self.percentiles_logpost[i, :]) if self.percentiles_logpost.size else np.full(len(self.percentiles), np.nan)
+        for i, (name, section) in enumerate(zip(self.parameter_names, self.parameter_sections)):
+            k = ".".join([section, name])
+            t_pct[f"{k}_val"] = _as_float_array(self.percentiles_values[i, :]) if self.percentiles_values.size else np.full(len(self.percentiles), np.nan)
+            t_pct[f"{k}_logp"] = _as_float_array(self.percentiles_logpost[i, :]) if self.percentiles_logpost.size else np.full(len(self.percentiles), np.nan)
 
         # Add HDI intervals as header cards on the percentiles HDU (compact)
         pct_hdr = fits.Header()
-        pct_hdr["HDIMASS"] = float(self.hdi_mass) if np.isfinite(self.hdi_mass) else "nan", "HDI mass"
-        for name, ivs in self.hdi_intervals.items():
-            # store up to 2 intervals by default
+        # Store 68% and 95% HDI intervals explicitly.
+        for name, ivs in self.hdi_intervals_68.items():
             for j, (lo, hi) in enumerate(ivs[:2]):
-                pct_hdr[f"{name[:6]}L{j}"] = float(lo) if np.isfinite(lo) else "nan", "lower limit"
-                pct_hdr[f"{name[:6]}H{j}"] = float(hi) if np.isfinite(hi) else "nan", "upper limit"
+                pct_hdr[f"HIERARCH {name}_68L{j}"] = float(lo) if np.isfinite(lo) else "nan", "68% lower limit"
+                pct_hdr[f"HIERARCH {name}_68U{j}"] = float(hi) if np.isfinite(hi) else "nan", "68% upper limit"
+        for name, ivs in self.hdi_intervals_95.items():
+            for j, (lo, hi) in enumerate(ivs[:2]):
+                pct_hdr[f"HIERARCH {name}_95L{j}"] = float(lo) if np.isfinite(lo) else "nan", "95% lower limit"
+                pct_hdr[f"HIERARCH {name}_95U{j}"] = float(hi) if np.isfinite(hi) else "nan", "95% upper limit"
 
         hdus.append(fits.BinTableHDU(t_pct, name="PERCENTILES", header=pct_hdr))
 
-        # PDF1D table: store grid/pdf/kde per parameter as separate columns
+        # PDF1D table: store edges/pdf/kde per parameter as separate columns
         t_pdf1 = Table()
+        t_pdf1_edges = Table()
         for name, d in self.pdf_1d.items():
-            t_pdf1[f"{name}_x"] = _as_float_array(d["grid"])
-            t_pdf1[f"{name}_pdf"] = _as_float_array(d["hist_pdf"])
-            t_pdf1[f"{name}_kde"] = _as_float_array(d.get("kde_pdf", np.full_like(d["grid"], np.nan)))
+            edges = _as_float_array(d["edges"])
+            centers = _as_float_array(d.get("grid", 0.5 * (edges[:-1] + edges[1:])))
+            hist_pdf = _as_float_array(d["hist_pdf"])
+            kde_pdf = _as_float_array(d.get("kde_pdf", np.full_like(hist_pdf, np.nan)))
+
+            # FITS bin table columns must have consistent lengths across rows.
+            # Store centers/PDF/KDE in PDF1D (all length = n_bins).
+            t_pdf1[f"{name}_x"] = centers
+            t_pdf1[f"{name}_pdf"] = hist_pdf
+            t_pdf1[f"{name}_kde"] = kde_pdf
+            # Store raw histogram edges separately (length = n_bins + 1).
+            t_pdf1_edges[f"{name}_edges"] = edges
 
         if len(t_pdf1.colnames) > 0:
             hdus.append(fits.BinTableHDU(t_pdf1, name="PDF1D"))
+        if len(t_pdf1_edges.colnames) > 0:
+            hdus.append(fits.BinTableHDU(t_pdf1_edges, name="PDF1D_EDGES"))
 
         # PDF2D images
         for (n0, n1), d in self.pdf_2d.items():
@@ -857,9 +1151,10 @@ class ResultsSummary:
         hdul.writeto(path, overwrite=overwrite)
         return path
 
-    # -------------------------------------------------------------------------
-    # Plot helpers (optional)
-    # -------------------------------------------------------------------------
+    @classmethod
+    def from_fits(cls):
+        #TODO
+        pass
 
     def plot_1d_pdfs(
         self,
@@ -887,14 +1182,19 @@ class ResultsSummary:
             if self.percentiles_values.size:
                 for p, v in zip(self.percentiles, self.percentiles_values[i, :]):
                     ax.axvline(v, alpha=0.5)
-            # HDI
-            if name in self.hdi_intervals:
-                for lo, hi in self.hdi_intervals[name]:
-                    ax.axvspan(lo, hi, alpha=0.15)
+            # HDI 95% then 68% to keep narrower interval visible on top.
+            if name in self.hdi_intervals_95:
+                for lo, hi in self.hdi_intervals_95[name]:
+                    ax.axvspan(lo, hi, alpha=0.10, color="C0", label="HDI 95%")
+            if name in self.hdi_intervals_68:
+                for lo, hi in self.hdi_intervals_68[name]:
+                    ax.axvspan(lo, hi, alpha=0.20, color="C0", label="HDI 68%")
             ax.set_title(name)
             ax.set_xlabel(name)
             ax.set_ylabel("PDF")
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            uniq = dict(zip(labels, handles))
+            ax.legend(uniq.values(), uniq.keys())
 
             fp = os.path.join(outdir, f"pdf1d_{name}.png")
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
@@ -953,15 +1253,7 @@ class ResultsSummary:
         dpi: int = 200,
         show: bool = False,
     ) -> str:
-        """
-        Lightweight corner plot without external dependencies.
-
-        Diagonal: 1D hist PDFs (weighted)
-        Off-diagonal: scatter of (subsampled) points colored by weight rank (simple)
-
-        For serious usage, consider adding an optional dependency later (corner/arviz),
-        but this is a decent built-in baseline.
-        """
+        """Build a corner plot"""
         npar = len(self.parameter_names)
         if npar == 0 or self.samples.size == 0:
             raise ValueError("No samples available to plot.")
@@ -977,28 +1269,39 @@ class ResultsSummary:
         S = self.samples[:, idx]
         w = self.weights[idx]
 
-        fig, axes = plt.subplots(npar, npar, figsize=(2.2 * npar, 2.2 * npar), constrained_layout=True)
+        fig, axes = plt.subplots(
+            npar, npar, figsize=(2.2 * npar, 2.2 * npar),
+            sharex="col",
+            constrained_layout=True)
 
         for i in range(npar):
             for j in range(npar):
                 ax = axes[i, j]
                 if i == j:
                     x = self.samples[i, :]
-                    xc, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
-                    ax.plot(xc, pdf, lw=1.2)
+                    edges, pdf = histogram_pdf_1d(x, self.weights, bins=bins)
+                    xc = 0.5 * (edges[:-1] + edges[1:])
+                    ax.plot(xc, pdf, lw=1.2, color="black")
                     # mark mean/MAP
-                    ax.axvline(self.mean[i], lw=1.0, alpha=0.8)
-                    ax.axvline(self.map[i], lw=1.0, alpha=0.8)
+                    ax.axvline(self.mean[i], lw=1.0, alpha=0.8, color="r")
+                    ax.axvline(self.map[i], lw=1.0, alpha=0.8, color="b")
                     ax.set_yticks([])
                 elif i > j:
-                    ax.scatter(S[j, :], S[i, :], s=2, alpha=0.25)
+                    H, xedges, yedges = np.histogram2d(S[j, :], S[i, :], weights=w, bins=bins, density=True)
+                    
+                    fraction = enclosed_fraction_map(H, xedges=xedges, yedges=yedges)
+                    xbins = 0.5 * (xedges[:-1] + xedges[1:])
+                    ybins = 0.5 * (yedges[:-1] + yedges[1:])
+                    ax.contourf(xbins, ybins, fraction.T, levels=[0.0, 0.68, 0.95],
+                                cmap="Spectral")
                 else:
                     ax.axis("off")
 
-                if i == npar - 1 and j <= i:
+                if i == npar - 1:
                     ax.set_xlabel(self.parameter_names[j])
-                else:
-                    ax.set_xticks([])
+                elif i < npar - 1:
+                    pass
+                    # ax.set_xticks([])
                 if j == 0 and i >= j:
                     ax.set_ylabel(self.parameter_names[i])
                 else:
@@ -1021,15 +1324,17 @@ def summarize_results(
     *,
     output_fits: Optional[str] = None,
     output_json: Optional[str] = None,
+    nwalkers: Optional[int] = 1,
+    burn_in: int = 0,
     parameter_prefix: str = "--",
     posterior_key: str = "post",
+    use_posterior_weights: bool = False,
     parameter_keys: Optional[Sequence[str]] = None,
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
-    hdi_mass: float = 0.68,
     compute_1d: bool = True,
     compute_2d: bool = False,
     parameter_key_pairs: Optional[Sequence[Tuple[str, str]]] = None,
-    pdf_bins_1d: int = 100,
+    pdf_bins_1d: int = 500,
     pdf_bins_2d: int = 80,
     estimate_evidence: bool = False,
     evidence_method: str = "laplace",
@@ -1061,8 +1366,7 @@ def summarize_results(
         containing parameter_prefix.
     percentiles : sequence of float
         Quantiles in [0,1].
-    hdi_mass : float
-        Target mass for HDI intervals.
+    HDI intervals are computed at fixed masses of 68% and 95%.
     compute_1d / compute_2d : bool
         Enable 1D/2D PDF products.
     parameter_key_pairs : list of (key1, key2), required if compute_2d=True
@@ -1082,7 +1386,29 @@ def summarize_results(
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
-    keys = _select_parameter_keys(table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
+    keys = io._select_parameter_keys(
+        table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
+
+    if burn_in == "auto":
+        if nwalkers is None:
+            raise ValueError("nwalkers must be provided for auto burn-in estimation.")
+        # Reshape table into (nsamples, nwalkers, nparams)
+        logger.info("Estimating burn-in automatically from MCMC chains with nwalkers=%d.", nwalkers)
+        nsamples_guess = len(table) // nwalkers
+        if nsamples_guess * nwalkers != len(table):
+            raise ValueError(f"Unrecognized number of samples: {len(table)} is not divisible by nwalkers={nwalkers}.")
+        # Convert the table into MCMC chains
+        flat_chains = np.vstack([_as_float_array(table[k]) for k in keys]).T  # shape (nrows, nparams)
+        chains = flat_chain_to_walkers(flat_chains, nwalkers=nwalkers, nsamples=nsamples_guess)
+        burn_in = auto_burning_results(chains)
+        logger.info("Auto burn-in estimated as %d samples.", burn_in)
+    if burn_in > 0:
+        logger.info("Burning-in first %d samples from each walker.", burn_in)
+        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
+
+    extra_info = extra_info or {}
+    extra_info["burn_in"] = burn_in
+
     # Extract and filter samples
     logpost_all = _as_float_array(table[posterior_key])
     # Finite mask across posterior and all selected parameters
@@ -1094,9 +1420,13 @@ def summarize_results(
     logpost = logpost_all[mask]
     # Stabilized weights from log-posterior
     max_lp = np.max(logpost)
-    w = np.exp(logpost - max_lp)
-    w = normalize_weights(w)
-
+    if use_posterior_weights:
+        w = np.exp(logpost - max_lp)
+        w = normalize_weights(w)
+    else:
+        w = np.ones_like(logpost, dtype=float)
+    # Effective sample size
+    extra_info["ess"] = effective_sample_size(w)
     # Samples matrix (D, N)
     samples = np.vstack([_as_float_array(table[k])[mask] for k in keys])
     # Filter NaN in samples
@@ -1118,7 +1448,7 @@ def summarize_results(
     sections = []
     names = []
     for k in keys:
-        sect, nm = _split_param_key(k, prefix=parameter_prefix)
+        sect, nm = io._split_param_key(k, prefix=parameter_prefix)
         sections.append(sect)
         names.append(nm)
 
@@ -1133,35 +1463,40 @@ def summarize_results(
 
     pct_vals = np.full((npar, pct.size), np.nan, dtype=float)
     pct_lp = np.full((npar, pct.size), np.nan, dtype=float)
+    hdi_68 = {}
+    hdi_95 = {}
+    map_1d = {}
+    pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
 
-    for i in range(npar):
+    for i, (name, sect) in enumerate(zip(names, sections)):
+        nm = ".".join([sect, name])
         x = samples[i, :]
         # Weighted quantiles
         pct_vals[i, :] = weighted_quantile(x, w, pct)
-
-        # For logpost at those percentiles: sort by x, build weighted cdf, and interp logpost along that ordering
         idx = np.argsort(x)
-        xs = x[idx]
         ws = w[idx]
         cdf = np.cumsum(ws)
-        cdf[-1] = 1.0
-        # logpost along sorted x
+        cdf /= cdf[-1]
         lps = logpost[idx]
         pct_lp[i, :] = np.interp(pct, cdf, lps)
-
-    # HDI intervals
-    hdi: Dict[str, List[Tuple[float, float]]] = {}
-    for i, nm in enumerate(names):
-        hdi[nm] = weighted_hdi(samples[i, :], w, mass=hdi_mass, max_intervals=2)
-
-    # 1D PDFs
-    pdf1d: Dict[str, Dict[str, np.ndarray]] = {}
-    if compute_1d:
-        for i, nm in enumerate(names):
-            grid, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
-            d = {"grid": grid, "hist_pdf": hist_pdf}
+        # Highest density intervals (HDI) for 68% and 95%
+        hdi_68[nm] = weighted_hdi(samples[i, :], w, mass=0.68, max_intervals=2)
+        hdi_95[nm] = weighted_hdi(samples[i, :], w, mass=0.95, max_intervals=2)
+        # 1D PDFs
+        if compute_1d:
+            edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
+            centers = 0.5 * (edges[:-1] + edges[1:])
+            d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
             if kde_1d:
-                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, grid)
+                d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
+                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(centers, d["kde_pdf"])
+            else:
+                bins = (edges[:-1] + edges[1:]) / 2
+                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(bins, hist_pdf)
+            d["n_maxima"] = n_maxima
+            d["map"] = maxima_x
+            d["map_values"] = maxima_val
+            map_1d[nm] = maxima_x
             pdf1d[nm] = d
 
     # 2D PDFs
@@ -1170,10 +1505,11 @@ def summarize_results(
         if parameter_key_pairs is None:
             raise ValueError("compute_2d=True requires parameter_key_pairs.")
         # Convert full keys to indices
+        # TODO: account for section names
         key_to_idx = {k: i for i, k in enumerate(keys)}
         for k0, k1 in parameter_key_pairs:
             if k0 not in key_to_idx or k1 not in key_to_idx:
-                raise KeyError(f"Pair ({k0}, {k1}) not in selected parameter keys.")
+                raise KeyError(f"Pair ({k0}, {k1}) not in selected parameter keys:", key_to_idx)
             i0 = key_to_idx[k0]
             i1 = key_to_idx[k1]
             n0 = names[i0]
@@ -1212,8 +1548,9 @@ def summarize_results(
         percentiles=list(map(float, pct.tolist())),
         percentiles_values=pct_vals,
         percentiles_logpost=pct_lp,
-        hdi_mass=float(hdi_mass),
-        hdi_intervals=hdi,
+        hdi_intervals_68=hdi_68,
+        hdi_intervals_95=hdi_95,
+        map_1d=map_1d,
         pdf_1d=pdf1d,
         pdf_2d=pdf2d,
         extra_info=dict(extra_info) if extra_info is not None else {},
@@ -1250,9 +1587,36 @@ def summarize_results_file(
     **kwargs,
 ) -> ResultsSummary:
     """Read a results file and summarize it (passes kwargs to summarize_results)."""
-    tab = read_results_file(results_path, delimiter=delimiter)
-    return summarize_results(tab, output_fits=output_fits, output_json=output_json, **kwargs)
+    tab = io.read_results_file(results_path, delimiter=delimiter)
+    return summarize_results(
+        tab, output_fits=output_fits, output_json=output_json, **kwargs)
 
+def summarize_results_cosmosis(
+    results_path: str,
+    burn_in: int = 0,
+    output_fits: Optional[str] = None
+    ):
+
+    processor = run_cosmosis_postprocess([results_path], no_plots=True, burn=burn_in)
+
+    tables = {}
+    for key, output in processor.outputs.items():
+        if hasattr(output, "value") and key != "citations":
+            try:
+                tables[key] = output.value.to_astropy()
+            except Exception as e:
+                logger.warning("Failed to convert output '%s' to astropy table.", key)
+                logger.debug("Error: %s", e)
+                continue
+
+    # Save all tables in a FITS
+    if output_fits is not None:
+        hdus = [fits.PrimaryHDU()]
+        for k, t in tables.items():
+            hdus.append(fits.BinTableHDU(t, name=f"{k}"))
+        fits.HDUList(hdus).writeto(output_fits, overwrite=True)
+
+    return tables
 
 def compute_chain_percentiles(
     chain_results: Mapping[str, Any],
@@ -1345,115 +1709,6 @@ def make_plot_chains(
             fig.savefig(fp, dpi=dpi, bbox_inches="tight")
             paths.append(fp)
 
-def weighted_quantiles(x: np.ndarray, w: np.ndarray,
-                        qs: Sequence[float]) -> np.ndarray:
-    """Compute weighted quantiles for a one-dimensional sample."""
-
-    x = np.asarray(x); w = np.asarray(w)
-    m = np.isfinite(x) & np.isfinite(w) & (w >= 0)
-    if not m.any():
-        return np.array([np.nan] * len(qs))
-    x, w = x[m], w[m]
-    order = np.argsort(x)
-    x, w = x[order], w[order]
-    cdf = np.cumsum(w)
-    cdf = cdf / cdf[-1]
-    return np.interp(qs, cdf, x)
-
-def pdf_stats(edges: np.ndarray, pdf: np.ndarray,
-              quantiles=None,
-              find_multimodal: bool = False) -> dict:
-    """
-    Compute summary stats from a discrete pdf over bin centers.
-
-    Parameters
-    ----------
-    edges : ndarray, shape (K,)
-        Bin edges.
-    pdf : ndarray, shape (K,)
-        PDF defined by the edges.
-    quantiles : tuple of float, optional
-        Quantiles to report (default 16, 50, 84 percent).
-    find_multimodal : bool, optional
-        If True, return rough modes by local-maximum search.
-
-    Returns
-    -------
-    stats : dict
-        Keys: mean, std, map, q, lo68, hi68, modes (optional).
-    """
-    # Ensure normalization
-    norm = np.sum(pdf * np.diff(edges))
-    pdf /= norm if norm > 0 else 1.0
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    # Trapecium integrals
-    mean = np.sum(pdf * centers * np.diff(edges))
-    var = np.sum(pdf * (centers - mean)**2 * np.diff(edges))
-    std = var ** 0.5
-    k_map = np.argmax(pdf * np.diff(edges))
-    v_map = centers[k_map]
-
-    cdf = np.cumsum(pdf * np.diff(edges))
-    cdf = np.insert(cdf, 0, 0)
-
-    if quantiles is not None:
-        qs = np.array(quantiles, float)
-        qvals = np.interp(qs, cdf, edges, left=edges[0], right=edges[-1])
-    else:
-        qvals = None
-
-    median = np.interp(0.5, cdf, edges, left=edges[0], right=edges[-1])
-    lo68 = np.interp(0.16, cdf, edges, left=edges[0], right=edges[-1])
-    hi68 = np.interp(0.84, cdf, edges, left=edges[0], right=edges[-1])
-
-    out = {"mean": mean, "std": std, "map": v_map, "q": qvals,
-           "median": median, "lo68": lo68, "hi68": hi68}
-
-    if find_multimodal:
-        modes = []
-        for i in range(1, len(pdf) - 1):
-            if pdf[i] > pdf[i - 1] and pdf[i] > pdf[i + 1]:
-                modes.append(centers[i])
-        if not modes:
-            modes = [v_map]
-        out["modes"] = np.asarray(modes)
-    return out
-
-
-def pit_from_discrete_posterior(z_true: np.ndarray,
-                                posts: np.ndarray,
-                                z_edges: np.ndarray) -> np.ndarray:
-    """
-    Probability Integral Transform for discrete posteriors on bins.
-
-    Assumes uniform density within each bin for within-bin interpolation.
-
-    Parameters
-    ----------
-    z_true : ndarray, shape (N,)
-        True values.
-    posts : ndarray, shape (N, K)
-        Row-normalised posteriors over K bins.
-    z_edges : ndarray, shape (K+1,)
-        Bin edges.
-
-    Returns
-    -------
-    pit : ndarray, shape (N,)
-        PIT values in [0, 1].
-    """
-    N, K = posts.shape
-    assert K == len(z_edges) - 1
-    cdf_bins = np.cumsum(posts, axis=1)
-    j = np.clip(np.digitize(z_true, z_edges) - 1, 0, K - 1)
-    idx = np.arange(N)
-    below = np.where(j > 0, cdf_bins[idx, j - 1], 0.0)
-    widths = z_edges[1:] - z_edges[:-1]
-    frac = np.clip((z_true - z_edges[j]) / widths[j], 0.0, 1.0)
-    pit = below + posts[idx, j] * frac
-    return np.clip(pit, 0.0, 1.0)
-
-
 def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     """
     Standard photo-z metrics using delta z over 1+z.
@@ -1470,6 +1725,135 @@ def photoz_metrics(z_true: np.ndarray, z_est: np.ndarray) -> dict:
     rmse = float(np.sqrt(np.nanmean(d ** 2)))
     return {"bias": float(med), "nmad": float(nmad),
             "outlier": outlier, "rmse": rmse}
+
+def specz_posterior(path: str, pct_val=[0.16, 0.5, 0.84]) -> dict:
+    """Load spectral redshift posterior from a file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the posterior file.
+    pct_val : list of float
+        Percentiles to compute (default: 16, 50, 84).
+   
+    Returns
+    -------
+    results : dict
+        Keys: pct, mean, var, modes, mode_loglike, mode_log_amplitude.
+    """
+    z, loglike = np.loadtxt(path, dtype=np.float64, skiprows=1, unpack=True)
+
+    # sort by z
+    idx = np.argsort(z)
+    z = z[idx]
+    loglike = loglike[idx]
+    # Renormalize to get a proper PDF
+    loglike -= np.nanmax(loglike)
+    like = np.exp(loglike)
+    pdf = like / np.trapz(like, z)
+
+    pct = weighted_quantile(z, like, pct_val)
+    mean = weighted_mean(z, like)
+    var = weighted_covariance(z[None, :], like, unbiased=False)[0, 0]
+    # Analyze multimodality (simple local maxima)
+    modes = []
+    modes_loglike = []
+    modes_idx = []  # list of list of indices corresponding to modes
+    modes_pct = []
+    modes_mean = []
+    modes_var = []
+    modes_log_amplitude = []
+    modes_evidence = []
+    idx_cont = []  # to track indices contributing to modes for continuum estimation
+
+    # Step 1: find local minima
+    for i in range(1, len(z) - 1):
+        if loglike[i] < loglike[i - 1] and loglike[i] < loglike[i + 1]:
+            idx_cont.append(i)
+
+    # Step 2: characterise local maxima and assign mode indices
+    start = 0
+    for i in range(len(idx_cont) + 1):  # add end index to capture last segment
+        if i < len(idx_cont):
+            segment_idx = range(start, idx_cont[i])
+        else:
+            segment_idx = range(start, len(z))
+        if len(segment_idx) == 0:
+            continue
+        # Find local maximum in this segment
+        seg_loglike = loglike[segment_idx]
+        max_idx_in_seg = np.argmax(seg_loglike)
+        global_idx = segment_idx[max_idx_in_seg]
+        modes.append(z[global_idx])
+        modes_loglike.append(loglike[global_idx])
+        modes_idx.append(list(segment_idx))
+
+        # mode quantities
+        mode_like = np.exp(seg_loglike - loglike[global_idx])
+        mode_mean = weighted_mean(z[segment_idx], mode_like)
+        mode_var = weighted_covariance(
+            z[segment_idx][None, :], mode_like, unbiased=False
+        )[0, 0]
+        mode_pct = weighted_quantile(z[segment_idx], mode_like, pct_val)
+        modes_mean.append(mode_mean)
+        modes_var.append(mode_var)
+        modes_pct.append(mode_pct)
+        # mode loglike amplitude above local continuum
+        left_cont = loglike[segment_idx[0]] if segment_idx[0] > 0 else loglike[0]
+        right_cont = loglike[segment_idx[-1]] if segment_idx[-1] < len(z) - 1 else loglike[-1]
+
+        cont_loglike = np.interp(z[global_idx], [z[segment_idx[0]], z[segment_idx[-1]]], [left_cont, right_cont])
+        mode_log_amplitude = loglike[global_idx] - cont_loglike
+        modes_log_amplitude.append(mode_log_amplitude)
+
+        # mode evidence
+        mode_evidence = np.trapz(pdf[segment_idx], z[segment_idx])
+        modes_evidence.append(mode_evidence)
+
+        if i < len(idx_cont):
+            start = idx_cont[i] + 1
+
+    if modes:
+        modes = np.array(modes)
+        modes_loglike = np.array(modes_loglike)
+        modes_log_amplitude = np.array(modes_log_amplitude)
+        modes_evidence = np.array(modes_evidence)
+        modes_pct = np.array(modes_pct)
+        modes_mean = np.array(modes_mean)
+        modes_var = np.array(modes_var)
+
+        # from matplotlib import pyplot as plt
+        # plt.figure()
+        # plt.plot(z, loglike, label="loglike")
+        # plt.scatter(modes, modes_loglike, c=np.log(modes_evidence), label="modes")
+        # plt.colorbar()
+        # plt.legend()
+    else:
+        modes = np.array([z[np.argmax(loglike)]])
+        modes_loglike = np.array([np.max(loglike)])
+        modes_log_amplitude = np.array([0.0])
+        modes_evidence = np.array([np.trapz(np.exp(loglike), z)])
+        modes_evidence_contsub = np.array([0.0])
+        modes_pct = np.array([0.0])
+        modes_mean = np.array([0.0])
+        modes_var = np.array([0.0])
+        modes_idx = [list(range(len(z)))]
+
+    results = {
+        "pct": pct,
+        "mean": mean,
+        "var": var,
+        "modes": modes,
+        "mode_loglike": modes_loglike,
+        "mode_log_amplitude": modes_log_amplitude,
+        "mode_evidence": modes_evidence,
+        "mode_pct": modes_pct,
+        "mode_mean": modes_mean,
+        "mode_var": modes_var,
+        "mode_indices": modes_idx,
+    }
+    return results
+
 
 def plot_chains(table, truth_values=None, output_dir=None, posterior_key="post"):
     """Make trace plots from an astropy Table containing chain results.

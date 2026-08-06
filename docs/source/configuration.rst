@@ -150,16 +150,65 @@ These options are used by
   Path to a text file containing a per-pixel weight/mask array. If not provided,
   all pixels are assigned weight 1. The mask size must match the spectrum length.
 
+- ``is_variance`` / ``is_inverse_variance`` *(optional)*
+
+  Control how the third input column is interpreted:
+
+  - ``is_variance=True``: the third column is treated as variance,
+  - ``is_inverse_variance=True``: the third column is treated as inverse variance,
+  - otherwise: the third column is treated as 1-sigma uncertainty.
+
+  .. note::
+
+     Only one of these flags should be enabled at a time.
+
+- ``snr_clip`` *(optional)*
+
+  Applies an upper S/N clipping by inflating uncertainties where
+  ``S/N > snr_clip``. This can prevent a few very high-S/N pixels from
+  dominating the likelihood.
+
+- ``mask_non_finite`` *(optional, default: True)*
+
+  If enabled, non-finite flux/error values are automatically masked (weight set
+  to zero) before fitting.
+
 - ``lsf`` *(optional)*
 
   Path to a text file describing the instrumental line spread function. The file
   must contain wavelength and FWHM columns. The FWHM is interpolated onto the
   observed wavelength grid and stored as ``config["lsf"]``.
 
+- ``mask_telluric`` *(optional)*
+
+  If set, masks atmospheric telluric absorption bands using
+  :func:`besta.spectrum.mask_telluric_regions`. You can expand the masked
+  windows with ``telluric_pad``.
+
+- ``mask_sky_lines`` *(optional)*
+
+  If set, masks sky-emission lines using
+  :func:`besta.spectrum.mask_sky_emission_lines`. You can expand windows with
+  ``sky_line_pad``.
+
+- ``mask_emission_lines`` *(optional)*
+
+  If set, masks strong emission lines using
+  :func:`besta.spectrum.mask_strong_emission_lines`.
+
+- ``use_features`` *(optional, default: False)*
+
+  Enables feature-driven spectral weighting. Set ``use_features_type`` to:
+
+  - ``"auto"``: continuum-based feature weighting,
+  - ``"atlas"``: BESTA uses an atlas of optical absorption features to mask redundant regions without
+  significant stellar information.
+
 - ``velscale`` *(optional)*
 
   If provided, the observed spectrum is log-binned to a constant velocity scale
-  (km/s). If omitted, the spectrum is kept on its native wavelength grid.
+  (km/s). If omitted, the spectrum is kept on its native wavelength grid. This is
+  required for using LOSVD model fitting.
 
 
 Photometric data preparation
@@ -178,6 +227,11 @@ These options are used by
   - paths to local filter throughput files (loaded with
     ``Filter.from_text_file``), or
   - SVO filter names (loaded with ``Filter.from_svo``).
+
+  An optional fourth column can be used to encode limits per band:
+
+  - ``upper`` for upper limits,
+  - ``lower`` for lower limits.
 
 - ``fluxUnits`` *(optional)*
 
@@ -229,8 +283,63 @@ These options are used by :meth:`besta.pipeline_modules.base_module.BaseModule.p
   ranges, e.g. ``-3 0 3``) rather than on the final fractions/times.
 
   Supported models: ``FixedTimeSFH``, ``FixedCosmicTimeSFH``, ``FlexibleCosmicTimeSFH``,
-  ``FixedMassFracSFH``, and ``FixedTime_sSFR_SFH``. See :mod:`besta.sfh` for the
-  precise mappings and their inverses (``to_physical``/``to_latent`` hooks).
+  ``FixedMassFracSFH``, ``FixedMassFracSFH2D``, and ``FixedTime_sSFR_SFH``. See
+  :mod:`besta.sfh` for the precise mappings and their inverses
+  (``to_physical``/``to_latent`` hooks).
+
+  ``FixedMassFracSFH2D`` extends ``FixedMassFracSFH`` with the free parameter
+  ``sigma_log_metallicity``, the log10 metallicity scatter in dex at fixed
+  formation time. Setting it to zero exactly recovers the deterministic
+  metallicity model, and positive widths converge continuously to that model
+  as ``sigma_log_metallicity`` tends to zero. The finite-width distribution is
+  projected using the same piecewise-linear ``log10(Z)`` interpolation basis
+  as the SSP model.
+
+
+Likelihood configuration options
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+All modules share the following likelihood-related options.
+
+- ``likelihood_kind`` *(optional)*
+
+  Selects the observable family used by the module likelihood wrapper.
+  Allowed values are:
+
+  - ``spectra``
+  - ``photometry``
+
+  If omitted, BESTA infers the kind from the module name/class.
+
+- ``likelihood_method`` *(optional, default: ``auto``)*
+
+  Selects the implementation backend used by the module likelihood wrapper. Allowed values are:
+  - ``auto`` *(default)*: automatically select the backend based on the observable kind,
+  - ``numba``: use the Numba likelihood implementation.
+
+- ``save_chi2`` *(optional, default: False)*
+
+  Enables storage of chi-squared diagnostics in the module outputs when
+  supported by the module.
+
+- ``NoiseModel`` *(optional, spectra modules, default: ``NoiseModel``)*
+
+  Selects the noise model used to build the effective inverse-variance vector
+  for spectral likelihood evaluation.
+
+  Available values:
+
+  - ``NoiseModel``: use the observed inverse variance unchanged.
+  - ``MultiplicativeNoiseModel``: scale inverse variance by a sampled
+    parameter ``noise/beta``.
+
+  If ``MultiplicativeNoiseModel`` is selected, define the parameter in the
+  values file, for example:
+
+  .. code-block:: ini
+
+     [noise]
+     beta = 0.1 1.0 10.0
 
 Values/prior file tips
 ----------------------
@@ -269,17 +378,20 @@ Photometry-only fit
    [runtime]
    sampler = maxlike
 
+   [maxlike]
+   method = Powell
+
    [output]
    filename = ./photometry_fit
    format = text
 
    [pipeline]
-   modules = SFHPhotometry
+  modules = GalaxyPhotometry
    values = ./values.ini
-   likelihoods = SFHPhotometry
+  likelihoods = GalaxyPhotometry
 
-   [SFHPhotometry]
-   file = path/to/besta/pipeline_modules/sfh_photometry.py
+  [GalaxyPhotometry]
+  file = path/to/besta/pipeline_modules/galaxy_photometry.py
    inputPhotometry = ./photometry.dat
    fluxUnits = nanomaggie
    redshift = 0.05
@@ -296,6 +408,13 @@ Single-spectrum fit
 
    [runtime]
    sampler = maxlike emcee
+
+   [maxlike]
+   method = Powell
+
+   [emcee]
+   nwalkers = 16
+   nsteps = 500
 
    [output]
    filename = ./spectral_fit
@@ -334,6 +453,11 @@ spectra of the same galaxy simultaneously with shared parameters:
    from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 
    cfg = {
+    
+      "runtime": {"sampler": "maxlike emcee"},
+         "maxlike": {"method": "Nelder-Mead", "tolerance": 1e-3, "maxiter": 3000},
+         "emcee": {"walkers": 32, "samples": 100, "nsteps": 100},
+
        "output": {"filename": "./fit_all", "format": "text"},
        "pipeline": {
            "modules": "FullSpectralFit_blue FullSpectralFit_red",

@@ -24,7 +24,7 @@ class GalaxyPhotometryModule(PhotometryFitModule):
     def __init__(self, options, **kwargs):
         """Set up the module from a CosmoSIS configuration block."""
 
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="photometry", **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_photometry(options)
         self.prepare_galaxy(options)
@@ -39,25 +39,36 @@ class GalaxyPhotometryModule(PhotometryFitModule):
             self.config["sfh_model"].parse_datablock(block)
 
         # Update parameters for each remaining component
-        keys = block.keys()
-        values = [block[s, k] for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        keys = [".".join((s, k)) for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        parameters = dict(zip(keys, values))
+        parameters = self.get_galaxy_parameters(block)
 
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False, validate=False)
         # Synthesis
         flux_model = 1e10 * galaxy.emission_photometry(to_obs_frame=True).to_value(
             self.config["photometry_flux_unit"])
-        non_zero = flux_model > 0
-        if non_zero.any():
-            normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
-            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        sfh_model = self.config["sfh_model"]
+        if sfh_model.use_mass_normalization:
+            non_zero = flux_model > 0
+            if non_zero.any():
+                normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
+                block["extra", "stellar_mass"] = np.log10(normalization) + 10
+            else:
+                logger.warning("All fluxes are zero")
+                normalization = 0
+                block["extra", "stellar_mass"] = np.nan
         else:
-            logger.warning("All fluxes are zero")
-            normalization = 0
-            block["extra", "stellar_mass"] = np.nan
+            normalization = 1.0
+            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
+                sfh_model.today
+            ).to_value("Msun")
 
+        # Save SFH mass-fraction times
+        if self.config.get("save_t_frac_at", False):
+            for frac in self.config.get("t_frac_at", []):
+                self.get_t_frac_at(block, self.config["sfh_model"], frac)
+        if self.config.get("save_ssfr_over_tau", False):
+            for tau in self.config.get("ssfr_tau", []):
+                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
         # Mostly for visualization purposes
         if include_spec:
             full_spec = 1e10 * galaxy.emission_spectrum(to_obs_frame=True).to_value(

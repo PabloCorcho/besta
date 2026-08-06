@@ -1,358 +1,478 @@
-"""This module contains the tools for modelling kinematic effects on spectra."""
+"""Kinematic convolution utilities for spectral modeling.
+
+This module provides pixel-space LOSVD kernel classes and convolution helpers
+used by BESTA spectral fitting modules. Kernels are designed to be reusable
+across likelihood calls via lightweight in-memory caching.
+
+Conventions
+-----------
+- Velocities and dispersions are provided in physical units and converted to
+    pixel units using ``velocity_scale``.
+- Convolutions act on the last axis of the input arrays.
+- Kernels are normalized to unit sum before convolution.
+"""
 import numpy as np
 import re
 from scipy.signal import fftconvolve
 from scipy.special import erf
 from scipy import sparse
 
-from astropy.modeling import Fittable1DModel
-from astropy.modeling.models import Gaussian1D, Hermite1D
-from astropy.convolution.kernels import Model1DKernel
-
 from astropy import units as u
-from astropy.convolution import convolve, convolve_fft
 
-from besta import spectrum
 from besta import config as CONFIG
+from besta.logging import get_logger
 
-# TODO: implement split Gaussian model
-# This model is much more stable and never
-# produces negative densities
+logger = get_logger(__name__)
 
-class GaussHermite(Fittable1DModel):
-    """Gauss-Hermite model."""
+SQRT2 = np.sqrt(2)
+SQRT2PI = np.sqrt(2 * np.pi)
+CACHE_PIX_DECIMALS = 3
+CACHE_NMODELS = 256
+DELTA_KERNEL_ATOL = 1e-3
 
-    _param_names = ()
+class LOSVDPixelKernel:
+    """Line-of-sight velocity distribution kernel.
 
-    def __init__(self, order, *args, **kwargs):
-        self._order = int(order)
-        if self._order < 3:
-            self._order = 0
-
-        self._gaussian = Gaussian1D()
-        # Hermite series
-        if self._order:
-            self._hermite = Hermite1D(self._order)
-        else:
-            self._hermite = None
-
-        self._param_names = self._generate_coeff_names()
-        super(GaussHermite, self).__init__(*args, **kwargs)
-
-    def _generate_coeff_names(self):
-        names = list(self._gaussian.param_names)  # Gaussian parameters
-        names += ["h{}".format(i) for i in range(3, self._order + 1)]  # Hermite coeffs
-
-    def _hi_order(self, name):
-        # One could store the compiled regex, but it will crash the deepcopy:
-        # "cannot deepcopy this pattern object"
-
-        match = re.match("h(?P<order>\d+)", name)  # h3, h4, etc.
-        order = int(match.groupdict()["order"]) if match else 0
-
-        return order
-
-    def _generate_coeff_names(self):
-        names = list(self._gaussian.param_names)  # Gaussian parameters
-        names += ["h{}".format(i) for i in range(3, self._order + 1)]  # Hermite coeffs
-
-        return tuple(names)
-
-    def __getattr__(self, attr):
-        if attr[0] == "_":
-            super(GaussHermite, self).__getattr__(attr)
-        elif attr in self._gaussian.param_names:
-            return self._gaussian.__getattribute__(attr)
-        elif self._order and self._hi_order(attr) >= 3:
-            return self._hermite.__getattribute__(attr.replace("h", "c"))
-        else:
-            super(GaussHermite, self).__getattr__(attr)
-
-    def __setattr__(self, attr, value):
-        if attr[0] == "_":
-            super(GaussHermite, self).__setattr__(attr, value)
-        elif attr in self._gaussian.param_names:
-            self._gaussian.__setattr__(attr, value)
-        elif self._order and self._hi_order(attr) >= 3:
-            self._hermite.__setattr__(attr.replace("h", "c"), value)
-        else:
-            super(GaussHermite, self).__setattr__(attr, value)
+    Attributes
+    ----------
+    velocity_scale : float
+        Velocity step represented by one pixel (same units as LOS velocities).
+    kernel_weight : np.ndarray or None
+        Normalized kernel weights sampled on the pixel grid.
+    edge_pixels : int
+        Number of edge pixels likely affected by convolution artifacts.
+    skip_convolution : bool
+        If ``True``, convolution is treated as identity (delta-like kernel).
+    """
 
     @property
-    def param_names(self):
-        """Tuple of Gaussian and Hermite coefficient parameter names."""
-        return self._param_names
+    def kernel_weight(self):
+        """Kernel weights."""
+        return self._kernel_weight
+    
+    @kernel_weight.setter
+    def kernel_weight(self, value):
+        if value is not None:
+            value = np.asarray(value, dtype=float)
+            norm = np.sum(value)
 
-    def evaluate(self, x, *params):
-        """Evaluate the Gauss-Hermite profile.
+            if norm > 0:
+                # Check if all the weight is on a single pixel (delta kernel)
+                if np.isclose(norm, value.max(), atol=DELTA_KERNEL_ATOL):
+                    self.skip_convolution = True
+                else:
+                    self.skip_convolution = False
+
+                self._kernel_weight = value / norm
+
+            else:
+                logger.warning("Kernel weights sum to zero; using unnormalized values.")
+                raise ValueError("Kernel weights sum to zero; cannot normalize.")
+                # self.skip_convolution = False
+                # self._kernel_weight = value
+
+    @property
+    def size(self):
+        """Kernel size in pixels."""
+        if self.kernel_weight is not None:
+            return self.kernel_weight.size
+        else:
+            return 0
+
+    def __init__(self, velocity_scale):
+        """Initialize a pixel-space LOSVD kernel container.
 
         Parameters
         ----------
-        x : array_like
-            Coordinate values where the profile is evaluated.
-        *params
-            Gaussian parameters followed by Hermite coefficients.
+        velocity_scale : float
+            Velocity step represented by one spectral pixel.
+        """
+        logger.debug("Initializing LOSVDPixelKernel with velocity_scale=%s", velocity_scale)
+        self.velocity_scale = velocity_scale
+        self._kernel_weight = None
+        self.skip_convolution = False
+        self.edge_pixels = 0
+        self._cache = {}
+
+    def _cached_kernel(self, key, build_kernel):
+        """Populate ``kernel_weight`` from cache or from a builder callback.
+
+        Parameters
+        ----------
+        key : hashable
+            Cache key describing kernel parameters.
+        build_kernel : Callable[[], np.ndarray]
+            Callback used to build the kernel when ``key`` is absent.
+        """
+        kernel = self._cache.get(key)
+        if kernel is None:
+            kernel = build_kernel()
+            self._cache[key] = kernel
+            # Keep cache bounded to avoid unbounded memory growth in long chains.
+            if len(self._cache) > CACHE_NMODELS:
+                self._cache.pop(next(iter(self._cache)))
+        self.kernel_weight = kernel
+
+    def convolve(self, spectra):
+        """Convolve the input spectra with the LOSVD kernel."""
+        if self.kernel_weight is not None:
+            if self.skip_convolution:
+                return spectra
+            if np.ndim(spectra) == 1:
+                return fftconvolve(spectra, self.kernel_weight, mode="same")
+
+            kernel = self.kernel_weight.reshape((1,) * (np.ndim(spectra) - 1) + (-1,))
+            return fftconvolve(spectra, kernel, mode="same", axes=-1)
+        else:
+            raise ValueError("Kernel weights are not set.")
+
+    def get_percentile_pixel(self, percentile):
+        """Get a percentile location in pixel units relative to kernel center.
+
+        Parameters
+        ----------
+        percentile : float
+            Desired percentile (between 0 and 100).
 
         Returns
         -------
-        array_like
-            Profile values at ``x``.
+        pixel_offset : float
+            Pixel offset relative to the central kernel pixel.
         """
-        a, m, s = params[:3]  # amplitude, mean, stddev
-        f = self._gaussian.evaluate(x, a, m, s)
-        if self._order:
-            f *= 1 + self._hermite.evaluate((x - m) / s, 0, 0, 0, *params[3:])
-
-        return f
-
-
-# TODO : remove and homogeneize
-def losvd(vel_pixel, sigma_pixel, h3=0, h4=0):
-    """Evaluate a Gauss-Hermite line-of-sight velocity distribution kernel."""
-
-    y = vel_pixel / sigma_pixel
-    g = (
-        np.exp(-(y**2) / 2)
-        / sigma_pixel
-        / np.sqrt(2 * np.pi)
-        * (
-            1
-            + h3 * (y * (2 * y**2 - 3) / np.sqrt(3))  # H3
-            + h4 * ((4 * (y**2 - 3) * y**2 + 3) / np.sqrt(24))  # H4
-        )
-    )
-    return g
-
-
-def get_losvd_kernel(kernel_model, x_size):
-    """Create a ``Model1DKernel`` from an input ``Model``.
-
-    Parameters
-    ----------
-    kernel_model : :class:`astropy.models.FittableModel`
-        Model used to build the kernel.
-    x_size : int
-        Kernel size
-
-    Returns
-    -------
-    kernel : :class:`Model1DKernel`
-        Kernel model
-    """
-    ker = Model1DKernel(kernel_model, x_size=x_size, mode="integrate")
-    return ker
-
-
-def convolve_spectra_with_kernel(spectra, kernel, use_fft=True):
-    """Convolve an input spectra with a given kernel.
-
-    Parameters
-    ----------
-    spectra : np.ndarray
-        Target spectra to convolve with the kernel.
-    kernel : :class:`Model1DKernel`
-        Convolution kernel.
-
-    Returns
-    -------
-    convolved_spectra : np.ndarray
-        Spectra convolved with the input kernel.
-    """
-    # TODO: use np.convolve to increase performance when using
-    # synthetic observations that do not contain nan
-
-    try:
-        if use_fft:
-            return convolve_fft(
-        spectra, kernel, boundary="fill", fill_value=0.0, normalize_kernel=True
-    )
-
-        else:
-            return convolve(
-        spectra, kernel, boundary="fill", fill_value=0.0, normalize_kernel=True
-    )
-
-    except ValueError as e:
-        logging.error(f"Error during convolution: {e}")
-        return np.full(spectra.size, np.nan)
+        if self.kernel_weight is None:
+            raise ValueError("Kernel weights are not set.")
+        if not (0.0 <= percentile <= 100.0):
+            raise ValueError("percentile must be in [0, 100].")
         
+        cumulative = np.cumsum(self.kernel_weight)
+        # Interpolate on bin edges so symmetric kernels yield zero-centered
+        # median offsets instead of the half-pixel bias from center-grid CDF.
+        cdf_edges = np.concatenate(([0.0], cumulative))
+        pixel_edges = np.arange(len(self.kernel_weight) + 1, dtype=float) - 0.5
+        pixel = np.interp(percentile / 100.0, cdf_edges, pixel_edges)
+        center = 0.5 * (len(self.kernel_weight) - 1)
+        return pixel - center
 
-def convolve_ssp_with_lsf(ssp, lsf_sigma_pixels):
-    """Convolve a given SSP model with an LSF.
-    
-    Parameters
-    ----------
-    ssp : pst.SSP.SSPBase
-    lsf_sigma_pixels : float, np.ndarray
-        Gaussian standard deviation of the LSF.
+    def get_percentile_velocity(self, percentile):
+        """Get a percentile location in velocity units relative to kernel center."""
+        return self.get_percentile_pixel(percentile) * self.velocity_scale
+
+    def parse_parameters(self, datablock):
+        """Read kinematic parameters from a DataBlock and set kernel weights.
+
+        Notes
+        -----
+        Subclasses must implement this method according to their parameterization.
+        """
+        raise NotImplementedError("This method should be implemented by subclasses to parse parameters from the kernel model.")
+
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        raise NotImplementedError("This method should be implemented by subclasses to provide default INI values.")
+
+class GaussianPixelKernel(LOSVDPixelKernel):
+    """Single-Gaussian LOSVD kernel in pixel space."""
+
+    def __init__(self, velocity_scale, sigma_truncation=5.0):
+        """Create a Gaussian LOSVD kernel.
+
+        Parameters
+        ----------
+        velocity_scale : float
+            Velocity step represented by one spectral pixel.
+        sigma_truncation : float, optional
+            Kernel half-width in units of sigma when building finite support.
+        """
+        super().__init__(velocity_scale)
+        self.sigma_truncation = float(sigma_truncation)
+
+    def parse_parameters(self, datablock):
+        vel = datablock["kinematics", "los_vel"]
+        sigma = datablock["kinematics", "los_sigma"]
+        self.set_parameters(vel, sigma)
+
+    def set_parameters(self, vel, sigma):
+        """Set Gaussian LOSVD parameters and build/cache kernel weights.
+
+        Parameters
+        ----------
+        vel : float
+            Mean LOS velocity.
+        sigma : float
+            LOS velocity dispersion.
+        """
+        sigma_pixel = sigma / self.velocity_scale
+        vel_pixel = vel / self.velocity_scale
+
+        if sigma_pixel <= 0:
+            self.edge_pixels = 0
+            self.kernel_weight = np.array([1.0], dtype=float)
+            return
+
+        half_width = max(1, int(np.ceil(self.sigma_truncation * sigma_pixel + np.abs(vel_pixel))))
+        self.edge_pixels = int(np.ceil(self.sigma_truncation * sigma_pixel))
+        key = (round(vel_pixel, CACHE_PIX_DECIMALS), round(sigma_pixel, CACHE_PIX_DECIMALS), half_width)
+
+        def build_kernel():
+            x_edges = np.arange(-half_width - 0.5, half_width + 1.5, 1.0)
+            cmf = self.__cumulative_distribution(x_edges, sigma_pixel, vel_pixel)
+            return cmf[1:] - cmf[:-1]
+
+        self._cached_kernel(key, build_kernel)
+
+    def __cumulative_distribution(self, x, sigma_pixel, vel_pixel):
+        return 0.5 * (1 + erf((x - vel_pixel) / (sigma_pixel * SQRT2)))
+
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(self.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma = 50 100 500\n")
+        return ini_file
+
+class SplitGaussianPixelKernel(LOSVDPixelKernel):
+    """Split-Gaussian LOSVD kernel in pixel space.
+
+    This kernel uses different velocity dispersions on blue and red sides
+    around the LOS velocity centroid.
     """
-    # Account for LSF variability
-    if lsf_sigma_pixels.size == ssp.wavelength.size:
-        ssp.L_lambda = np.array([
-            fftconvolve(
-                ssp.L_lambda.value,
-                losvd(np.arange(-CONFIG.kinematics["lsf_sigma_truncation"] * sigma,
-                                CONFIG.kinematics["lsf_sigma_truncation"] * sigma),
-                                sigma_pixel=sigma)[np.newaxis, np.newaxis],
-                                mode="same", axes=2)[:, :, ith]
-            for ith, sigma in enumerate(lsf_sigma_pixels)]) * ssp.L_lambda.unit
-    # Constant LSF
-    elif np.atleast_1d(lsf_sigma_pixels).size == 1:
-        ssp.L_lambda = fftconvolve(
-                ssp.L_lambda.value,
-                losvd(np.arange(-CONFIG.kinematics["lsf_sigma_truncation"] * lsf_sigma_pixels,
-                                CONFIG.kinematics["lsf_sigma_truncation"] * lsf_sigma_pixels),
-                                sigma_pixel=lsf_sigma_pixels)[np.newaxis, np.newaxis],
-                                mode="same", axes=2) * ssp.L_lambda.unit
-    else:
-        raise ArithmeticError("Dimensions of SSP and LSF do not match")
 
-def convolve_ssp(module_config, los_sigma, los_vel, los_h3=0.0, los_h4=0.0):
-    """Convolve SSP spectra stored in a module configuration with LOS kinematics."""
+    def __init__(self, velocity_scale, sigma_truncation=5.0):
+        super().__init__(velocity_scale)
+        self.sigma_truncation = float(sigma_truncation)
 
-    velscale = module_config["velscale"]
-    extra_pixels = module_config["extra_pixels"]
-    ssp_sed = module_config["ssp_sed"]
-    flux = module_config["flux"]
-    if los_sigma <= 0:
-        raise ValueError("los_sigma must be positive for convolution.")
-    if np.abs(los_h3) > 0.5 or np.abs(los_h4) > 0.5:
-        raise ValueError("Gauss-Hermite coefficients h3/h4 are out of bounds (|h|<=0.5).")
-    # Kinematics
-    sigma_pixel = los_sigma / velscale
-    veloffset_pixel = los_vel / velscale
-    x = (
-        np.arange(
-            -CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
-            CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+    def parse_parameters(self, datablock):
+        vel = datablock["kinematics", "los_vel"]
+        sigma_blue = datablock["kinematics", "los_sigma_blue"]
+        sigma_red = datablock["kinematics", "los_sigma_red"]
+        self.set_parameters(vel, sigma_blue, sigma_red)
+
+    def set_parameters(self, vel, sigma_blue, sigma_red):
+        """Set split-Gaussian LOSVD parameters and build/cache kernel weights.
+
+        Parameters
+        ----------
+        vel : float
+            Mean LOS velocity.
+        sigma_blue : float
+            Dispersion used for pixels blueward of the centroid.
+        sigma_red : float
+            Dispersion used for pixels redward of the centroid.
+        """
+        sigma_blue_px = sigma_blue / self.velocity_scale
+        sigma_red_px = sigma_red / self.velocity_scale
+        vel_pixel = vel / self.velocity_scale
+
+        if sigma_blue_px <= 0 or sigma_red_px <= 0:
+            self.edge_pixels = 0
+            self.kernel_weight = np.array([1.0], dtype=float)
+            return
+
+        sigma_max = max(sigma_blue_px, sigma_red_px)
+        half_width = max(1, int(np.ceil(self.sigma_truncation * sigma_max + np.abs(vel_pixel))))
+        self.edge_pixels = int(np.ceil(self.sigma_truncation * sigma_max))
+        key = (
+            round(vel_pixel, CACHE_PIX_DECIMALS),
+            round(sigma_blue_px, CACHE_PIX_DECIMALS),
+            round(sigma_red_px, CACHE_PIX_DECIMALS),
+            half_width,
         )
-        - veloffset_pixel
-    )
-    losvd_kernel = losvd(x, sigma_pixel=sigma_pixel, h3=los_h3, h4=los_h4)
-    sed = fftconvolve(ssp_sed, np.atleast_2d(losvd_kernel), mode="same", axes=1)
-    # Rebin model spectra to observed grid
-    sed = sed[:, extra_pixels:-extra_pixels]
-    ### Mask pixels at the edges with artifacts produced by the convolution
-    mask = np.ones_like(flux, dtype=bool)
-    mask[: int(CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel)] = False
-    mask[-int(CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel) :] = False
-    return sed, mask
 
+        def build_kernel():
+            x = np.arange(-half_width, half_width + 1, dtype=float) - vel_pixel
+            sigma = np.where(x < 0.0, sigma_blue_px, sigma_red_px)
+            w = np.exp(-0.5 * (x / sigma) ** 2) / (sigma * SQRT2PI)
+            return np.where(np.isfinite(w), w, 0.0)
 
-def convolve_ssp_model(module_config, los_sigma, los_vel, h3=0.0, h4=0.0):
-    """Convolve an SSP model instance in place with LOS kinematics."""
+        self._cached_kernel(key, build_kernel)
 
-    velscale = module_config["velscale"]
-    extra_pixels = int(module_config["extra_pixels"])
-    ssp = module_config["ssp_model"]
-    wl = module_config["wavelength"]
-    if los_sigma <= 0:
-        raise ValueError("los_sigma must be positive for convolution.")
-    if np.abs(h3) > 0.5 or np.abs(h4) > 0.5:
-        raise ValueError("Gauss-Hermite coefficients h3/h4 are out of bounds (|h|<=0.5).")
-    # Kinematics
-    sigma_pixel = los_sigma / velscale
-    veloffset_pixel = los_vel / velscale
-    x = (
-        np.arange(
-            -CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
-             CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel,
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma_blue = 50 100 500\n")
+            file.write(f"los_sigma_red = 50 100 500\n")
+        return ini_file
+
+class GaussHermitePixelKernel(LOSVDPixelKernel):
+    """Gauss-Hermite LOSVD kernel in pixel space.
+
+    The profile is controlled by mean velocity, velocity dispersion and
+    optional third/fourth-order Hermite moments ``h3`` and ``h4``.
+    """
+
+    def __init__(self, velocity_scale, sigma_truncation=5.0):
+        super().__init__(velocity_scale)
+        self.sigma_truncation = float(sigma_truncation)
+
+    def parse_parameters(self, datablock):
+        self.set_parameters(
+            float(datablock["kinematics", "los_vel"]),
+            float(datablock["kinematics", "los_sigma"]),
+            h3=float(datablock["kinematics", "los_h3"]),
+            h4=float(datablock["kinematics", "los_h4"]),
         )
-        - veloffset_pixel
-    )
-    losvd_kernel = losvd(x, sigma_pixel=sigma_pixel, h3=h3, h4=h4)
-    ssp.L_lambda = (
-        fftconvolve(
-            ssp.L_lambda.value,
-            losvd_kernel[np.newaxis, np.newaxis],
-            mode="same",
-            axes=2,
+
+    def set_parameters(self, vel, sigma, h3=0.0, h4=0.0):
+        """Set Gauss-Hermite LOSVD parameters and build/cache kernel weights.
+
+        Parameters
+        ----------
+        vel : float
+            Mean LOS velocity.
+        sigma : float
+            LOS velocity dispersion.
+        h3 : float, optional
+            Third-order Gauss-Hermite coefficient.
+        h4 : float, optional
+            Fourth-order Gauss-Hermite coefficient.
+        """
+        sigma_pixel = float(sigma) / self.velocity_scale
+        vel_pixel = float(vel) / self.velocity_scale
+
+        if sigma_pixel <= 0:
+            self.edge_pixels = 0
+            self.kernel_weight = np.array([1.0], dtype=float)
+            return
+
+        half_width = max(
+            1,
+            int(np.ceil(self.sigma_truncation * sigma_pixel + np.abs(vel_pixel))),
         )
-        * ssp.L_lambda.unit
-    )
-    # Rebin model spectra to observed grid
-    pixels = slice(extra_pixels, -extra_pixels)
-    new_sed = ssp.L_lambda[:, :, pixels]
-    ssp.L_lambda = new_sed
-    if not isinstance(wl, u.Quantity):
-        ssp.wavelength = wl * ssp.wavelength.unit
-    else:
-        ssp.wavelength = wl
-    ### Mask pixels at the edges with artifacts produced by the convolution
-    mask = np.ones(wl.size, dtype=bool)
-    mask[: int(CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel)] = False
-    mask[-int(CONFIG.kinematics["lsf_sigma_truncation"] * sigma_pixel) :] = False
-    return ssp, mask
+        self.edge_pixels = int(np.ceil(self.sigma_truncation * sigma_pixel))
+        key = (
+            round(vel_pixel, CACHE_PIX_DECIMALS),
+            round(sigma_pixel, CACHE_PIX_DECIMALS),
+            round(float(h3), CACHE_PIX_DECIMALS),
+            round(float(h4), CACHE_PIX_DECIMALS),
+            half_width,
+        )
+
+        def build_kernel():
+            x = np.arange(-half_width, half_width + 1, dtype=float) - vel_pixel
+            w = self.__losvd(x, sigma_pixel=sigma_pixel, h3=float(h3), h4=float(h4))
+            w = np.where(np.isfinite(w), w, 0.0)
+            if np.sum(w) <= 0:
+                w = np.exp(-0.5 * (x / sigma_pixel) ** 2) / (sigma_pixel * SQRT2PI)
+            return w
+
+        self._cached_kernel(key, build_kernel)
+
+    def __losvd(self, vel_pixel, sigma_pixel, h3=0, h4=0):
+        """Evaluate a Gauss-Hermite line-of-sight velocity distribution kernel."""
+
+        y = vel_pixel / sigma_pixel
+
+        g = (np.exp(-(y**2) / 2) / sigma_pixel / SQRT2PI
+            * (
+                1
+                + h3 * (y * (2 * y**2 - 3) / np.sqrt(3))
+                + h4 * ((4 * (y**2 - 3) * y**2 + 3) / np.sqrt(24))
+            )
+        )
+        return g
+    
+    @classmethod
+    def make_ini(cls, ini_file: str) -> str:
+        """Return default INI values for this kernel."""
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            file.write(f"los_vel = -500 0 500\n")
+            file.write(f"los_sigma = 50 100 500\n")
+            file.write(f"los_h3 = -0.1 0.0 0.1\n")
+            file.write(f"los_h4 = -0.1 0.0 0.1\n")
+        return ini_file
+
+
+class PieceWisePixelKernel(LOSVDPixelKernel):
+    """Piecewise-constant LOSVD kernel defined in velocity bins.
+
+    The kernel is specified by sampled bin weights in velocity space and then
+    interpolated onto the module pixel grid.
+    """
+
+    def __init__(self, velocity_scale, velocity_bin_size, velocity_min, velocity_max):
+        """Create a piecewise LOSVD kernel parameterization.
+
+        Parameters
+        ----------
+        velocity_scale : float
+            Velocity step represented by one spectral pixel.
+        velocity_bin_size : float
+            Width of input velocity bins.
+        velocity_min : float
+            Lower bound of the piecewise velocity grid.
+        velocity_max : float
+            Upper bound of the piecewise velocity grid.
+        """
+        super().__init__(velocity_scale)
+        self.velocity_bin_size = velocity_bin_size
+        if velocity_min >= velocity_max:
+            raise ValueError("velocity_min must be less than velocity_max.")
+        self.velocity_bin_edges = np.arange(
+            velocity_min, velocity_max + velocity_bin_size, velocity_bin_size)
+        # Cache for querying the datablock
+        self.bin_ids = np.arange(0, self.velocity_bin_edges.size - 1, 1)
+        pixel_min = velocity_min / self.velocity_scale
+        pixel_max = velocity_max / self.velocity_scale
+        # Ensure kernel array is odd, symmetric and covers both edges
+        edges = np.abs([pixel_min, pixel_max]).max()
+        self.x_pixel_edges = np.arange(-edges - 0.5, edges + 1.5, 1.0)
+        self.x_vel_edges = self.x_pixel_edges * self.velocity_scale
+
+    def parse_parameters(self, datablock):
+        weights = np.asarray([datablock["kinematics", f"vel_bin_{ith}"] for ith in self.bin_ids], dtype=float)
+        # resample into the velocity scale pixel grid
+        cum_kernel = np.cumsum(weights)
+        cum_kernel = np.insert(cum_kernel, 0, 0.0)  # add zero at the beginning for interpolation
+        cum_kernel = np.interp(
+            self.x_vel_edges,
+            self.velocity_bin_edges,
+            cum_kernel,
+            left=0.0,
+            right=cum_kernel[-1],
+        )
+        self.edge_pixels = int(np.ceil(np.max(np.abs(self.x_pixel_edges))))
+        self.kernel_weight = np.diff(cum_kernel)
+
+    @classmethod
+    def make_ini(cls, ini_file: str, velocity_min: float, velocity_max: float, velocity_bin_size: float) -> str:
+        """Return default INI values for this kernel."""
+        n_bins = int(np.ceil((velocity_max - velocity_min) / velocity_bin_size))
+        with open(ini_file, "a", encoding="utf-8") as file:
+            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"[kinematics]\n")
+            for ith in range(n_bins):
+                file.write(f"vel_bin_{ith} = 0.0 1.0 10.0\n")
+        return ini_file
+
 
 def normal_cdf(x, mu=0.0, sigma=1.0):
-    """Normal cumulative density function."""
+    """Normal cumulative density function.
+
+    Parameters
+    ----------
+    x : array-like
+        Evaluation points.
+    mu : float, optional
+        Mean of the normal distribution.
+    sigma : float, optional
+        Standard deviation of the normal distribution.
+
+    Returns
+    -------
+    np.ndarray
+        CDF values evaluated at ``x``.
+    """
     return (1.0 + erf((x - mu) / sigma / np.sqrt(2.0))) / 2.0
-
-# def convolve_variable_gaussian_kernel(spectra, sigma_pixel,
-#                                       kappa_sigma_thresh=3.0):
-#     """Convolve an input spectra with a Gaussian kernel of varying width.
-    
-#     Parameters
-#     ----------
-#     spectra : :class:`np.ndarray` or :class:`u.Quantity`
-#         N-dimensional spectra. The last dimension must correspond to the
-#         wavelength axis.
-#     sigma_pixel : :class:`np.ndarray`
-#         Value of the standard deviation of the Gaussian LSF for each spectral
-#         resolution element, expressed in pixel units.
-#     kappa_sigma_thresh : float, optional
-#         Threshold in units of the Gaussian sigma. If a **single pixel** contains
-#         at least ``kappa_sigma_thresh`` sigmas of the LSF, that pixel is left
-#         untouched (i.e. the convolution kernel is clamped to a delta function
-#         at that pixel). Default is ``3.0``.
-
-#     Returns
-#     -------
-#     convolved_spectra : :class:`np.ndarray` or :class:`u.Quantity`
-#         A convolved version of ``spectra``.
-#     """
-#     # Convert sigma_pixel to a plain ndarray (it may be a Quantity or list)
-#     sigma_pixel = np.asarray(sigma_pixel, dtype=float)
-#     n_pix = sigma_pixel.size
-
-#     # Identify pixels where the LSF is effectively contained within a single pixel:
-#     # 0.5 pixel half-width contains >= kappa_sigma_thresh sigmas.
-#     # 0.5 / sigma >= kappa  ->  sigma <= 0.5 / kappa
-#     small_lsf_mask = (0.5 / sigma_pixel) >= kappa_sigma_thresh
-#     # Guard against sigma == 0 as well (also treated as delta kernel)
-#     small_lsf_mask |= (sigma_pixel <= 0.0)
-
-#     # Use a "safe" sigma for computing the CDF to avoid division issues;
-#     # rows that will be clamped later can use any finite sigma.
-#     safe_sigma = sigma_pixel.copy()
-#     safe_sigma[small_lsf_mask] = 1.0
-
-#     # mean_pixel has shape (n_pix, n_pix + 1) and represents bin edges
-#     mean_pixel = (np.arange(-0.5, n_pix + 0.5, 1)[np.newaxis, :]
-#                   - np.arange(0, n_pix, 1)[:, np.newaxis])
-
-#     cmf = normal_cdf(mean_pixel / safe_sigma[:, np.newaxis])
-#     weights = cmf[:, 1:] - cmf[:, :-1]      # (n_pix, n_pix)
-
-#     # Normalise each row
-#     weights /= np.sum(weights, axis=1)[:, np.newaxis]
-
-#     # Clamp rows where the LSF is narrower than a pixel:
-#     # replace the whole row by a delta kernel.
-#     if np.any(small_lsf_mask):
-#         weights[small_lsf_mask, :] = 0.0
-#         idx = np.nonzero(small_lsf_mask)[0]
-#         # Put the delta on the diagonal: output[i] = input[i]
-#         weights[idx, idx] = 1.0
-
-#     # Broadcast to match the input spectra shape (last axis is spectral axis)
-#     extra_dim = spectra.ndim - 1
-#     if extra_dim > 0:
-#         axis = [dim for dim in np.arange(0, extra_dim, 1)]
-#         weights = np.expand_dims(weights, axis=axis)
-
-#     # Perform the (variable) convolution along the last axis
-#     return np.sum(np.expand_dims(spectra, axis=-1) * weights, axis=-1)
 
 def convolve_variable_gaussian_kernel(
     spectra,

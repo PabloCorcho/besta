@@ -70,6 +70,69 @@ Plotting results
 
 If ``plot_result=True``, the best-fit spectra/photometry are plotted for each module using :meth:`besta.pipeline_modules.base_module.BaseModule.plot_solution` and saved alongside the output text files. Each module is re-instantiated from the ``.ini`` file to rebuild the model before plotting.
 
+Running Independent Pipelines In Parallel
+-----------------------------------------
+
+For independent runs (for example, fitting many galaxies with the same workflow or using IFU observations), use :class:`besta.pipeline.BatchPipeline`.
+
+Each element of ``pipeline_configuration_list`` is one full ``MainPipeline`` input (i.e., a list of sub-pipeline configuration dictionaries):
+
+.. code-block:: python
+
+   from besta.pipeline import BatchPipeline
+
+   # Two independent jobs, each one contains a single-stage MainPipeline.
+   job_a = [config_a]
+   job_b = [config_b]
+
+   batch = BatchPipeline(
+       pipeline_configuration_list=[job_a, job_b],
+       n_jobs_parallel=2,
+   )
+
+   # Returns one status code per independent job (0 means success).
+   results = batch.run_all_pipelines(plot_result=False)
+
+You can also instantiate the internal ``MainPipeline`` objects without running:
+
+.. code-block:: python
+
+   pipelines = batch.build_pipelines()
+
+Parameter sweeps with ``from_running_parameters``
+-------------------------------------------------
+
+A very common use case is when all runs share a base configuration. It is possible to create a batch from parameter updates:
+
+.. code-block:: python
+
+   from besta.pipeline import BatchPipeline
+
+   base_config = {
+       # full BESTA configuration dict
+   }
+
+   # Parameters that differ between runs.
+   running_parameters = [
+       {"FullSpectralFit": {"redshift": 0.10}},
+       {"FullSpectralFit": {"redshift": 0.12}},
+       {"FullSpectralFit": {"redshift": 0.14}},
+   ]
+
+   batch = BatchPipeline.from_running_parameters(
+       pipeline_configuration=base_config,
+       running_parameters=running_parameters,
+       n_jobs_parallel=3,
+   )
+
+   results = batch.run_all_pipelines()
+
+Notes:
+
+- ``running_parameters`` must be a list of dictionaries.
+- Each parameter set is deep-copied from the base configuration, so updates from one run do not leak into the others.
+- ``BatchPipeline`` returns statuses in the same order as the input jobs.
+
 Short checklist
 ---------------
 

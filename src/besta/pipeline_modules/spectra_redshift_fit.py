@@ -2,14 +2,102 @@
 
 import os
 import numpy as np
+from astropy.table import Table
 
 from besta.pipeline_modules.base_module import SpectraFitModule
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import spectrum
 from besta.logging import get_logger
-
+from besta.io import parse_table_format
+from numba import njit, prange
 logger = get_logger(__name__)
+
+
+@njit(parallel=True, fastmath=False)
+def compute_redshift_chi2_from_slices(
+    flux_model,
+    target_flux,
+    candidate_weights,
+    slice_starts,
+    slice_stops,
+    good_idx,
+    ):
+    """Compute the chi2 values for all redshift steps defined by the model slices.
+    
+    Description
+    -----------
+
+    The returned scales are the best-fit normalization factors for each redshift
+    step, which can be used to compute the best-fit model fluxes if needed.
+    
+    Parameters
+    ----------
+    flux_model : array-like
+        The model flux values.
+    target_flux : array-like
+        The target flux values.
+    candidate_weights : array-like
+        The weights for each pixel.
+    slice_starts : array-like
+        The starting indices for each redshift slice.
+    slice_stops : array-like
+        The stopping indices for each redshift slice.
+    good_idx : array-like
+        The indices of the good pixels.
+
+    Returns
+    -------
+    z_chi2 : array-like
+        The chi2 values for each redshift step.
+    z_scales : array-like
+        The best-fit normalization factors for each redshift step.
+    """
+    n_z = len(slice_starts)
+
+    z_chi2 = np.full(n_z, np.inf)
+    z_scales = np.full(n_z, np.nan)
+
+    # Loop over all redshift steps in parallel
+    for i in prange(n_z):
+        start = slice_starts[i]
+
+        numerator = 0.0
+        denominator = 0.0
+
+        for jj in range(len(good_idx)):
+            k = start + good_idx[jj]
+
+            f = flux_model[k]
+            t = target_flux[jj]
+            w = candidate_weights[jj]
+
+            numerator += w * f * t
+            denominator += w * f * f
+
+        if denominator <= 0.0:
+            continue
+
+        scale = numerator / denominator
+        z_scales[i] = scale
+
+        chi2 = 0.0
+
+        for jj in range(len(good_idx)):
+            k = start + good_idx[jj]
+
+            f = flux_model[k]
+            t = target_flux[jj]
+            w = candidate_weights[jj]
+
+            residual = scale * f - t
+            chi2 += w * residual * residual
+
+        # Normalise chi2 by the number of good pixels
+        if len(good_idx) > 0:
+            z_chi2[i] = chi2 / len(good_idx)
+
+    return z_chi2, z_scales
 
 class SpectraRedshiftFitModule(SpectraFitModule):
     """Fit stellar populations and kinematics directly from galaxy spectra."""
@@ -27,7 +115,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         **kwargs : dict
             Extra keyword arguments forwarded to ``SpectraFitModule``.
         """
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
 
         if options.has_value("redshift") and options["redshift"] != 0:
@@ -114,6 +202,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             )
         self.config["model_slices"] = model_slices
         self.config["model_start"] = np.array([s.start for s in model_slices])
+        self.config["model_stop"] = np.array([slc.stop for slc in model_slices], dtype=np.int64)
 
         # Likelihood values of all redshift stepsg.
         slice_redshifts = observed_wavelength[0] / model_wavelength[self.config["model_start"]] - 1.0
@@ -129,7 +218,10 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             # Check if the output file already exists to avoid overwriting previous results.
             if os.path.exists(self.z_loglike_path):
                 logger.info("Loading existing redshift log-likelihood profile from file.")
-                z, loglike = np.loadtxt(self.z_loglike_path, unpack=True)
+
+                format = parse_table_format(self.z_loglike_path)
+                t = Table.read(self.z_loglike_path, format=format)
+                z, loglike = t["redshift"].value, t["log_likelihood"].value
                 if np.array_equal(z, slice_redshifts):
                     self.z_loglike = loglike
                 else:
@@ -139,36 +231,27 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             f"Model wavelength range in rest frame: {self.config['ssp_model'].wavelength[model_start].to_value('AA'):.1f} - {self.config['ssp_model'].wavelength[model_stop-1].to_value('AA'):.1f} AA")
         logger.info(f"Number of redshift steps: {len(model_slices)} (z={z_max:.1f} to {z_min:.1f})")
 
-        w = np.ones_like(self.config["weights"])
-        if options.has_value("use_features"):
-            print(options["use_features"])
-            continuum, continuum_err = spectrum.estimate_continuum(
-                self.config["wavelength"].to_value("AA"),
-                self.config["flux"],
-                err=self.config["var"]**0.5,
-                weights=self.config["weights"],
-                knot_spacing=options.get_double("continuum_knot_spacing", default=200.0),
-                sigma_clip=options.get_double("continuum_sigma_clip", default=3.0),
-            )
-            self.config["continuum"] = continuum
-            self.config["continuum_err"] = continuum_err
-            # Favour features over/under continuum
-            w = (np.abs(self.config["flux"] - continuum) / continuum_err)**2
-            w = np.where(np.isfinite(w), w, 0.0)
-            w_sum = np.nansum(w)
-            if w_sum <= 0:
-                raise ValueError("Feature-based weights sum to zero; cannot perform redshift fit.")
-            w /= w_sum
-            logger.info("Using feature-based weights for redshift fitting.")
+        if options.get_bool("use_features", default=False):
+            self.get_feature_weights(options)
         else:
             logger.info("Using original weights for redshift fitting.")
 
-        self.config["sweep_weights"] = w * self.config["weights"] / self.config["norm_obs_var"]
+        w = self.config.get("feature_weights",
+                            np.ones_like(self.config["flux"], dtype=np.float32))
+        self.config["sweep_weights"] = np.where(
+            (w > 0) & np.isfinite(self.config["norm_obs_var"]),
+            w * self.config["weights"] / self.config["norm_obs_var"],
+            0.0
+        )
+        # This are used for the likelihood in combination with the variance
+        self.config["weights_orig"] = self.config["weights"].copy()
         self.config["weights"] *= w
+        self.config["good"] = self.config["sweep_weights"] > 0
+        self.config["good_idx"] = np.flatnonzero(self.config["good"]).astype(np.int64)
 
 
     @spectrum.legendre_decorator
-    def make_observable(self, block, parse=False):
+    def make_observable(self, block, parse=False, ):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
         sfh_model = self.config["sfh_model"]
@@ -178,45 +261,34 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         # Here we compute the luminosity by we call it flux and rescale later
         flux_model = sfh_model.model.compute_SED(
             self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
-        ).to_value("1e-16 erg / (s Angstrom)")
+        ).to_value(self._default_luminosity_units)
 
         # Apply dust extinction
         dust_model = self.config["extinction_law"]
         if dust_model is not None:
             flux_model = dust_model.apply_extinction(
                 self.config["ssp_model"].wavelength, flux_model,
-                a_v=block["dust.extinction", "a_v"]
+                a_v=block["dust.attenuation", "a_v"]
             ).value
 
         w = self.config["sweep_weights"]
-        mask = w > 0
-        norm_obs_flux = self.config["norm_obs_flux"]
-        z_chi2 = np.full(len(self.config["model_slices"]), np.inf)
-        z_scales = np.full(len(self.config["model_slices"]), np.nan)
+        good = self.config["good"]
+        good_idx = self.config["good_idx"]
+        candidate_weights = w[good]
+        slc_starts = self.config["model_start"]
+        slc_stops = self.config["model_stop"]
 
-        # Sweep over all target slices using the same weighted least-squares
-        # scale that is applied to the selected model below.
-        for i, slc in enumerate(self.config["model_slices"]):
-            candidate_flux = flux_model[slc]
-            good = (
-                mask
-                & np.isfinite(candidate_flux)
-                & np.isfinite(norm_obs_flux)
-                & np.isfinite(w)
-            )
-            if not np.any(good):
-                continue
-            candidate_flux = candidate_flux[good]
-            candidate_weights = w[good]
-            target_flux = norm_obs_flux[good]
-            denominator = np.nansum(candidate_weights * candidate_flux**2)
-            if denominator <= 0:
-                continue
-            scale = np.nansum(candidate_weights * candidate_flux * target_flux) / denominator
-            z_scales[i] = scale
-            z_chi2[i] = np.nansum(
-                candidate_weights * (candidate_flux * scale - target_flux) ** 2
-            )
+        norm_obs_flux = self.config["norm_obs_flux"]
+        target_flux = norm_obs_flux[good]
+
+        z_chi2, z_scales = compute_redshift_chi2_from_slices(
+                            flux_model,
+                            target_flux,
+                            candidate_weights,
+                            slc_starts,
+                            slc_stops,
+                            good_idx,
+                        )
 
         # Keep track of the likelihood values for all redshift steps.
         self.z_loglike = np.maximum(self.z_loglike, -0.5 * z_chi2)
@@ -233,14 +305,23 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             z_best,
             z_chi2[best_fit_slice_index],
         )
-        # Re-scale model flux to match the observed flux level, and convert to physical units for
-        # luminosity distance calculation. The stellar mass is then inferred from the normalization.
-        # dl_sq = cosmology.luminosity_distance(z_best).to_value("cm")**2
-        # flux_model /= 4 * np.pi * dl_sq
-        n_pix = self.config["flux"].size
-        normalization = z_scales[best_fit_slice_index] * self.config["norm_obs_flux_scale"]
+
+        # TODO: I am not sure if this will bias the likelihood
+        # Use the original weights to estimate the normalization
+        w = self.config["weights_orig"]
+        candidate_flux = flux_model[best_fit_index : best_fit_index + w.size]
+        denominator = np.nansum(w[good] * candidate_flux[good]**2)
+
+        if denominator <= 0:
+            logger.warning(
+                f"Denominator for redshift step {best_fit_slice_index} is non-positive; skipping this step."
+            )
+            return np.full_like(candidate_flux, np.nan), w
+
+        scale = np.nansum(w[good] * candidate_flux[good] * target_flux) / denominator
+        normalization = scale * self.config["norm_obs_flux_scale"]        
         #block["extra", "stellar_mass"] = np.log10(normalization) + 10
-        return flux_model[best_fit_index : best_fit_index + n_pix] * normalization, self.config["weights"]
+        return candidate_flux * normalization, self.config["weights"]
 
     def execute(self, block):
         """Function executed by sampler
@@ -252,31 +333,34 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         if not valid:
             # To track invalid samples users can set debug=T in the .ini file
             block[section_names.likelihoods, self.like_name] = -1e20 * penalty
-            block["extra", "stellar_mass"] = np.nan
+            # block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
-        var = self.config["var"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
+        ivar_eff = self.get_effective_ivar(block)
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
-                             var[good_pixels],
-                             weights=weights[good_pixels])
+                     ivar_eff[good_pixels] * weights[good_pixels],
+                     include_norm=True)
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
         return 0
 
     def cleanup(self):
-        """Persist the redshift likelihood profile if requested."""
+        """Save the redshift likelihood profile if requested."""
         if self.save_z_loglike:
             logger.info(f"Saving redshift log-likelihood profile to {self.z_loglike_path}")
-            np.savetxt(
-                self.z_loglike_path,
-                np.column_stack(
-                    (self.config["slice_redshifts"], self.z_loglike)),
-                    header="redshift log_likelihood")
 
+            t = Table(
+                [self.config["slice_redshifts"], self.z_loglike],
+                names=["redshift", "log_likelihood"],
+                meta={"description": "Redshift log-likelihood profile from SpectraRedshiftFitModule"}
+            )
+            # Guess the format from the file extension
+            format = parse_table_format(self.z_loglike_path)
+            t.write(self.z_loglike_path, format=format, overwrite=True)
 
 
 def setup(options):

@@ -27,7 +27,7 @@ class FullSpectralFitModule(SpectraFitModule):
         **kwargs : dict
             Extra keyword arguments forwarded to ``SpectraFitModule``.
         """
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
 
         # Check for the necessary options and prepare the models
@@ -39,6 +39,8 @@ class FullSpectralFitModule(SpectraFitModule):
         self.prepare_sfh_model(options)
         self.prepare_extinction_law(options)
         self.prepare_legendre_polynomials(options)
+        self.prepare_losvd_kernel(options)
+        self._losvd_kernel = self.config["losvd_kernel"]
 
     @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
@@ -50,51 +52,53 @@ class FullSpectralFitModule(SpectraFitModule):
         luminosity_model = sfh_model.model.compute_SED(
             self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
         )
-        flux_model = 1e10 * luminosity_model.to_value("1e-16 erg / (s Angstrom)"
+        flux_model = 1e10 * luminosity_model.to_value(self._default_luminosity_units
         ) / self.config["dl_sq"]
 
+        # Apply dust extinction in the rest frame, before LOSVD convolution.
+        dust_model = self.config["extinction_law"]
+        if dust_model is not None:
+            flux_model = dust_model.apply_extinction(
+                self.config["ssp_model"].wavelength,
+                flux_model,
+                a_v=block["dust.attenuation", "a_v"],
+            ).value
+
         # Kinematics
-        velscale = self.config["velscale"]
-        # Kinematics
-        sigma_pixel = block["kinematics", "los_sigma"] / velscale
-        veloffset_pixel = block["kinematics", "los_vel"] / velscale
-        # Build the kernel. TOO SLOW? Initialise only once?
-        kernel_model = kinematics.GaussHermite(
-            4,
-            mean=veloffset_pixel,
-            stddev=sigma_pixel,
-            h3=block["kinematics", "los_h3"],
-            h4=block["kinematics", "los_h4"],
-        )
-        kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
-                                      None) + 1
-        kernel = kinematics.get_losvd_kernel(
-            kernel_model,
-            x_size=kernel_n_pixel
-        )
+        self._losvd_kernel.parse_parameters(block)
         # Perform the convolution
-        flux_model = kinematics.convolve_spectra_with_kernel(flux_model, kernel)
+        flux_model = self._losvd_kernel.convolve(flux_model)
         # Track those pixels at the edges
         mask = flux_model > 0
-        mask[: int(10 * sigma_pixel)] = False
-        mask[-int(10 * sigma_pixel) :] = False
+        mask[:self._losvd_kernel.size // 2] = False
+        mask[-self._losvd_kernel.size // 2:] = False
         # Sample to observed resolution
         extra_pixels = self.config["extra_pixels"]
         pixels = slice(extra_pixels, -extra_pixels)
         flux_model = flux_model[pixels]
         mask = mask[pixels]
 
-        # Apply dust extinction
-        dust_model = self.config["extinction_law"]
-        flux_model = dust_model.apply_extinction(
-            self.config["wavelength"], flux_model, a_v=block["dust.extinction", "a_v"]
-        ).value
-
         weights = self.config["weights"] * mask
-        normalization = np.nanmedian(
-            self.config["flux"][weights > 0] / flux_model[weights > 0]
-        )
-        block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        # Compute normalization and stellar mass
+        if sfh_model.use_mass_normalization:
+            normalization = np.nanmedian(
+                self.config["flux"][weights > 0] / flux_model[weights > 0]
+            )
+            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        else:
+            normalization = 1.0
+            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
+                sfh_model.today
+            ).to_value("Msun")
+
+        # Save SFH mass-fraction times
+        if self.config.get("save_t_frac_at", False):
+            for frac in self.config.get("t_frac_at", []):
+                self.get_t_frac_at(block, self.config["sfh_model"], frac)
+        if self.config.get("save_ssfr_over_tau", False):
+            for tau in self.config.get("ssfr_tau", []):
+                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
+
         return flux_model * normalization, weights
 
     def execute(self, block):
@@ -103,24 +107,37 @@ class FullSpectralFitModule(SpectraFitModule):
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
         """
-        valid, penalty = self.config["sfh_model"].parse_datablock(block)
+        valid, prior_penalty = self.config["sfh_model"].parse_datablock(block)
+        # TODO: Temporary fix
+        if prior_penalty is None:
+            prior_penalty = 0.0
         if not valid:
             # To track invalid samples users can set debug=T
             # logger.warning("Invalid sample")
-            block[section_names.likelihoods, self.like_name] = -1e20 * penalty
+            logger.debug("Invalid sample: %s", block)
+            block[section_names.likelihoods, self.like_name] = prior_penalty
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
-        cov = self.config["var"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
+        if good_pixels.sum() == 0:
+            logger.warning("No valid pixels for likelihood calculation.")
+            block[section_names.likelihoods, self.like_name] = -1e20
+            block["extra", "stellar_mass"] = np.nan
+            return 0
+
+        ivar_eff = self.get_effective_ivar(block)
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
-                             cov[good_pixels],
-                             weights=weights[good_pixels])
+                             ivar_eff[good_pixels] * weights[good_pixels],
+                             include_norm=True)
         # Final posterior for sampling
-        block[section_names.likelihoods, self.like_name] = like
+        block[section_names.likelihoods, self.like_name] = like + prior_penalty
+
+        if self.config.get("save_chi2", False):
+            block["extra", self.like_name + "_chi2"] = -2 * like
         return 0
 
     def cleanup(self):

@@ -5,19 +5,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, List
 import warnings
+from numba import njit, prange
 
 import numpy as np
 from besta.logging import get_logger
 
 logger = get_logger(__name__)
-
-try:
-    from numba import njit, prange
-
-    NUMBA_OK = True
-except Exception:
-    NUMBA_OK = False
-    logger.warning("numba could not be imported")
 
 # ------------------------------- utilities -------------------------------
 
@@ -90,7 +83,7 @@ def _std_norm_cdf(x: np.ndarray) -> np.ndarray:
 
 class Prior(ABC):
     """
-    Abstract prior interface over model targets.
+    Prior base class.
 
     A prior returns log p(theta) for each model row. It may depend on
     specific target columns (e.g., redshift) and optionally on other
@@ -308,7 +301,7 @@ class EmpiricalHistogramPrior1D(Prior):
     Parameters
     ----------
     target_col : int
-        Index of the target column to build the prior on (e.g., redshift).
+        Index of the target column to build the prior.
     edges : ndarray, shape (K+1,)
         Histogram bin edges. Must cover the support of the target.
     density_floor : float, optional
@@ -334,14 +327,19 @@ class EmpiricalHistogramPrior1D(Prior):
         -------
         self : EmpiricalHistogramPrior1D
         """
+
+        logger.debug("Fitting EmpiricalHistogramPrior 1D")
+        # Select the target column
         t = targets[:, self.target_col]
+        # Compute the histogram
         hist, _ = np.histogram(t, bins=self.edges, weights=weights, density=False)
-        mass = hist.astype(float)
-        mass = (
-            mass / np.sum(mass)
-            if np.sum(mass) > 0
-            else np.full_like(mass, 1.0 / mass.size)
-        )
+        mass = hist * np.diff(self.edges)
+        # Normalise histogram
+        norm = np.sum(mass)
+        if norm > 0:
+            mass /= norm
+        else:
+            mass = np.full_like(mass, 1.0 / mass.size)
         mass = np.clip(mass, self.density_floor, None)
         self._logp_per_bin = np.log(mass)
         return self
@@ -350,6 +348,7 @@ class EmpiricalHistogramPrior1D(Prior):
         if not hasattr(self, "_logp_per_bin"):
             raise RuntimeError("Prior not fitted. Call fit_from_targets first.")
         t = targets[:, self.target_col]
+        # Bin targets using the pre-defined bins
         j = np.digitize(t, self.edges) - 1
         j = np.clip(j, 0, self._logp_per_bin.size - 1)
         return self._logp_per_bin[j]
@@ -358,17 +357,17 @@ class EmpiricalHistogramPrior1D(Prior):
 @dataclass
 class EmpiricalFlatteningPriorND(Prior):
     """
-    Empirical flattening prior over several target columns.
+    Empirical flattening prior over arbitrary target columns.
 
     This prior uses the model grid itself to estimate the (possibly
-    non-flat) distribution of a set of parameters and builds a prior
+    non-uniform) distribution of a set of parameters and builds a prior
     that counteracts those inhomogeneities.
 
     Two modes are provided:
 
     - 'factorised': build 1-D histograms for each column separately and
       form a product prior over dimensions. This approximately flattens
-      the *marginal* distributions of those parameters.
+      the marginal distributions of those parameters.
 
     - 'joint': build a joint N-D histogram over all selected columns and
       assign prior mass proportional to 1 / N_k for each occupied
@@ -433,41 +432,41 @@ class EmpiricalFlatteningPriorND(Prior):
         -------
         self : EmpiricalFlatteningPriorND
         """
+        logger.debug("Fitting EmpiricalHistogramPriorND")
         t = targets[:, self.target_cols]  # (N, D)
+        # Grid dimensions
         D = t.shape[1]
 
         if weights is not None and weights.shape[0] != t.shape[0]:
             raise ValueError("weights must have shape (N,) if provided.")
 
         if self.mode == "factorised":
+            logger.debug("Using 'factorised' mode (per-dim prior)")
             # One histogram per dimension, store log inverse-mass per bin
             log_inv_mass_list = []
             for d in range(D):
                 edges = self.edges_list[d]
+                # get all parameter values
                 td = t[:, d]
-
+                # compute histogram
                 counts, _ = np.histogram(td, bins=edges, weights=weights, density=False)
-                counts = counts.astype(float)
-
                 total = np.sum(counts)
                 if total <= 0:
                     raise RuntimeError(
-                        f"No models in any bin for dimension {d}; cannot fit prior."
+                        f"No models in any user-provided bin for dimension {d}; cannot fit prior."
                     )
-
+                # Clip prior to prevent zero division
                 counts = np.clip(counts, self.count_floor, None)
 
-                # Define per-bin mass proportional to 1 / counts
+                # Define per-bin prior mass proportional to 1 / counts
                 inv_counts = 1.0 / counts
                 inv_counts /= np.sum(inv_counts)
-
-                # Store log(mass_d per bin) or directly log(1/count_d) up to a constant
-                # For our purpose, log prior for a model in bin j_d is sum_d log(inv_counts_d[j_d])
                 log_inv_mass_list.append(np.log(inv_counts))
 
             self._log_inv_mass_list = log_inv_mass_list
 
         else:  # mode == 'joint'
+            logger.debug("Using 'joint' mode (multi-dim prior)")
             # Build joint N-D histogram
             bin_indices = []
             bin_sizes = []
@@ -480,12 +479,12 @@ class EmpiricalFlatteningPriorND(Prior):
                 bin_indices.append(j)
                 bin_sizes.append(edges.size - 1)
 
-            bin_indices = np.stack(bin_indices, axis=0)  # (D, N)
+            bin_indices = np.stack(bin_indices, axis=0)
 
             # Flatten to 1-D indices for bincount
             linear_indices = np.ravel_multi_index(
                 bin_indices, dims=tuple(bin_sizes)
-            )  # (N,)
+            )
 
             counts_flat = np.bincount(
                 linear_indices,
@@ -561,7 +560,7 @@ class EmpiricalFlatteningPriorND(Prior):
 
 
 class ObservableDependentPrior(Prior):
-    """TODO"""
+    """Base class for priors that depend on observables."""
 
     def fit_from_grid(self):
         raise NotImplementedError()
@@ -570,14 +569,16 @@ class ObservableDependentPrior(Prior):
 @dataclass
 class MagDependentRedshiftPrior(ObservableDependentPrior):
     """
-    Magnitude-dependent redshift prior p(z | m) from a 2-D histogram.
+    Magnitude-dependent redshift prior, i.e. likelihood
+    of an object with a magnitude ``m`` being detected at
+    redshift ``z``.
 
     Parameters
     ----------
     z_col : int
         Index of redshift in targets.
     mag_observable_index : int
-        Index of magnitude in observables (e.g., VIS magnitude column).
+        Index of magnitude in observables.
     z_edges : ndarray
         Bin edges in redshift.
     m_edges : ndarray
@@ -598,6 +599,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
     z_edges: np.ndarray
     m_edges: np.ndarray
     density_floor: float = 1e-12
+    # TODO: allow for optional user-provided prior
 
     def fit_from_grid(
         self,
@@ -606,7 +608,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         weights: Optional[np.ndarray] = None,
     ) -> "MagDependentRedshiftPrior":
         """
-        Fit conditional histogram from the model grid.
+        Fit conditional histogram from input dataset.
 
         Parameters
         ----------
@@ -623,19 +625,19 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         H, z_edges, m_edges = np.histogram2d(
             z, m, bins=[self.z_edges, self.m_edges], weights=weights
         )
-        # normalise each magnitude column to sum 1 over z
+        # compute the conditional distribution
         colsum = H.sum(axis=0, keepdims=True)
         colsum[colsum == 0] = 1.0
-        P = H / colsum
-        P = np.clip(P, self.density_floor, None)
-        self._logP_z_given_m = np.log(P)  # shape (Kz, Km)
+        p_z_given_m = H / colsum
+        p_z_given_m = np.clip(p_z_given_m, self.density_floor, None)
+        self._logP_z_given_m = np.log(p_z_given_m)
         return self
 
     def log_prob_for_models(
         self, targets: np.ndarray, observables: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
-        Evaluate log p(z | m) per model row.
+        Evaluate :math:`log p(z | m)` per model row.
 
         Parameters
         ----------
@@ -653,6 +655,7 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
             raise ValueError("observables must be provided to evaluate p(z|m)")
         z = targets[:, self.z_col]
         m = observables[:, self.mag_observable_index]
+        # Interpolate input magnitudes
         iz = np.clip(
             np.digitize(z, self.z_edges) - 1, 0, self._logP_z_given_m.shape[0] - 1
         )
@@ -662,40 +665,17 @@ class MagDependentRedshiftPrior(ObservableDependentPrior):
         return self._logP_z_given_m[iz, im]
 
 
-class HierarchicalPrior(Prior):
-    """Abstract base class for priors controlled by learnable hyperparameters."""
-
-    def __init__(self, hyperparams: dict):
-        self.hyperparams = hyperparams
-
-    def update_hyperparams(self, new_values: dict) -> None:
-        self.hyperparams.update(new_values)
-
-    @abstractmethod
-    def log_prob_for_models(self, targets: np.ndarray, **kwargs) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    def fit_from_data(
-        self,
-        targets: np.ndarray,
-        observables: np.ndarray,
-        weights: np.ndarray | None = None,
-    ) -> None:
-        pass
-
-
 @dataclass
 class CompositePrior(Prior):
-    """
+    r"""
     Composite prior combining multiple target-only Priors.
 
     The total log prior is defined as a weighted sum of component
     log priors:
 
-        log p_total(model) = sum_i w_i * log p_i(model)
+        :math:`\log p_{total}(model) = sum_i w_i * \log p_i(model)`
 
-    where each p_i is a Prior that does *not* depend on observables.
+    where each p_i is a Prior that does not depend on observables.
 
     Parameters
     ----------
@@ -715,6 +695,7 @@ class CompositePrior(Prior):
 
     def __post_init__(self):
         self.priors = list(self.priors)
+        logger.debug(f"Setting up CompositePrior with {len(self.priors)} priors")
         if not self.priors:
             raise ValueError("CompositePrior requires at least one component prior.")
 
@@ -726,6 +707,7 @@ class CompositePrior(Prior):
                 )
 
         if self.weights is not None:
+            logger.debug("Using user-provided relative prior weights")
             if len(self.weights) != len(self.priors):
                 raise ValueError(
                     "weights must have the same length as priors "
@@ -771,20 +753,22 @@ class CompositePrior(Prior):
             warnings.warn(
                 "All weights were zero in CompositePrior; returning flat prior."
             )
+            logger.warning(
+                "All weights were zero in CompositePrior; returning flat prior."
+            )
             return np.zeros(N, dtype=float)
-
         return logp_total
 
 
 @dataclass
 class ObservableCompositePrior(ObservableDependentPrior):
-    """
-    Composite prior combining Priors, including observable-dependent ones.
+    r"""
+    Same as :class:`CompositePrior`, but including :class:`ObservableDependentPrior`.
 
     The total log prior is defined as a weighted sum of component
     log priors:
 
-        log p_total(model) = sum_i w_i * log p_i(model)
+        :math:`\log p_{total}(model) = sum_i w_i * \log p_i(model)`
 
     Components can be:
       - Plain Prior (target-only), evaluated as
@@ -819,12 +803,15 @@ class ObservableCompositePrior(ObservableDependentPrior):
 
     def __post_init__(self):
         self.priors = list(self.priors)
+        logger.debug(f"Setting up CompositePrior with {len(self.priors)} priors")
+
         if not self.priors:
             raise ValueError(
                 "ObservableCompositePrior requires at least one component prior."
             )
 
         if self.weights is not None:
+            logger.debug("Using user-provided relative prior weights")
             if len(self.weights) != len(self.priors):
                 raise ValueError(
                     "weights must have the same length as priors "
@@ -899,7 +886,7 @@ class ObservableCompositePrior(ObservableDependentPrior):
 
 class Likelihood(ABC):
     """
-    Abstract likelihood interface p(x | model).
+    Base likelihood class representing :math:`p(x | model)`.
 
     Methods
     -------
@@ -935,10 +922,6 @@ class GaussianProductLikelihood(Likelihood):
     """
     Independent per-dimension Gaussian product likelihood.
 
-    The likelihood is proportional to the product over j of
-    N(x_j | X_ij, h_j^2), where h_j is derived from sigma_native with
-    an optional floor.
-
     Parameters
     ----------
     bandwidth_floor : float, optional
@@ -953,8 +936,8 @@ class GaussianProductLikelihood(Likelihood):
     def log_likelihood(
         self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
     ) -> np.ndarray:
+        # truncate prior
         h = np.maximum(self.scale * sigma_native, self.bandwidth_floor)
-        # broadcast to (Nc, P)
         diff = X_models - x_native[None, :]
         var = h[None, :] ** 2
         # sum of 1-D logpdfs
@@ -965,66 +948,33 @@ class GaussianProductLikelihood(Likelihood):
 
 
 @dataclass
-class CensoredSizeLikelihood(Likelihood):
+class SplitGaussianProductLikelihood(Likelihood):
+    r"""Independent per-dimension split Gaussian likelihood
+
+    The likelihood along each dimension is given by
+
+    .. math:
+
+        \mathcal{L} = \mathcal{N}(x | \mu, \sigma_L),\, if x\leq\mu\\
+        \mathcal{L} = \mathcal{N}(x | \mu, \sigma_R),\, if x>\mu
+
+    and the total likelihood is the product along all dimensions.
     """
-    Photometry-only Gaussian product with a left-censored size factor.
-
-    This is useful when the apparent size is below a reliability floor
-    (e.g., PSF or measurement threshold). The photometric part is a
-    Gaussian product over selected photometry indices. The size part
-    adds a log CDF factor log Phi((s_min - s_model) / h_s), where s is
-    log10(Re) and h_s is derived from sigma_native[size_index].
-
-    Parameters
-    ----------
-    phot_indices : Sequence[int]
-        Indices of observable columns to include in the Gaussian product
-        (typically colours and anchor magnitude).
-    size_index : int
-        Index of the size observable column (e.g., log10(Re)).
-    s_min : float
-        Left-censoring threshold in the same units as the size observable.
-    bandwidth_floor : float, optional
-        Minimum bandwidth per dimension in native units. Default 0.0.
-    scale : float, optional
-        Multiplicative scale applied to sigma_native. Default 1.0.
-    """
-
-    phot_indices: Sequence[int]
-    size_index: int
-    s_min: float
-    bandwidth_floor: float = 0.0
-    scale: float = 1.0
+    bandwith_floor: float = 0.0
+    scale_left: float = 1.0
+    scale_right: float = 1.0
 
     def log_likelihood(
         self, x_native: np.ndarray, sigma_native: np.ndarray, X_models: np.ndarray
     ) -> np.ndarray:
-        # Photometry part
-        phot_idx = np.asarray(self.phot_indices, dtype=int)
-        x_ph = x_native[phot_idx]
-        sig_ph = np.maximum(self.scale * sigma_native[phot_idx], self.bandwidth_floor)
-        Xm_ph = X_models[:, phot_idx]
-        diff = Xm_ph - x_ph[None, :]
-        var = sig_ph[None, :] ** 2
-        logL_ph = -0.5 * (
-            np.sum(np.log(2.0 * np.pi * var), axis=1) + np.sum(diff**2 / var, axis=1)
-        )
-
-        # Censored size factor: log Phi((s_min - s_model)/h_s)
-        h_s = max(self.scale * sigma_native[self.size_index], self.bandwidth_floor)
-        s_model = X_models[:, self.size_index]
-        z = (self.s_min - s_model) / h_s
-        # avoid log(0)
-        cdf = np.clip(_std_norm_cdf(z), 1e-300, 1.0)
-        logL_sz = np.log(cdf)
-
-        return logL_ph + logL_sz
+        # truncate prior
+        raise NotImplementedError("Class not implemented")
 
 
 @dataclass
 class CompositeLikelihood(Likelihood):
     """
-    Sum of multiple likelihood terms (log-likelihoods add).
+    Sum of multiple likelihood terms.
 
     Parameters
     ----------
@@ -1111,7 +1061,7 @@ def posterior_over_models(
     return w
 
 
-# Numba-dedicated likelihood
+# Numba-dedicated likelihood for increased performance
 
 
 @njit(parallel=True, fastmath=True, cache=True)
@@ -1122,17 +1072,14 @@ def _quadform_diag_parallel(X, x, h):
     for i in prange(N):
         s = 0.0
         Xi = X[i]
-        # unrolled-style simple loop lets numba vectorise well
         for j in range(P):
             d = (Xi[j] - x[j]) * invh[j]
             s += d * d
         out[i] = s
-    return out  # squared Mahalanobis with diagonal covariance
-
+    return out
 
 @njit(parallel=True, fastmath=True, cache=True)
 def _loglike_gaussprod_diag(X, x, h):
-    # log L_i = -0.5 * sum_j ((X_ij - x_j)/h_j)^2   (constants drop)
     q = _quadform_diag_parallel(X, x, h)
     return -0.5 * q
 
@@ -1154,10 +1101,7 @@ class NumbaGaussianProductLikelihood(GaussianProductLikelihood):
         self.prefer_batch = prefer_batch
 
     def log_likelihood(self, x_native, sigma_native, X_models):
-        if not NUMBA_OK:
-            return super().log_likelihood(x_native, sigma_native, X_models)
-
-        # Expect C-contiguous float64 for best performance
+        # C-contiguous float64 for best performance (https://stackoverflow.com/questions/67784563/how-to-make-two-arrays-contiguous-so-that-numba-can-speed-up-np-dot)
         x = np.ascontiguousarray(x_native, dtype=np.float64)
         X = np.ascontiguousarray(X_models, dtype=np.float64)
         sigma = np.ascontiguousarray(sigma_native, dtype=np.float64)

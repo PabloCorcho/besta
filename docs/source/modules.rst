@@ -30,7 +30,3 @@ Spectroscopic fitting with a galaxy (multi-component) emission model.
 galaxy_photometry
 ^^^^^^^^^^^^^^^^^
 Photometric fitting with a galaxy (multi-component) emission model.
-
-sfh_photometry_grid
-^^^^^^^^^^^^^^^^^^^
-SFH parameter inference from photometry using direct grid interpolation.

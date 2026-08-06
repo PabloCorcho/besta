@@ -1,8 +1,5 @@
 """
 Model grid container and fitting machinery.
-
-This module defines the ModelGrid class, which stores a grid of models with
-their parameters and provides methods for fitting and evaluating these models.
 """
 
 from __future__ import annotations
@@ -26,7 +23,7 @@ import h5py
 from scipy.spatial import cKDTree
 from scipy.stats import gaussian_kde
 
-from besta.grid.prob import (
+from .prob import (
     Prior,
     FlatPrior,
     ObservableDependentPrior,
@@ -34,17 +31,14 @@ from besta.grid.prob import (
     GaussianProductLikelihood,
     posterior_over_models as posterior_over_models_fn,
 )
-from besta.postprocess import (
-    enclosed_fraction_map,
-    pit_from_discrete_posterior,
-    pdf_stats,
-    photoz_metrics,
-    weighted_quantiles,
-)
-
 from .transforms import LinearStandardiser
 
-from besta.utils import available_memory_bytes
+from besta.postprocess import (
+    enclosed_fraction_map,
+    pdf_stats,
+    weighted_quantile,
+)
+
 from besta.logging import get_logger
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -53,8 +47,10 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 logger = get_logger(__name__)
 
+# ------------- Helper methods ---------------
 
 def _guess_slices(n_objects, n_observables, n_jobs, tasks_per_worker=6):
+    """Helper function for guessing the amount of parallel fit slices."""    
     # fewer, larger slices when P is large
     base_tasks = n_jobs * tasks_per_worker
     scale = max(1, n_observables // 8)
@@ -322,6 +318,7 @@ class ModelGrid:
         default=None, init=False, repr=False
     )
 
+    # Model interpolation
     _kdtree: Optional["cKDTree"] = field(default=None, init=False, repr=False)
     _kdtree_standardized: Optional[bool] = field(default=None, init=False, repr=False)
 
@@ -611,7 +608,7 @@ class ModelGrid:
         self._kdtree_standardized = standardize
         return self._kdtree
 
-    def in_boundaries(self, targets_query: np.ndarray) -> np.ndarray:
+    def _in_boundaries(self, targets_query: np.ndarray) -> np.ndarray:
         """
         Check which target queries are within the model grid boundaries.
 
@@ -650,11 +647,17 @@ class ModelGrid:
         ridge: float = 1e-8,  # Tikhonov regularization for stability
     ) -> np.ndarray:
         """
-        Interpolate observables for arbitrary target values using cached KDTree.
+        Interpolate observables for arbitrary target values using a KDTree.
 
-        mode="nearest"     : nearest-neighbour lookup
-        mode="idw"         : inverse-distance weighted KNN
-        mode="local_linear": weighted local affine fit (exact for linear functions)
+        Parameters
+        ----------
+        targets_query: np.nddarray
+            Target values to interpolate.
+        method: str
+            Optional interpolation method. Currently the methods supported are: 
+            - "nearest" (select nearest-neighbour candidate)
+            - "idw"     (inverse-distance weighted KNN)
+            - "local_linear" (weighted local affine fit, only exact for linear functions)
         """
         tq = np.atleast_2d(np.asarray(targets_query, dtype=float))
         if tq.shape[1] != self.n_targets:
@@ -670,7 +673,7 @@ class ModelGrid:
                 f"Unknown mode={mode!r} (use 'nearest', 'idw' or 'local_linear')."
             )
 
-        bad_q = ~np.isfinite(tq).all(axis=1) | ~self.in_boundaries(tq)
+        bad_q = ~np.isfinite(tq).all(axis=1) | ~self._in_boundaries(tq)
         out = np.full((tq.shape[0], self.n_observables), fill_value, dtype=float)
         if bad_q.all():
             return out
@@ -2354,7 +2357,7 @@ class GridFitter:
         q = np.zeros((D, 3))
         mu = np.zeros(D)
         for d in range(D):
-            q[d] = weighted_quantiles(Y[:, d], w, quantiles)
+            q[d] = weighted_quantile(Y[:, d], w, quantiles)
             mu[d] = np.sum(w * Y[:, d])
 
         # Diagonals
@@ -2363,7 +2366,7 @@ class GridFitter:
             ax = axes[i, i]
             bi = bins_list[i]
             if isinstance(bi, int):
-                lo, mid, hi = weighted_quantiles(Y[:, i], w, (0.16, 0.5, 0.84))
+                lo, mid, hi = weighted_quantile(Y[:, i], w, (0.16, 0.5, 0.84))
                 lo = lo if np.isfinite(lo) else np.nanmin(Y[:, i])
                 hi = hi if np.isfinite(hi) else np.nanmax(Y[:, i])
                 min_v = max(mid - kappa_sigma_edges * (mid - lo), Y[:, i].min())

@@ -16,6 +16,15 @@ class TestPipelineManagerFit(unittest.TestCase):
     def setUpClass(cls):
         # Setup stuff
 
+        # Remove stale artifacts so each run uses the current test configuration.
+        for path in [
+            "./FullSpectralFit_auto.ini",
+            "./full_fit_exponential_sfh.txt",
+            "./full_fit_exponential_sfh.maxlike.txt",
+        ]:
+            if os.path.exists(path):
+                os.remove(path)
+
         print("Creating test spectra using an exponential SFH")
         # Use the default SSP from PST
         ssp = PopStar(IMF="cha")
@@ -33,7 +42,7 @@ class TestPipelineManagerFit(unittest.TestCase):
             [ssp.wavelength, np.random.normal(sed, sed * 0.01), sed * 0.01]).T)
     
         # Create values file
-        text = """[dust.extinction]
+        text = """[dust.attenuation]
         a_v = 0 0 1
         [stars.sfh]
         alpha_powerlaw = 0 1 10
@@ -44,6 +53,8 @@ class TestPipelineManagerFit(unittest.TestCase):
         los_sigma = 50 100 500
         los_h3 = 0
         los_h4 = 0
+        [noise]
+        beta = 0.1 1.0 10
         """
         with open("values.ini", "w") as file:
             file.write(text)
@@ -96,11 +107,13 @@ class TestPipelineManagerFit(unittest.TestCase):
             "quiet": "F",
             "timing": "T",
             "debug": "T",
-            "extra_output": "extra/stellar_mass"
+            "extra_output": "extra/stellar_mass extra/t_frac_at_0.5000 extra/t_frac_at_0.9000 extra/t_frac_at_0.9900",
         },
 
         "FullSpectralFit": {
                 "file": FullSpectralFitModule.get_path(),
+                "profile": True,
+                "likelihood_method": "numba",
                 "redshift": 0.0,
                 "inputSpectrum": "./test_spectra_exp_sfh.dat",
                 #"mask": "./a2744_65_mask.txt",
@@ -109,8 +122,11 @@ class TestPipelineManagerFit(unittest.TestCase):
                 "SSPDir": "None",
                 "wlRange": [3500.0, 9000.0],
                 "SFHModel": "ExponentialSFH",
-                "velscale": 50.0,
+                "velscale": 100.0,
                 "ExtinctionLaw": "ccm89",
+                "use_features": "F",
+                "save_t_frac_at": [0.5, 0.9, 0.99],
+                "NoiseModel": "MultiplicativeNoiseModel",
                 }}
 
         t0 = time()

@@ -3,6 +3,7 @@ import unittest
 import os
 import numpy as np
 
+from requests.exceptions import ConnectTimeout
 from cosmosis import DataBlock
 
 from besta.pipeline_modules import FullSpectralFitModule, GalaxySpectraModule, GalaxyPhotometryModule
@@ -56,10 +57,11 @@ class TestPipelineModule(unittest.TestCase):
                 "SFHModel": "ExponentialSFH",
                 "velscale": 200.0,
                 "ExtinctionLaw": "ccm89",
+                "save_chi2": True 
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust.attenuation', 'a_v'] = 0
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -70,6 +72,7 @@ class TestPipelineModule(unittest.TestCase):
 
         module = module(config)
         self.assertFalse(module.execute(block))
+        self.assertTrue(block["extra", module.like_name + "_chi2"])
         print("Module successfully executed")
 
     def test_galaxy_spectra(self):
@@ -88,10 +91,11 @@ class TestPipelineModule(unittest.TestCase):
                 "velscale": 200.0,
                 "DustAttenuation": True,
                 "ExtinctionLaw": "ccm89",
+                "save_ssfr_over_tau": [0.1, 1.0],
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust.attenuation', 'a_v'] = 0.5
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -102,9 +106,14 @@ class TestPipelineModule(unittest.TestCase):
 
         module = module(config)
         self.assertFalse(module.execute(block))
+        self.assertEqual(
+            module.config["galaxy"].dust_attenuation.a_v.to_value(), 0.5
+        )
         flux_model, normalization = module.make_observable(block, parse=True)
         self.assertTrue(np.isfinite(flux_model).all())
         self.assertTrue(np.isfinite(normalization).all())
+        self.assertTrue(np.isfinite(block["extra", "ssfr_over_tau_0.1000"]))
+        self.assertTrue(np.isfinite(block["extra", "ssfr_over_tau_1.0000"]))
         print("Module successfully executed")
 
     def test_galaxy_photometry(self):
@@ -123,7 +132,7 @@ class TestPipelineModule(unittest.TestCase):
             }}
 
         block = DataBlock()
-        block['dust.extinction', 'a_v'] = 0
+        block['dust.attenuation', 'a_v'] = 0.5
         block['kinematics', 'los_vel'] = 0
         block['kinematics', 'los_sigma'] = 100.
         block['kinematics', 'los_h3'] = 0
@@ -132,8 +141,15 @@ class TestPipelineModule(unittest.TestCase):
         block['stars.sfh', 'alpha_powerlaw'] = 1
         block['stars.sfh', 'ism_metallicity_today'] = 0.02
 
-        module = module(config)
+        try:
+            module = module(config)
+        except ConnectTimeout as exc:
+            print("SVO filter query probably failed: skipping")
+            return
         self.assertFalse(module.execute(block))
+        self.assertEqual(
+            module.config["galaxy"].dust_attenuation.a_v.to_value(), 0.5
+        )
         flux_model = module.make_observable(block, parse=True)
         self.assertTrue(np.isfinite(flux_model).all())
         print("Module successfully executed")

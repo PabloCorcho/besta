@@ -18,7 +18,6 @@ from matplotlib import pyplot as plt
 from besta.visualization import draw_dict_in_axes
 
 import numpy as np
-from scipy.stats import norm
 from sklearn.decomposition import NMF
 from astropy import units as u
 from astropy.io import ascii
@@ -36,8 +35,10 @@ from besta import spectrum
 from besta import kinematics
 from besta import sfh
 from besta import io
+from besta import noise as noise_models
 from besta import utils
 from besta.grid import ModelGrid
+from . import likelihoods
 from besta.config import cosmology, memory
 from besta.logging import get_logger, setup_logging
 
@@ -50,7 +51,10 @@ def _log(*args):
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
-    def __init__(self, options, *, alias=None):
+    _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
+    _default_luminosity_units = "1e-16 erg / (s Angstrom)"
+
+    def __init__(self, options, *, alias=None, likelihood_kind=None, likelihood_method=None):
         """
         Set up the CosmoSIS module.
 
@@ -91,6 +95,23 @@ class BaseModule(ClassModule):
                       overwrite=logging_overwrite,
                       console=logging_console)
 
+        # Profiling
+        if options.has_value("profile"):
+            if options.get_bool("profile", default=False):
+                # Add decorator
+                logger.info("Profiling enabled for module execute() function")
+                self.execute = utils.time_func_call(self.execute)
+
+        # Save observables
+        self._observables_list = []
+        if options.has_value("save_observables"):
+            if options.get_bool("save_observables", default=False):
+                logger.info("Saving observables to module attribute _observables_list")
+                self.make_observable = utils.store_method_output(
+                    self.make_observable, output_list=self._observables_list,
+                    copy_output=True
+                )
+
         self.config = {}
         # Likelihood name
         if options.has_value("like_name"):
@@ -100,6 +121,80 @@ class BaseModule(ClassModule):
         else:
             self.like_name = self.name + "_like"
             _log("Setting module likelihood name to default: ", self.like_name)
+
+        if likelihood_kind is None:
+            name = (self.__class__.__name__ + " " + self.name).lower()
+            if "photometry" in name:
+                likelihood_kind = "photometry"
+            else:
+                likelihood_kind = "spectra"
+
+        if options.has_value("likelihood_kind"):
+            likelihood_kind = options.get_string("likelihood_kind", default=likelihood_kind)
+        if options.has_value("likelihood_method"):
+            likelihood_method = options.get_string("likelihood_method", default="auto")
+
+        self.likelihood_kind = str(likelihood_kind).strip().lower()
+        self.likelihood_method = str(likelihood_method or "auto").strip().lower()
+        self.config["save_chi2"] = options.get_bool("save_chi2", default=False)
+        self.noise_model = None
+
+        if self.likelihood_kind == "photometry":
+            self.log_like = likelihoods.make_photometry_loglike(self.likelihood_method)
+        elif self.likelihood_kind == "spectra":
+            self.log_like = likelihoods.make_spectra_loglike(self.likelihood_method)
+        else:
+            raise ValueError(
+                f"Unknown likelihood_kind={self.likelihood_kind!r}; expected 'spectra' or 'photometry'."
+            )
+
+    def prepare_noise_model(self, options):
+        """Prepare the noise model used to compute effective inverse variance."""
+        if self.likelihood_kind != "spectra":
+            return
+        if "ivar" not in self.config:
+            raise ValueError("Noise model initialization requires 'ivar' in module config.")
+
+        model = options.get_string("NoiseModel", default="NoiseModel")
+        self.config["NoiseModelName"] = options.get_string("NoiseModelName",
+                                                           default="noise")
+        self.noise_model = noise_models.make_noise_model(model, self.config)
+        self.config["NoiseModel"] = model
+        _log("Using noise model: ", model)
+        _log("Noise model section name: ", self.config["NoiseModelName"])
+
+    def get_effective_ivar(self, block):
+        """Return effective inverse variance for the current sample."""
+        if self.noise_model is None:
+            return self.config["ivar"]
+        return self.noise_model.inverse_variance(block)
+
+    def get_galaxy_parameters(self, block):
+        """Extract from the DataBlock the PST galaxy parameter paths."""
+        parameters = {}
+        sfh_section = self.config["sfh_model"].sect_name
+        for section, name in block.keys():
+            if sfh_section in section:
+                continue
+            # TODO: temporary fix to handle the dust attenuation section name
+            internal_section = (
+                "dust_attenuation"
+                if section == "dust.attenuation"
+                else section
+            )
+            parameters[f"{internal_section}.{name}"] = block[section, name]
+        return parameters
+
+    @staticmethod
+    def get_galaxy_sections(parameter_paths):
+        """Return public DataBlock paths while preserving top-level parameters."""
+        sections = []
+        for path in parameter_paths:
+            parts = path.rsplit(".", 1)
+            if len(parts) == 2 and parts[0] == "dust_attenuation":
+                parts[0] = "dust.attenuation"
+            sections.append(parts)
+        return sections
 
     @abstractmethod
     def make_observable(self, *args, **kwargs):
@@ -162,10 +257,10 @@ class BaseModule(ClassModule):
             during convolution. The buffer is applied to both sides of the
             SSP spectra.
         """
-        _log("\n-> Configuring SSP model")
+        _log("Configuring SSP model")
 
         if options.has_value("SSPModelFromPickle"):
-            _log("\n-> Loading preconfigured SSP model from pickle")
+            _log("Loading preconfigured SSP model from pickle")
             if not os.path.isfile(
                 os.path.expandvars(options["SSPModelFromPickle"])):
                 raise FileNotFoundError(
@@ -183,10 +278,10 @@ class BaseModule(ClassModule):
             # Grid parameters
             velscale = options["velscale"]
             dlnlam = velscale / spectrum.constants.c.to("km/s").value
-            extra_offset_pixel = int(velocity_buffer / velscale)
+            extra_offset_pixel = int(np.ceil(velocity_buffer / velscale))
             self.config["velscale"] = velscale
             self.config["extra_pixels"] = extra_offset_pixel
-            _log("-> Configuration done.")
+            _log("Configuration done.")
             return
 
         ssp_name = options["SSPModel"]
@@ -260,22 +355,32 @@ class BaseModule(ClassModule):
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
-            inst_lsf = np.interp(ssp.wavelength, self.config["wavelength"],
-                                 self.config["lsf"])
+            # A given rest-frame wavelength is observed at a redshifted wavelength
+            # so the instrumental LSF in the rest frame is given by interpolating
+            # the input LSF at the observed wavelength
+            inst_lsf = np.interp(
+                ssp.wavelength,
+                self.config["wavelength"] * (1 + self.config["redshift"]),
+                self.config["lsf"])
 
             if options.has_value("SSPLSF"):
                 _log("Including SSP resolution")
+                # Load SSP LSF in the rest frame
                 ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(
                     os.path.expandvars(options["SSPLSF"]),
                     unpack=True, usecols=(0, 1))
-                ssp_lsf_fwhm = np.interp(ssp.wavelength,
-                                         ssp_lsf_wl << u.AA, ssp_lsf_fwhm)
+                ssp_lsf_fwhm = np.interp(ssp.wavelength, ssp_lsf_wl << u.AA,
+                                         ssp_lsf_fwhm)
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
             # Assume both LSF are Gaussian
             effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
 
             if (effective_lsf_disp < 0).any():
+                logger.error("Effective LSF dispersion has negative values. Check the input instrumental and SSP LSFs.")
+                logger.debug("Instrumental LSF (FWHM): %s", inst_lsf)
+                logger.debug("SSP LSF (FWHM): %s", ssp_lsf_fwhm)
+                logger.debug("Effective LSF dispersion: %s", effective_lsf_disp)
                 raise ValueError("Effective SSP LSF cannot be negative!"
                                  + "SSP models do not have enough resolution")
             effective_lsf = np.sqrt(effective_lsf_disp)
@@ -313,10 +418,17 @@ class BaseModule(ClassModule):
         self.config["velscale"] = velscale
         self.config["extra_pixels"] = extra_offset_pixel
         if options.has_value("SaveSSPModel"):
-            _log("Saving SSP model to ", options["SaveSSPModel"])
-            ssp.to_pickle(os.path.expandvars(options["SaveSSPModel"]))
-        _log("-> Configuration done.")
+            self.save_ssp_model(os.path.expandvars(options["SaveSSPModel"]))
+        _log("Configuration done.")
         return
+
+    def save_ssp_model(self, filename):
+        """Save the SSP model to a pickle file."""
+        if "ssp_model" not in self.config:
+            raise ValueError("SSP model is not configured; cannot save.")
+        ssp = self.config["ssp_model"]
+        ssp.to_pickle(filename)
+        _log("SSP model saved to ", filename)
 
     def prepare_extinction_law(self, options):
         """Prepare a dust extinction model.
@@ -332,7 +444,7 @@ class BaseModule(ClassModule):
         _log("Extinction law: ", ext_law)
         # TODO: add more extinction laws
         self.config["extinction_law"] = dust.DustScreen(ext_law)
-        _log("-> Configuration is done.")
+        _log("Configuration is done.")
 
     def prepare_sfh_model(self, options):
         """Prepare the SFH model.
@@ -342,7 +454,7 @@ class BaseModule(ClassModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        _log("\n-> Configuring SFH model")
+        _log("Configuring SFH model")
         sfh_model_name = options["SFHModel"]
         sfh_args = []
         sfh_kwargs = {}
@@ -374,107 +486,70 @@ class BaseModule(ClassModule):
         if self.config["use_transforms"]:
             _log("Enabling parameter transforms inside SFH model")
 
+        self.config["use_sfh_smoothness_prior"] = options.get_bool(
+            "use_sfh_smoothness_prior",
+            default=False,
+        )
+        if options.has_value("sfh_smoothness_prior_type"):
+            self.config["sfh_smoothness_prior_type"] = options.get_string(
+                "sfh_smoothness_prior_type"
+            )
+        if options.has_value("sfh_smoothness_sigma_dex"):
+            self.config["sfh_smoothness_sigma_dex"] = options.get_double(
+                "sfh_smoothness_sigma_dex"
+            )
+        if options.has_value("sfh_smoothness_dof"):
+            self.config["sfh_smoothness_dof"] = options.get_double(
+                "sfh_smoothness_dof"
+            )
+        if options.has_value("sfh_smoothness_relative_floor"):
+            self.config["sfh_smoothness_relative_floor"] = options.get_double(
+                "sfh_smoothness_relative_floor"
+            )
+        if options.has_value("sfh_smoothness_order"):
+            self.config["sfh_smoothness_order"] = options.get_int(
+                "sfh_smoothness_order"
+            )
+        if options.has_value("sfh_smoothness_min_sfr"):
+            self.config["sfh_smoothness_min_sfr"] = options.get_double(
+                "sfh_smoothness_min_sfr"
+            )
+
         _log("SFH model name: ", sfh_model_name)
         sfh_model = getattr(sfh, sfh_model_name)
         sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
         self.config["sfh_model"] = sfh_model
-        _log("-> Configuration done")
+        _log("Configuration done")
 
-    def log_like(self, data, model, var, weights=None, is_upper=None, is_lower=None, include_norm=True):
-        """Compute log-likelihood between data and model.
+        if options.has_value("save_t_frac_at"):
+            self.config["save_t_frac_at"] = True
+            self.config["t_frac_at"] = np.array(options["save_t_frac_at"],
+                                                dtype=float)
+            _log("Will save the time at which mass history reaches = ",
+                 self.config["save_t_frac_at"])
 
-        Parameters
-        ----------
-        data : np.ndarray
-            For detections: measured values.
-            For limits: the limit value (upper or lower).
-        model : np.ndarray
-            Model prediction for each datum.
-        var : np.ndarray
-            Data variance. Must match shape of data/model.
-        weights : np.ndarray, optional
-            Data weights. If provided, returns weighted mean log-likelihood.
-        is_upper : np.ndarray[bool], optional
-            Mask for upper limits (x < data).
-        is_lower : np.ndarray[bool], optional
-            Mask for lower limits (x > data).
-        include_norm : bool, optional, default=True
-            If True, include Gaussian normalization terms for detections:
-            -0.5*log(2*pi*var).
+        if options.has_value("save_ssfr_over_tau"):
+            self.config["save_ssfr_over_tau"] = True
+            self.config["ssfr_tau"] = np.array(
+                options["save_ssfr_over_tau"], dtype=float)
+            _log("Will save the SSFR over tau at times = ",
+                 self.config["ssfr_tau"])
+        _log("Configuration done")
 
-        Returns
-        -------
-        loglike : float
-            Total (or weighted-mean) log-likelihood.
-        """
-        if data.shape != model.shape or data.shape != var.shape:
-            raise ValueError("data, model, var must have the same shape (var is per-datum variance).")
-        if np.any(var <= 0):
-            raise ValueError("All var entries must be > 0 (variance).")
+    def get_t_frac_at(self, datablock, sfh_model, frac: float):
+        time = sfh_model.model.time_at_stellar_mass_frac(frac).to_value("Gyr"
+        )[0]
+        datablock["extra", f"t_frac_at_{frac:.4f}"] = time
+        return datablock
 
-        if is_upper is None:
-            is_upper = np.zeros_like(data, dtype=bool)
-        else:
-            is_upper = np.asarray(is_upper, dtype=bool)
-
-        if is_lower is None:
-            is_lower = np.zeros_like(data, dtype=bool)
-        else:
-            is_lower = np.asarray(is_lower, dtype=bool)
-
-        if is_upper.shape != data.shape or is_lower.shape != data.shape:
-            raise ValueError("is_upper and is_lower must have the same shape as data/model.")
-        if np.any(is_upper & is_lower):
-            raise ValueError("A data point cannot be both an upper and a lower limit.")
-
-        if weights is None:
-            weights = np.ones_like(data, dtype=float)
-            normalize = False
-        else:
-            weights = np.asarray(weights, dtype=float)
-            if weights.shape != data.shape:
-                raise ValueError("weights must have the same shape as data/model.")
-            if np.any(weights < 0):
-                raise ValueError("weights must be non-negative.")
-            normalize = True
-
-        # TODO: to avoid this step the pipeline should store sigma
-        sigma = np.sqrt(var)
-
-        logp = np.empty_like(data, dtype=float)
-        det = ~(is_upper | is_lower)
-
-        # For detections: Gaussian logpdf
-        if np.any(det):
-            if include_norm:
-                logp[det] = norm.logpdf(data[det], loc=model[det], scale=sigma[det])
-            else:
-                z = (data[det] - model[det]) / sigma[det]
-                logp[det] = -0.5 * z**2
-
-        # Upper limits: P(x < L)
-        if np.any(is_upper):
-            z_u = (data[is_upper] - model[is_upper]) / sigma[is_upper]
-            logp[is_upper] = norm.logcdf(z_u)
-
-        # Lower limits: P(x > L) = 1 - P(x < L)
-        if np.any(is_lower):
-            z_l = (data[is_lower] - model[is_lower]) / sigma[is_lower]
-            logp[is_lower] = norm.logsf(z_l)  # 1 - logcdf
-
-        # User-provided weighted mean
-        if normalize:
-            wsum = np.sum(weights)
-            if wsum <= 0:
-                if np.all(weights == 0):
-                    raise ValueError("All weights are zero.")
-                else:
-                    raise ValueError("Sum of weights must be > 0 for normalization.")
-            return np.sum(logp * weights) / wsum
-
-        return np.sum(logp * weights)
-
-
+    def get_ssfr_over_tau(self, datablock, sfh_model, tau: float):
+        tau = float(tau)
+        ssfr = sfh_model.model.average_ssfr_over_tau(
+            t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/yr")
+        ssfr = np.atleast_1d(ssfr)[0].clip(min=1e-20, max=1e-5)
+        # TODO: match naming convention with SFH module
+        datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = np.log10(ssfr)
+        return datablock
 
 class SpectraFitModule(BaseModule):
     """Base class for spectral fitting modules in BESTA."""
@@ -489,13 +564,17 @@ class SpectraFitModule(BaseModule):
         normalize : bool, optional
             If ``True``, normalizes the spectra using the given wavelength range.
         """
-        _log("\n-> Configuring input observed spectra")
+        _log("Configuring input observed spectra")
         filename = os.path.expandvars(options["inputSpectrum"])
         # Read wavelength and spectra
         _log("Loading observed spectra from input file: ", filename)
         wavelength, flux, error = np.loadtxt(filename, unpack=True)
-        _log("Wavelength coverage: ", wavelength[[0, -1]])
-        _log("Size: ", wavelength.size)
+
+        if options.get_bool("is_variance", default=False):
+            error = np.sqrt(error)
+        elif options.get_bool("is_inverse_variance", default=False):
+            error = np.divide(1.0, error**0.5, out=error, where=error > 0)
+            error[error <= 0] = np.inf
 
         # Convert units if needed
         if options.has_value("wlUnits"):
@@ -507,21 +586,21 @@ class SpectraFitModule(BaseModule):
             wl_units = u.angstrom
 
         if options.has_value("fluxUnits"):
-            _log("Converting flux units to 1e-16 erg/s/cm^2/Angstrom")
+            _log(f"Converting flux units to {self._default_flux_units}")
             flux_units = u.Unit(options["fluxUnits"])
-            flux = (flux << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
+            flux = (flux << flux_units).to(self._default_flux_units).value
             error = (error << flux_units).to(
-                "1e-16 erg / (s cm2 Angstrom)").value
+                self._default_flux_units).value
         else:
-            _log("Assuming input flux units are in 1e-16 erg/s/cm^2/Angstrom")
-            flux_units = u.Unit("1e-16 erg / (s cm2 Angstrom)")
+            _log(f"Assuming input flux units are in {self._default_flux_units}")
+            flux_units = u.Unit(self._default_flux_units)
 
         # Wavelength range to include in the fit
         if options.has_value("wlRange"):
             wl_range = (np.asarray(options["wlRange"]) << wl_units
             ).to("Angstrom").value
         else:
+            _log("No input wavelength range provided; using full wavelength coverage")
             wl_range = wavelength[[0, -1]]
         # Wavelength range to renormalize the spectra
         if options.has_value("wlNormRange"):
@@ -546,6 +625,28 @@ class SpectraFitModule(BaseModule):
         if weights.size != flux.size:
             raise ValueError(
                 "Input mask size does not match the input spectrum size.")
+        
+        # Check for negative weights and wrong errors
+        if np.any(weights < 0):
+            raise ValueError("Input weights contain negative values.")
+        if np.any(error <= 0):
+            raise ValueError("Input errors contain negative values.")
+
+        # non-finite numbers handling
+        mask_non_finite = options.get_bool("mask_non_finite", default=True)
+        if not np.isfinite(error).all() and mask_non_finite:
+            logger.warning("Input error array contains non-finite values."
+                           "Setting weights to zero for those pixels.")
+            weights[~np.isfinite(error)] = 0.0
+            # Set non-finite errors to the median of finite errors to avoid issues during interpolation or convolution
+            error[~np.isfinite(error)] = np.nanmedian(error[np.isfinite(error)])
+        if not np.isfinite(flux).all() and mask_non_finite:
+            logger.warning("Input flux array contains non-finite values."
+                           "Setting weights to zero for those pixels.")
+            weights[~np.isfinite(flux)] = 0.0
+            # Set non-finite fluxes to the median of finite fluxes to avoid issues during interpolation or convolution
+            flux[~np.isfinite(flux)] = np.nanmedian(flux[np.isfinite(flux)])
+
         # Load the instrumental LSF
         if options.has_value("lsf"):
             lsf_wl, lsf_fwhm = np.loadtxt(os.path.expandvars(options["lsf"]),
@@ -554,53 +655,6 @@ class SpectraFitModule(BaseModule):
                                         dtype=float)
         else:
             instrumental_lsf = np.zeros_like(wavelength)
-        
-        # Optional masking of telluric regions
-        if options.has_value("mask_telluric") and options["mask_telluric"]:
-            telluric_pad = options.get_double("telluric_pad", default=0.0)
-            telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
-            _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
-            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
-                wavelength, weight=weights,
-                redshift=0.0,
-                pad=telluric_pad,
-                return_mask=True)
-            _log("Number of telluric-absorption masked pixels: ",
-                 np.count_nonzero(tell_mask))
-            weights *= weights_tell
-            self.config["telluric_mask"] = tell_mask
-            self.config["telluric_bands_used"] = bands_used
-
-        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
-            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
-            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
-            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
-            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
-                wavelength,
-                flux=flux, uncertainty=error,
-                weight=weights,
-                redshift=0.0,  # Mask in observed frame
-                pad=sky_line_pad,
-                return_mask=True, return_lines_masked=True)
-            _log("Number of sky-line masked pixels: ",
-                 np.count_nonzero(sky_mask))
-            weights *= weights_sky
-            self.config["sky_line_mask"] = sky_mask
-            self.config["sky_lines_used"] = lines_used
-
-        # Optional masking of emission lines
-        if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
-            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
-                wavelength, flux, error, weights,
-                redshift=redshift,
-                # line_list=emission_line_list,
-                # half_width=line_half_width,
-                return_mask=True, return_lines_masked=True)
-            weights *= weights_el
-            _log("Number of emission-line masked pixels: ",
-                 np.count_nonzero(line_mask))
-            self.config["emission_lines_mask"] = line_mask
-            self.config["emission_lines_used"] = lines_used
 
         # Apply redshift
         _log(f"Setting wavelength array to restframe (redshift: {redshift})")
@@ -636,9 +690,28 @@ class SpectraFitModule(BaseModule):
             ln_wave = np.arange(np.log(wl_range[0]), np.log(wl_range[1]) + dlnlam,
                             dlnlam)
 
-            flux = flux_conserving_interpolation(ln_wave, np.log(wavelength), flux)
-            cov = flux_conserving_interpolation(ln_wave, np.log(wavelength), cov)
-            weights = np.interp(ln_wave, np.log(wavelength), weights)
+            flux, cov = flux_conserving_interpolation(
+                ln_wave,
+                np.log(wavelength),
+                flux,
+                spectra_err=np.sqrt(cov),
+            )
+
+            weights = np.interp(ln_wave, np.log(wavelength), weights).clip(0, None)
+            bad_cov = cov <= 0
+            bad_flux = ~np.isfinite(flux)
+            if np.any(bad_cov):
+                _log(
+                    f"Warning: some interpolated covariance values ({np.count_nonzero(bad_cov)}) are non-positive.",
+                     "Setting weights to zero for those pixels.")
+                weights[bad_cov] = 0.0
+
+            if np.any(bad_flux):
+                _log(
+                    f"Warning: some interpolated flux values ({np.count_nonzero(bad_flux)}) are non-finite.",
+                     "Setting weights to zero for those pixels.")
+                weights[bad_flux] = 0.0
+
             instrumental_lsf = np.interp(ln_wave, np.log(wavelength), instrumental_lsf)
     
             new_wavelength = np.exp(ln_wave)
@@ -667,8 +740,56 @@ class SpectraFitModule(BaseModule):
         else:
             dl_sq = (10 * u.pc).to("cm").value ** 2 * 4 * np.pi
 
+        # Optional masking of telluric regions
+        if options.has_value("mask_telluric") and options["mask_telluric"]:
+            telluric_pad = options.get_double("telluric_pad", default=0.0)
+            telluric_pad = (telluric_pad << wl_units).to("Angstrom").value
+            _log(f"Masking telluric regions with pad={telluric_pad} Angstrom")
+            weights_tell, tell_mask, bands_used = spectrum.mask_telluric_regions(
+                wavelength * (1 + redshift),  # Mask in observed frame
+                weight=weights,
+                redshift=0.0,
+                pad=telluric_pad,
+                return_mask=True)
+            _log("Number of telluric-absorption masked pixels: ",
+                 np.count_nonzero(tell_mask))
+            weights *= weights_tell
+            self.config["telluric_mask"] = tell_mask
+            self.config["telluric_bands_used"] = bands_used
+        # Optional masking of sky emission lines
+        if options.has_value("mask_sky_lines") and options["mask_sky_lines"]:
+            sky_line_pad = options.get_double("sky_line_pad", default=0.0)
+            sky_line_pad = (sky_line_pad << wl_units).to("Angstrom").value
+            _log(f"Masking sky line regions with pad={sky_line_pad} Angstrom")
+            weights_sky, sky_mask, lines_used = spectrum.mask_sky_emission_lines(
+                wavelength * (1 + redshift),  # Mask in observed frame
+                flux=flux, uncertainty=np.sqrt(cov),
+                weight=weights,
+                redshift=0.0,  # Mask in observed frame
+                pad=sky_line_pad,
+                return_mask=True, return_lines_masked=True)
+            _log("Number of sky-line masked pixels: ",
+                 np.count_nonzero(sky_mask))
+            weights *= weights_sky
+            self.config["sky_line_mask"] = sky_mask
+            self.config["sky_lines_used"] = lines_used
+        # Optional masking of emission lines
+        if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
+            weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
+                wavelength, flux, np.sqrt(cov), weights,
+                redshift=redshift,
+                # line_list=emission_line_list,
+                # half_width=line_half_width,
+                return_mask=True, return_lines_masked=True)
+            weights *= weights_el
+            _log("Number of emission-line masked pixels: ",
+                 np.count_nonzero(line_mask))
+            self.config["emission_lines_mask"] = line_mask
+            self.config["emission_lines_used"] = lines_used
+
         self.config["flux"] = flux
         self.config["var"] = cov
+        self.config["ivar"] = np.divide(1.0, cov, out=np.zeros_like(cov), where=cov > 0)
         self.config["redshift"] = redshift
         self.config["wlUnits"] = wl_units
         self.config["fluxUnits"] = flux_units
@@ -680,7 +801,18 @@ class SpectraFitModule(BaseModule):
         if not (instrumental_lsf == 0).all():
             self.config["lsf"] = instrumental_lsf
 
-        _log("-> Configuration done.")
+        self.prepare_noise_model(options)
+
+        if options.get_bool("use_features", default=False):
+            feature_type = options.get_string("use_features_type", default="auto")
+            if feature_type == "auto":
+                self.get_feature_weights(options)
+                self.config["weights"] *= self.config["feature_weights"]
+            elif feature_type == "atlas":
+                self.get_atlas_feature_weights(options)
+                self.config["weights"] *= self.config["feature_weights"]
+
+        _log("Configuration done.")
 
     def prepare_galaxy(self, options):
         """Build and configure a :class:`pst.galaxy.GalaxySED` model.
@@ -738,7 +870,7 @@ class SpectraFitModule(BaseModule):
                            cosmology=cosmology)
 
         params = galaxy.build_param_index(include_fixed=False, prefix="")
-        sections = [s.rsplit(".", 1) for s in params]
+        sections = self.get_galaxy_sections(params)
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
@@ -751,7 +883,7 @@ class SpectraFitModule(BaseModule):
         options : :class:`DataBlock`
             Input options to initialise the model.
         """
-        _log("\n-> Configuring multiplicative polynomial")
+        _log("Configuring multiplicative polynomial")
         if options.has_value("legendre_deg"):
             kwargs = {}
             if options.has_value("legendre_bounds"):
@@ -766,7 +898,119 @@ class SpectraFitModule(BaseModule):
                 self.config["wavelength"], options["legendre_deg"], **kwargs)
         else:
             _log(f"Not using multiplicative Legendre polynomials")
-        _log("-> Configuration done")
+        _log("Configuration done")
+
+    def prepare_losvd_kernel(self, options):
+        """Prepare the LOSVD convolution kernel.
+
+        Parameters
+        ----------
+        options : :class:`DataBlock`
+            Input options to initialise the model.
+        """
+        _log("Configuring LOSVD convolution kernel")
+        # Get the velocity scale from options or previously prepared config.
+        if options.has_value("velscale"):
+            velocity_scale = options["velscale"]
+            self.config["velscale"] = velocity_scale
+        elif "velscale" in self.config:
+            velocity_scale = self.config["velscale"]
+        else:
+            raise ValueError("LOSVD convolution requires a defined velocity scale (velscale).")
+
+        _log("Pixel velocity scale for LOSVD convolution: ",
+             velocity_scale, " km/s per pixel")
+
+        kernel_name = options.get_string("losvd_kernel", default="gauss-hermite")
+        kernel_name = kernel_name.strip().lower().replace("_", "-")
+        _log("LOSVD kernel name: ", kernel_name)
+
+        if kernel_name == "gaussian":
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.GaussianPixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"gauss-hermite", "gausshermite"}:
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.GaussHermitePixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"split-gaussian", "splitgaussian"}:
+            sigma_truncation = options.get_double("sigma_truncation", default=5.0)
+            self.config["losvd_kernel"] = kinematics.SplitGaussianPixelKernel(
+                velocity_scale=velocity_scale,
+                sigma_truncation=sigma_truncation,
+            )
+
+        elif kernel_name in {"piece-wise", "piecewise"}:
+            velocity_bin_size = options.get_int("velocity_bin_size", default=10)
+            velocity_min = options.get_double("velocity_min", default=-500.0)
+            velocity_max = options.get_double("velocity_max", default=500.0)
+            self.config["losvd_kernel"] = kinematics.PieceWisePixelKernel(
+                velocity_scale=velocity_scale,
+                velocity_bin_size=velocity_bin_size,
+                velocity_min=velocity_min,
+                velocity_max=velocity_max,
+            )
+        else:
+            raise ValueError(f"Unsupported LOSVD kernel: {kernel_name}")
+        _log("Configuration done")
+
+    def get_feature_weights(self, options):
+        """Compute feature weights from input spectra."""
+        logger.info("Computing feature weights from input spectra")
+        # Estimate the continuum
+        continuum, continuum_err = spectrum.estimate_continuum(
+                self.config["wavelength"].to_value("AA"),
+                self.config["flux"],
+                err=self.config["var"]**0.5,
+                weights=self.config["weights"],
+                knot_spacing=options.get_double("continuum_knot_spacing", default=200.0),
+                sigma_clip=options.get_double("continuum_sigma_clip", default=3.0),
+            )
+        self.config["continuum"] = continuum
+        self.config["continuum_err"] = continuum_err
+        # Favour features over/under continuum
+        z_continuum = np.where(
+            (continuum_err > 0) & (continuum > 0), 
+            (self.config["flux"] - continuum) / continuum_err,
+            0.0)
+
+        if options.get_bool("features_only_emission", default=False):
+            logger.info("Using only emission features for feature weights")
+            z_continuum = np.where(z_continuum > 0, z_continuum, 0.0)
+        elif options.get_bool("features_only_absorption", default=False):
+            logger.info("Using only absorption features for feature weights")
+            z_continuum = np.where(z_continuum < 0, z_continuum, 0.0)
+
+        # Prevent extreme values from dominating the weights
+        z_clip = options.get_double("feature_weight_zclip", 3.0)
+        z_continuum = np.clip(z_continuum, -z_clip, z_clip)
+        # Stretch the weights to favour pixels with strong features
+        weight_powlaw = options.get_double("feature_weight_powlaw", 2.0)
+        logger.info(f"Using feature weights with power-law exponent: {weight_powlaw}")
+        w = np.abs(z_continuum)**weight_powlaw
+        w = np.where(np.isfinite(w), w, 0.0)
+        w /= w.max()
+        # Clip to 0 those pixels that have a very low value
+        min_weight = options.get_double("feature_weight_min", 0.01)
+        logger.info(f"Clipping feature weights below {min_weight} to zero")
+        w = np.where(w < min_weight, 0.0, w)
+        self.config["feature_weights"] = w
+
+    def get_atlas_feature_weights(self, options):
+        """Use an atlas of spectral features to compute feature weights for the input spectra."""
+        logger.info("Computing feature weights from ATLAS spectral features")
+        from pst.observables import _load_ew_atlas
+        atlas = _load_ew_atlas()
+        wl = self.config["wavelength"].to_value("AA")
+        spectral_windows = [(wl >= r["central_wl_begin"]) & (wl <= r["central_wl_end"]) for r in atlas]
+        collapsed_mask = np.sum(spectral_windows, axis=0) > 0
+        self.config["feature_weights"] = collapsed_mask.astype(float)
 
     def measure_emission_lines(self, solution: DataBlock, **kwargs):
         """Measure emission line fluxes and EWs from the best-fit solution.
@@ -787,10 +1031,10 @@ class SpectraFitModule(BaseModule):
         wavelength = self.config["wavelength"].to_value("Angstrom")
         flux = self.config["flux"]
         flux_error = np.sqrt(self.config["var"])
-        flux_model, _ = self.make_observable(solution, parse=True)
+        flux_model, weights = self.make_observable(solution, parse=True)
         # Build a new weights array that only includes the masking of the sky
-        weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
-        weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
+        # weights = self.config.get("telluric_mask", np.ones_like(flux, dtype=bool))
+        # weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
 
         line_table, line_segm_map = spectrum.find_emission_lines(
             wavelength, flux, flux_error, flux_model,
@@ -802,13 +1046,14 @@ class SpectraFitModule(BaseModule):
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
+        continuum_model = self.config.get("continuum")
+        continuum_model_err = self.config.get("continuum_err")
+
         if isinstance(flux_model, tuple):
             weights = flux_model[1]
             flux_model = flux_model[0]
         else:
             weights = np.ones_like(flux_model)
-        # Include input weights
-        weights *= self.config["weights"]
 
         # Grab the solution values (visualuzation purpose only)
         sol_keys = solution.keys()
@@ -829,6 +1074,14 @@ class SpectraFitModule(BaseModule):
         # Display the information
         ax = axs[0, 1]
         # Pixel masking information
+        like_weights = self.config["weights"]
+        if "sweep_weights" in self.config:
+            sweep_weights = self.config["sweep_weights"]
+            weights *= sweep_weights
+        
+        like_eff_pixels = np.sum(like_weights > 0)
+
+
         mask_info = {"Total pixels": self.config["flux"].size,
                      "Masked pixels (w=0)": np.sum(weights <= 0),
                      " - Telluric abs.": np.sum(
@@ -856,10 +1109,11 @@ class SpectraFitModule(BaseModule):
         # Plot input spectra and best-fit model
         ax = axs[0, 0]
         # SNR information
-        snr = np.nanpercentile(
-            self.config["flux"] / np.sqrt(self.config["var"]),
-            (16, 50, 84)
-        )
+        with np.errstate(divide="ignore", invalid="ignore"):
+            snr = np.nanpercentile(
+                self.config["flux"] / np.sqrt(self.config["var"]),
+                (16, 50, 84)
+            )
         ax.annotate(f"SNR (16, 50, 84 percentiles): "
                     f"{snr[0]:.1f}, {snr[1]:.1f}, {snr[2]:.1f}",
                     xy=(0.02, 0.98), xycoords="axes fraction", va="top",
@@ -871,6 +1125,21 @@ class SpectraFitModule(BaseModule):
             color="k",
             alpha=0.5,
         )
+
+        # If noise model 
+        if hasattr(self, 'noise_model') and self.noise_model is not None:
+            ivar_eff = self.get_effective_ivar(solution)
+            
+            var_eff = np.divide(1.0, ivar_eff, out=np.zeros_like(ivar_eff), where=ivar_eff > 0)
+            ax.fill_between(
+                self.config["wavelength"].value,
+                self.config["flux"] - var_eff ** 0.5,
+                self.config["flux"] + var_eff ** 0.5,
+                color="b",
+                alpha=0.1,
+                label="Noise model"
+            )
+
         ax.plot(
             self.config["wavelength"], self.config["flux"], c="k",
             label="Observed", lw=0.7)
@@ -887,6 +1156,19 @@ class SpectraFitModule(BaseModule):
         # Plot model
         ax.plot(self.config["wavelength"], flux_model, c="b", label="Model",
                 lw=0.7)
+        if continuum_model is not None:
+            ax.plot(self.config["wavelength"], continuum_model, c="cornflowerblue",
+                    label="Continuum", lw=0.7)
+            if continuum_model_err is not None:
+                ax.fill_between(
+                    self.config["wavelength"].value,
+                    continuum_model - continuum_model_err,
+                    continuum_model + continuum_model_err,
+                    color="cornflowerblue",
+                    alpha=0.4,
+                    label="Continuum error"
+                )
+
         # Plot residuals
         residuals = flux_model - self.config["flux"]
         ax.plot(
@@ -953,31 +1235,39 @@ class SpectraFitModule(BaseModule):
         ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
-        chi2 = (flux_model - self.config["flux"]) ** 2 / self.config["var"]
+        ivar_eff = self.get_effective_ivar(solution)
+        chi2 = (flux_model - self.config["flux"]) ** 2 * ivar_eff
         mean_chi2 = np.nanmean(chi2[good_pixels])
         median_chi2 = np.nanmedian(chi2[good_pixels])
         nmad_chi2 = 1.4826 * np.nanmedian(
             np.abs(chi2[good_pixels] - median_chi2))
         loglike = self.log_like(self.config["flux"][good_pixels],
                                 flux_model[good_pixels],
-                                self.config["var"][good_pixels],
-                                weights=weights[good_pixels])
+                                ivar_eff[good_pixels] * weights[good_pixels],
+                                include_norm=True)
         ax = axs[1, 0]
         ax.plot(self.config["wavelength"], chi2, c="k", lw=0.7)
+        ax.plot(self.config["wavelength"], chi2 * nan_mask, c="r", lw=0.7)
         ax.grid(visible=True)
         ax.set_ylabel(r"$\chi^2$")
         ax.set_yscale("symlog", linthresh=1.0)
         ax.set_xlabel("Wavelength (AA)")
         
+        twax = ax.twinx()
+        twax.fill_between(
+            np.array(self.config["wavelength"]), 0.0, weights,
+            color="lime", alpha=0.2, label="Weights")
+        twax.set_ylabel("Weight", color="lime")
+    
         ax = axs[1, 1]
         ax.hist(
-            chi2,
+            chi2[weights > 0],
             bins=np.geomspace(0.01, 100),
             orientation="horizontal",
-            color="k",
+            color="r",
             histtype="step"
         )
-        ax.annotate(f"Median chi2: {np.nanmedian(chi2):.1f}"
+        ax.annotate(f"Median chi2: {median_chi2:.1f}"
                     + f"\nMean chi2: {mean_chi2:.1f}"
                     + f"\nNMAD chi2: {nmad_chi2:.1f}"
                     + f"\nLog-likelihood: {loglike:.1f}",
@@ -1006,7 +1296,7 @@ class PhotometryFitModule(BaseModule):
         ----------
         options : :class:`DataBlock`
         """
-        _log("\n-> Configuring photometric data")
+        _log("Configuring photometric data")
         photometry_file = os.path.expandvars(options["inputPhotometry"])
 
         # Read the data
@@ -1058,7 +1348,7 @@ class PhotometryFitModule(BaseModule):
         redshift = options.get_double("redshift", default=0.0)
         self.config["redshift"] = redshift
         _log("Source redshift: ", redshift)
-        _log("-> Configuration done.")
+        _log("Configuration done.")
 
     def prepare_galaxy(self, options):
         """Build and configure a :class:`pst.galaxy.GalaxySED` model for photometry.
@@ -1124,6 +1414,7 @@ class PhotometryFitModule(BaseModule):
 
         z_obs = self.config.get("redshift", 0.0)
 
+        #TODO: make sure this is well documented
         if options.get_bool("logwave", False):
             target_wl = np.geomspace(min_wl.to_value("AA") / (1 + z_obs),
                                      max_wl.to_value("AA"), 3000) << u.AA
@@ -1144,7 +1435,8 @@ class PhotometryFitModule(BaseModule):
                            filters=filters)
 
         params = galaxy.build_param_index(include_fixed=False, prefix="")
-        sections = [s.rsplit(".", 1) for s in params]
+        # TODO: This is a temporary fix to handle the dust attenuation section name
+        sections = self.get_galaxy_sections(params)
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
@@ -1244,12 +1536,12 @@ class PhotometryFitModule(BaseModule):
         ax.set_xlim(min_wl.to_value(u.AA) * 0.8, max_wl.to_value(u.AA) * 1.2)
         # Flux density per wavelength unit
         ax = axs[1, 0]
-        flam = (full_spec * u.Unit("uJy")).to("1e-16 erg / (s cm**2 AA)", u.spectral_density(self.config["galaxy"].target_wavelength))
+        flam = (full_spec * u.Unit("uJy")).to(self._default_flux_units, u.spectral_density(self.config["galaxy"].target_wavelength))
         ax.plot(
             self.config["galaxy"].target_wavelength.to_value("AA"),
             flam,
             color="k", alpha=0.4)
-        ax.set_ylabel("Flux density (1e-16 erg / (s cm**2 AA))")
+        ax.set_ylabel(f"Flux density ({self._default_flux_units})")
         # chi2 as function of wavelength
         chi2 = (flux_model - self.config["photometry_flux"]) ** 2 / self.config["photometry_flux_var"]
         ax = axs[2, 0]
@@ -1283,139 +1575,139 @@ class EquivalentWidthFitModule(BaseModule):
         """
         pass
 
-class GridFitMixin:
-    """Mixin class for grid-based fitting modules in BESTA."""
+# class GridFitMixin:
+#     """Mixin class for grid-based fitting modules in BESTA."""
 
-    def _load_callable_from_file(self,
-        file_path: str | pathlib.Path,
-        func_name: str,
-        *,
-        module_name: Optional[str] = None,
-    ) -> Callable:
-        """
-        Load a callable named `func_name` from a Python source file at `file_path`.
+#     def _load_callable_from_file(self,
+#         file_path: str | pathlib.Path,
+#         func_name: str,
+#         *,
+#         module_name: Optional[str] = None,
+#     ) -> Callable:
+#         """
+#         Load a callable named `func_name` from a Python source file at `file_path`.
 
-        Parameters
-        ----------
-        file_path
-            Path to the .py file (does not need to be importable / on PYTHONPATH).
-        func_name
-            Name of the function (or other callable) defined in that file.
-        module_name
-            Optional module name to assign during loading. If None, a unique
-            name is generated from the filename.
+#         Parameters
+#         ----------
+#         file_path
+#             Path to the .py file (does not need to be importable / on PYTHONPATH).
+#         func_name
+#             Name of the function (or other callable) defined in that file.
+#         module_name
+#             Optional module name to assign during loading. If None, a unique
+#             name is generated from the filename.
 
-        Returns
-        -------
-        func
-            The loaded callable object.
+#         Returns
+#         -------
+#         func
+#             The loaded callable object.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the file does not exist.
-        ImportError
-            If the module cannot be loaded.
-        AttributeError
-            If func_name is not found in the module.
-        TypeError
-            If the loaded attribute is not callable.
-        """
-        file_path = pathlib.Path(file_path).expanduser().resolve()
-        if not file_path.exists():
-            raise FileNotFoundError(str(file_path))
-        if file_path.suffix != ".py":
-            raise ImportError(f"Expected a .py file, got: {file_path}")
+#         Raises
+#         ------
+#         FileNotFoundError
+#             If the file does not exist.
+#         ImportError
+#             If the module cannot be loaded.
+#         AttributeError
+#             If func_name is not found in the module.
+#         TypeError
+#             If the loaded attribute is not callable.
+#         """
+#         file_path = pathlib.Path(file_path).expanduser().resolve()
+#         if not file_path.exists():
+#             raise FileNotFoundError(str(file_path))
+#         if file_path.suffix != ".py":
+#             raise ImportError(f"Expected a .py file, got: {file_path}")
 
-        # Give the module a deterministic-ish name to help debugging and caching
-        if module_name is None:
-            module_name = f"_user_boundary_{file_path.stem}"
+#         # Give the module a deterministic-ish name to help debugging and caching
+#         if module_name is None:
+#             module_name = f"_user_boundary_{file_path.stem}"
 
-        spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not create import spec for: {file_path}")
+#         spec = importlib.util.spec_from_file_location(module_name, str(file_path))
+#         if spec is None or spec.loader is None:
+#             raise ImportError(f"Could not create import spec for: {file_path}")
 
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)  # type: ignore[attr-defined]
-        except Exception as e:
-            raise ImportError(f"Error importing {file_path}: {e}") from e
+#         module = importlib.util.module_from_spec(spec)
+#         try:
+#             spec.loader.exec_module(module)  # type: ignore[attr-defined]
+#         except Exception as e:
+#             raise ImportError(f"Error importing {file_path}: {e}") from e
 
-        obj = getattr(module, func_name)  # may raise AttributeError
-        if not callable(obj):
-            raise TypeError(f"{func_name!r} in {file_path} is not callable (got {type(obj)})")
+#         obj = getattr(module, func_name)  # may raise AttributeError
+#         if not callable(obj):
+#             raise TypeError(f"{func_name!r} in {file_path} is not callable (got {type(obj)})")
 
-        return obj
+#         return obj
 
-    def prepare_grid_model(self, options):
-        """Prepare the model grid.
+#     def prepare_grid_model(self, options):
+#         """Prepare the model grid.
 
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-            Input options to initialise the model.
-        """
-        logger.info("-> Configuring model grid")
-        if not options.has_value("modelGridFile"):
-            raise ValueError("No input model grid file provided.")
-        grid_file = os.path.expandvars(options["modelGridFile"])
-        logger.info("Loading model grid from file: %s", grid_file)
-        if not os.path.isfile(grid_file):
-            raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
-        logger.info("Reading model grid... fluxes must be in microJansky / Msun")
-        model_grid = ModelGrid.load_auto(grid_file)
+#         Parameters
+#         ----------
+#         options : :class:`DataBlock`
+#             Input options to initialise the model.
+#         """
+#         logger.info("Configuring model grid")
+#         if not options.has_value("modelGridFile"):
+#             raise ValueError("No input model grid file provided.")
+#         grid_file = os.path.expandvars(options["modelGridFile"])
+#         logger.info("Loading model grid from file: %s", grid_file)
+#         if not os.path.isfile(grid_file):
+#             raise FileNotFoundError(f"Input model grid file {grid_file} not found.")
+#         logger.info("Reading model grid... fluxes must be in microJansky / Msun")
+#         model_grid = ModelGrid.load_auto(grid_file)
 
-        if options.has_value("boundaryFunctionFile"):
-            boundary_file = os.path.expandvars(
-                options["boundaryFunctionFile"])
-            logger.info("Loading boundary function from file: %s", boundary_file)
-            # Split the path to the file and the function name given by []
-            mthd_s = boundary_file.find("[")
-            mthd_e = boundary_file.find("]")
-            boundary_func_name = boundary_file[mthd_s + 1:mthd_e]
-            boundary_file = boundary_file[:mthd_s]
-            boundary_func = self._load_callable_from_file(
-                boundary_file, boundary_func_name)
-            model_grid.check_boundaries = boundary_func
-            logger.info("Applied boundary function to model grid.")
+#         if options.has_value("boundaryFunctionFile"):
+#             boundary_file = os.path.expandvars(
+#                 options["boundaryFunctionFile"])
+#             logger.info("Loading boundary function from file: %s", boundary_file)
+#             # Split the path to the file and the function name given by []
+#             mthd_s = boundary_file.find("[")
+#             mthd_e = boundary_file.find("]")
+#             boundary_func_name = boundary_file[mthd_s + 1:mthd_e]
+#             boundary_file = boundary_file[:mthd_s]
+#             boundary_func = self._load_callable_from_file(
+#                 boundary_file, boundary_func_name)
+#             model_grid.check_boundaries = boundary_func
+#             logger.info("Applied boundary function to model grid.")
 
-        self.config["model_grid"] = model_grid
+#         self.config["model_grid"] = model_grid
         
-        if options.has_value("knn"):
-            self.config["knn"] = options["knn"]
-        else:
-            self.config["knn"] = int(4 * model_grid.n_targets)
-        logger.info("-> Configuration done.")
+#         if options.has_value("knn"):
+#             self.config["knn"] = options["knn"]
+#         else:
+#             self.config["knn"] = int(4 * model_grid.n_targets)
+#         logger.info("Configuration done.")
 
 
-class EmulatorMixin:
-    """Mixin class for modules using ML emulators in BESTA."""
+# class EmulatorMixin:
+#     """Mixin class for modules using ML emulators in BESTA."""
 
-    def prepare_emulator(self, options):
-        """Prepare the ML emulator.
+#     def prepare_emulator(self, options):
+#         """Prepare the ML emulator.
 
-        Parameters
-        ----------
-        options : :class:`DataBlock`
-            Input options to initialise the model.
+#         Parameters
+#         ----------
+#         options : :class:`DataBlock`
+#             Input options to initialise the model.
         
-        Notes
-        -----
-        The ML emulator is expected to be stored in a joblib (.joblib) file.
-        """
-        try:
-            import joblib
-        except ImportError:
-            raise ImportError("joblib is required to load ML emulators."
-                              "Please install joblib and try again.")
-        logger.info("-> Configuring ML emulator")
-        if not options.has_value("emulatorFile"):
-            raise ValueError("No input emulator file provided.")
-        emulator_file = os.path.expandvars(options["emulatorFile"])
-        logger.info("Loading ML emulator from file: %s", emulator_file)
-        if not os.path.isfile(emulator_file):
-            raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
-        logger.info("Reading ML emulator...")
-        ml_emulator = joblib.load(emulator_file)
-        self.config["ml_emulator"] = ml_emulator
-        logger.info("-> Configuration done.")
+#         Notes
+#         -----
+#         The ML emulator is expected to be stored in a joblib (.joblib) file.
+#         """
+#         try:
+#             import joblib
+#         except ImportError:
+#             raise ImportError("joblib is required to load ML emulators."
+#                               "Please install joblib and try again.")
+#         logger.info("Configuring ML emulator")
+#         if not options.has_value("emulatorFile"):
+#             raise ValueError("No input emulator file provided.")
+#         emulator_file = os.path.expandvars(options["emulatorFile"])
+#         logger.info("Loading ML emulator from file: %s", emulator_file)
+#         if not os.path.isfile(emulator_file):
+#             raise FileNotFoundError(f"Input emulator file {emulator_file} not found.")
+#         logger.info("Reading ML emulator...")
+#         ml_emulator = joblib.load(emulator_file)
+#         self.config["ml_emulator"] = ml_emulator
+#         logger.info("Configuration done.")

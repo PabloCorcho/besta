@@ -5,7 +5,6 @@ import numpy as np
 
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
-from besta import kinematics
 from besta import spectrum
 from besta.logging import get_logger
 
@@ -19,11 +18,13 @@ class GalaxySpectraModule(SpectraFitModule):
     def __init__(self, options, **kwargs):
         """Set up the module from a CosmoSIS configuration block."""
 
-        super().__init__(options, **kwargs)
+        super().__init__(options, likelihood_kind="spectra", **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_spectra(options)
         self.prepare_galaxy(options)
         self.prepare_legendre_polynomials(options)
+        self.prepare_losvd_kernel(options)
+        self._losvd_kernel = self.config["losvd_kernel"]
 
         # Set parameters fixed in this module
         self.config["galaxy"].redshift.fixed = True
@@ -36,41 +37,21 @@ class GalaxySpectraModule(SpectraFitModule):
             self.config["sfh_model"].parse_datablock(block)
 
         # Update parameters for each remaining component
-        keys = block.keys()
-        values = [block[s, k] for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        keys = [".".join((s, k)) for (s, k) in keys if self.config["sfh_model"].sect_name not in s]
-        parameters = dict(zip(keys, values))
+        parameters = self.get_galaxy_parameters(block)
 
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False)
         # Synthesis
-        flux_model = 1e10 * galaxy.emission_spectrum(
-            to_obs_frame=False).to_value("1e-16 erg / (s Angstrom)") / self.config["dl_sq"]
+        flux_model = galaxy.emission_spectrum(
+            to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
 
-        # Kinematics #TODO: this should be done by PST stars.kinematics
-        velscale = self.config["velscale"]
-        sigma_pixel = block["kinematics", "los_sigma"] / velscale
-        veloffset_pixel = block["kinematics", "los_vel"] / velscale
-
-        kernel_model = kinematics.GaussHermite(
-            4,
-            mean=veloffset_pixel,
-            stddev=sigma_pixel,
-            h3=block["kinematics", "los_h3"],
-            h4=block["kinematics", "los_h4"],
-        )
-        kernel_n_pixel = 10 * np.clip(int(np.round(np.abs(veloffset_pixel) + sigma_pixel)), 1,
-                                      None) + 1
-        kernel = kinematics.get_losvd_kernel(
-            kernel_model,
-            x_size=kernel_n_pixel
-        )
+        self._losvd_kernel.parse_parameters(block)
         # Perform the convolution
-        flux_model = kinematics.convolve_spectra_with_kernel(flux_model, kernel)
+        flux_model = self._losvd_kernel.convolve(flux_model)
         # Track those pixels at the edges
         mask = flux_model > 0
-        mask[: int(10 * sigma_pixel)] = False
-        mask[-int(10 * sigma_pixel) :] = False
+        mask[:self._losvd_kernel.size // 2] = False
+        mask[-self._losvd_kernel.size // 2:] = False
         # Sample to observed resolution
         extra_pixels = self.config["extra_pixels"]
         pixels = slice(extra_pixels, -extra_pixels)
@@ -78,10 +59,25 @@ class GalaxySpectraModule(SpectraFitModule):
         mask = mask[pixels]
 
         weights = self.config["weights"] * mask
-        normalization = np.nanmedian(
-            self.config["flux"][weights > 0] / flux_model[weights > 0]
-        )
-        block["extra", "stellar_mass"] = np.log10(normalization) + 10
+        sfh_model = self.config["sfh_model"]
+        if sfh_model.use_mass_normalization:
+            normalization = np.nanmedian(
+                self.config["flux"][weights > 0] / flux_model[weights > 0]
+            )
+            block["extra", "stellar_mass"] = np.log10(normalization)
+        else:
+            normalization = 1.0
+            block["extra", "stellar_mass"] = np.log10(
+                sfh_model.model.stellar_mass_formed(
+                    sfh_model.today).to_value("Msun"))
+        # Save SFH mass-fraction times
+        if self.config.get("save_t_frac_at", False):
+            for frac in self.config.get("t_frac_at", []):
+                self.get_t_frac_at(block, self.config["sfh_model"], frac)
+        if self.config.get("save_ssfr_over_tau", False):
+            for tau in self.config.get("ssfr_tau", []):
+                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
+
         return flux_model * normalization, weights
 
     def execute(self, block):
@@ -98,16 +94,20 @@ class GalaxySpectraModule(SpectraFitModule):
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
-        cov = self.config["var"]
         flux_model, weights = self.make_observable(block)
         # Calculate likelihood-value of the fit
         good_pixels = weights > 0
+        ivar_eff = self.get_effective_ivar(block)
         like = self.log_like(self.config["flux"][good_pixels],
                              flux_model[good_pixels],
-                             cov[good_pixels],
-                             weights=weights[good_pixels])
+                             ivar_eff[good_pixels] * weights[good_pixels],
+                             include_norm=True)
         # Final posterior for sampling
         block[section_names.likelihoods, self.like_name] = like
+
+        if self.config.get("save_chi2", False):
+            block["extra", self.like_name + "_chi2"] = -2 * like
+
         return 0
 
     def cleanup(self):

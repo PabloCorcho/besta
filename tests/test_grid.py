@@ -3,7 +3,7 @@ import pytest
 
 from besta.grid.grid import ModelGrid, GridFitter, _truncate_posterior_mass
 from besta.grid.binning import RectBinner, KDTreeBinner, HashedGridBinner, NestedBinner
-from besta.grid.transforms import LinearStandardiser, MagTransform
+from besta.grid.transforms import LinearStandardiser
 from besta.grid.prob import (
     FlatPrior,
     GaussianPrior1D,
@@ -18,7 +18,6 @@ from besta.grid.prob import (
     CompositePrior,
     ObservableCompositePrior,
     GaussianProductLikelihood,
-    CensoredSizeLikelihood,
     CompositeLikelihood,
     NumbaGaussianProductLikelihood,
     posterior_over_models,
@@ -181,8 +180,7 @@ def test_modelgrid_hdf5_and_fits_roundtrip(tmp_path):
     np.testing.assert_allclose(g_fits.observables, grid.observables)
     np.testing.assert_allclose(g_fits.targets, grid.targets)
 
-
-def test_linear_standardiser_and_mag_transform_roundtrip():
+def test_linear_standardiser_roundtrip():
     X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
     std = LinearStandardiser().fit(X)
     Xz = std.transform(X)
@@ -191,12 +189,6 @@ def test_linear_standardiser_and_mag_transform_roundtrip():
     state = std.to_dict()
     std2 = LinearStandardiser.from_dict(state)
     np.testing.assert_allclose(std2.transform(X), Xz)
-
-    mt = MagTransform(zero_point=25.0)
-    flux = np.array([1e-1, 1.0, 10.0])
-    mag = mt.flux_to_mag(flux)
-    np.testing.assert_allclose(mt.mag_to_flux(mag), flux)
-
 
 def test_rect_binner_fit_candidates_and_persistence(tmp_path):
     grid = _make_grid(n_side=7)
@@ -398,15 +390,6 @@ def test_likelihoods_and_posterior_helper_normalization():
     assert ll.shape == (grid.n_models,)
     assert np.argmax(ll) == 10
 
-    cl = CensoredSizeLikelihood(
-        phot_indices=[0, 1],
-        size_index=2,
-        s_min=float(grid.observables[:, 2].mean()),
-        bandwidth_floor=1e-3,
-    )
-    ll2 = cl.log_likelihood(x, sig, grid.observables)
-    assert ll2.shape == (grid.n_models,)
-
     comp = CompositeLikelihood([gp, gp])
     llc = comp.log_likelihood(x, sig, grid.observables)
     np.testing.assert_allclose(llc, 2.0 * ll)
@@ -539,3 +522,6 @@ def test_gridfitter_fit_batch_dry_run():
 
     out = fitter.fit_batch(X, S, dry_run=True, return_mode="list")
     assert out == []
+
+if __name__ == "__main__":
+    pytest.main([__file__])

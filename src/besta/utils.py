@@ -2,6 +2,8 @@
 
 import os
 import functools
+from copy import deepcopy
+from typing import Any, Callable
 import numpy as np
 import psutil
 
@@ -192,3 +194,64 @@ def expand_env_vars(arg_spec=0):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+def time_func_call(func):
+    """
+    Decorator to measure the execution time of a function.
+
+    Parameters
+    ----------
+    func : callable
+        The function to be timed.
+
+    Returns
+    -------
+    callable
+        A wrapper function that measures and prints the execution time.
+
+    Examples
+    --------
+    >>> @time_func_call
+    ... def compute():
+    ...     sum(range(1000000))
+    >>> compute()
+    Execution time of 'compute': 0.123 seconds
+    """
+    import time
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Execution time of '{func.__name__}': {elapsed_time:.3f} seconds")
+        return result
+
+    return wrapper
+
+def store_method_output(
+    method: Callable[..., Any],
+    output_list: list[Any],
+    *,
+    copy_output: bool = False,
+) -> Callable[..., Any]:
+    """Wrap a bound method and append each returned value to a list."""
+
+    @functools.wraps(method)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        result = method(*args, **kwargs)
+
+        # For tuple outputs, persist only the model observable.
+        result_to_store = result[0] if isinstance(result, tuple) and len(result) > 0 else result
+
+        if copy_output:
+            try:
+                result_to_store = result_to_store.copy()
+            except AttributeError:
+                result_to_store = deepcopy(result_to_store)
+
+        output_list.append(result_to_store)
+        return result
+
+    return wrapper

@@ -5,13 +5,69 @@ import tempfile
 
 import numpy as np
 from astropy.table import Table
+from astropy import units as u
 
 from besta.postprocess import (
-    read_results_file,
     summarize_results,
     ResultsSummary,
 )
+from besta import io
 
+class TestPostprocessingUtils(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.test_dir = os.path.dirname(__file__)
+    
+    @classmethod
+    def tearDownClass(cls):
+        pass
+
+    def test_as_float_array_func(self):
+        from besta.postprocess import _as_float_array
+
+        # Test with a list of floats
+        arr = [1.0, 2.0, 3.0]
+        result = _as_float_array(arr)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.dtype, float)
+        np.testing.assert_array_equal(result, np.array(arr))
+
+        # Test with a astropy Quantity
+        arr = np.array([4.0, 5.0, 6.0]) << u.m
+        result = _as_float_array(arr)
+        self.assertIsInstance(result, np.ndarray)
+        self.assertEqual(result.dtype, float)
+        np.testing.assert_array_equal(result, arr.value)
+
+    def test_normalize_weights(self):
+        from besta.postprocess import normalize_weights
+
+        # Test with uniform weights
+        weights = np.array([1.0, 1.0, 1.0])
+        normalized = normalize_weights(weights)
+        np.testing.assert_array_almost_equal(normalized, np.array([1/3, 1/3, 1/3]))
+
+        # Test with non-uniform weights
+        weights = np.array([0.5, 1.5, 2.0])
+        normalized = normalize_weights(weights)
+        expected = weights / np.sum(weights)
+        np.testing.assert_array_almost_equal(normalized, expected)
+
+    def test_check_multimodal_pdf(self):
+        from besta.postprocess import check_multimodal_pdf
+
+        # Create a simple bimodal distribution
+        x = np.linspace(-5, 5, 200)
+        delta_x = x[1] - x[0]
+        f = np.exp(-0.5 * ((x + 2) / 0.5) ** 2) + np.exp(-0.5 * ((x - 2) / 0.5) ** 2)
+
+        n_maxima, maxima_x, maxima_val = check_multimodal_pdf(x, f)
+
+        print(n_maxima, maxima_x, maxima_val, delta_x)
+        self.assertEqual(n_maxima, 2)
+        self.assertTrue(np.allclose(maxima_x, [2, -2], atol=delta_x / 3))
+        self.assertTrue(np.allclose(maxima_val, [1.0, 1.0], rtol=0.1))
 
 class TestPostprocessing(unittest.TestCase):
     """
@@ -85,23 +141,9 @@ class TestPostprocessing(unittest.TestCase):
             return self.data_file
         return self._make_synthetic_results_file()
 
-    def test_read_results_file(self):
-        path = self._get_results_path()
-        table = read_results_file(path)
-
-        self.assertIsInstance(table, Table)
-        self.assertGreater(len(table), 0, "Results table is empty")
-
-        # Basic column expectations
-        self.assertIn("post", table.colnames, "Missing 'post' column")
-        # The synthetic file has prior; a real sfh.txt might not.
-        # So only assert prior if present in the file.
-        # Parameter columns: at least one 'section--param' should exist
-        self.assertTrue(any("--" in c for c in table.colnames), "No parameter columns found (expected '--' delimiter).")
-
     def test_summarize_results_and_exports(self):
         path = self._get_results_path()
-        table = read_results_file(path)
+        table = io.read_results_file(path)
 
         with tempfile.TemporaryDirectory() as tmp:
             out_fits = os.path.join(tmp, "besta_summary.fits")
@@ -152,11 +194,34 @@ class TestPostprocessing(unittest.TestCase):
             # Percentiles shape
             self.assertEqual(summary.percentiles_values.shape, (len(summary.parameter_keys), len(summary.percentiles)))
 
-            # 1D PDF presence (by short names)
-            for nm in summary.parameter_names:
+            # 1D PDF presence (by section-qualified names)
+            qualified_names = [
+                ".".join((section, name))
+                for section, name in zip(
+                    summary.parameter_sections, summary.parameter_names
+                )
+            ]
+            for nm in qualified_names:
                 self.assertIn(nm, summary.pdf_1d)
                 self.assertIn("grid", summary.pdf_1d[nm])
                 self.assertIn("hist_pdf", summary.pdf_1d[nm])
+                self.assertIn("n_maxima", summary.pdf_1d[nm])
+                self.assertIn("map", summary.pdf_1d[nm])
+
+                # New summary products: fixed-mass HDIs and 1D mode locations
+                self.assertIn(nm, summary.hdi_intervals_68)
+                self.assertIn(nm, summary.hdi_intervals_95)
+                self.assertIn(nm, summary.map_1d)
+
+                self.assertIsInstance(summary.hdi_intervals_68[nm], list)
+                self.assertIsInstance(summary.hdi_intervals_95[nm], list)
+                self.assertGreaterEqual(len(summary.hdi_intervals_68[nm]), 1)
+                self.assertGreaterEqual(len(summary.hdi_intervals_95[nm]), 1)
+
+                self.assertEqual(
+                    np.asarray(summary.map_1d[nm]).shape,
+                    np.asarray(summary.pdf_1d[nm]["map"]).shape,
+                )
 
             # FITS and JSON outputs exist
             self.assertTrue(os.path.isfile(out_fits), "FITS summary not written")
@@ -169,6 +234,16 @@ class TestPostprocessing(unittest.TestCase):
             self.assertIn("mean", payload)
             self.assertIn("covariance", payload)
             self.assertIn("pdf_1d", payload)
+            self.assertIn("hdi_intervals_68", payload)
+            self.assertIn("hdi_intervals_95", payload)
+            self.assertIn("map_1d", payload)
+            self.assertNotIn("hdi_intervals", payload)
+            self.assertNotIn("hdi_mass", payload)
+
+            for nm in qualified_names:
+                self.assertIn(nm, payload["hdi_intervals_68"])
+                self.assertIn(nm, payload["hdi_intervals_95"])
+                self.assertIn(nm, payload["map_1d"])
 
             # Evidence: only validate if prior exists and estimation was enabled
             if estimate_evidence:

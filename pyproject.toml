@@ -25,6 +25,9 @@ requires-python = ">=3.10"
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
+[project.scripts]
+besta-postprocess = "besta.cli.besta_postprocess:main"
+besta-run = "besta.cli.besta_run:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

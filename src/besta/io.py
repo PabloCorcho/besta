@@ -5,6 +5,7 @@ import re
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -14,7 +15,6 @@ from cosmosis import Inifile
 from cosmosis.datablock import DataBlock, SectionOptions
 from astropy.table import Table
 
-from besta import pipeline_modules
 from besta.logging import get_logger, setup_logging
 from besta.utils import expand_env_vars
 
@@ -148,9 +148,9 @@ def _parse_group(token: str):
 
 def _parse_scalar(token: str):
     low = token.lower()
-    if low in {"true", "yes", "on"}:
+    if low in {"t", "true", "yes", "on"}:
         return True
-    if low in {"false", "no", "off"}:
+    if low in {"f", "false", "no", "off"}:
         return False
     if low in {"none", "null"}:
         return "none"
@@ -251,8 +251,7 @@ def string_to_func_args(text: str):
 
     return args, kwargs
 
-def _ini_file_to_dict(path):
-    ini = Inifile(path)
+def _ini_to_dict(ini):
     ini_dict = {}
     values = [ini.items(s) for s in ini.sections()]
     for sec, params in zip(ini.sections(), values):
@@ -260,6 +259,10 @@ def _ini_file_to_dict(path):
         for k, v in params:
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
+
+def _ini_file_to_dict(path):
+    ini = Inifile(path)
+    return _ini_to_dict(ini)    
 
 def _ini_string_to_dict(text):
     ini = Inifile(None)
@@ -271,6 +274,30 @@ def _ini_string_to_dict(text):
         for k, v in params:
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
+
+def _config_to_string_lines(config, ignore_sec=None):
+    lines = []
+    for section in config.keys():
+        if section == ignore_sec:
+            continue
+        lines.append(f"[{section}]\n")
+        for key, value in config[section].items():
+            content = f"{key} = "
+            if type(value) is str:
+                content += " " + value
+            elif type(value) is list:
+                content += " ".join([str(v) for v in value])
+            # elif (type(value) is float) or (type(value) is int):
+            #     content += str(value)
+            elif value is None:
+                content += "None"
+            else:
+                content += str(value)
+            lines.append(f"{content}\n")
+    return lines
+
+def _dict_to_ini(config):
+    return Inifile.from_lines(_config_to_string_lines(config))
 
 @expand_env_vars()
 def make_ini_file(filename, config, ignore_sec="values"):
@@ -286,25 +313,9 @@ def make_ini_file(filename, config, ignore_sec="values"):
     logger.info("Writing .ini file: %s", filename)
     with open(filename, "w") as f:
         f.write(f"; File generated automatically by BESTA\n")
-        for section in config.keys():
-            # Ignore the Values section
-            if section.lower() == ignore_sec.lower():
-                continue
-            f.write(f"[{section}]\n")
-            for key, value in config[section].items():
-                content = f"{key} = "
-                if type(value) is str:
-                    content += " " + value
-                elif type(value) is list:
-                    content += " ".join([str(v) for v in value])
-                # elif (type(value) is float) or (type(value) is int):
-                #     content += str(value)
-                elif value is None:
-                    content += "None"
-                else:
-                    content += str(value)
-                f.write(f"{content}\n")
-        f.write(r"; \(ﾟ▽ﾟ)/")
+        lines = _config_to_string_lines(config, ignore_sec=ignore_sec)
+        f.writelines(lines)
+        f.write("; A galopar!")
 
 def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
@@ -329,7 +340,7 @@ def make_values_file(config, overwrite=True, values_sec="values"):
         make_ini_file(values_filename, config[values_sec], ignore_sec=None)
 
 @expand_env_vars()
-def read_results_file(path):
+def read_results_file(path, delimiter="\t"):
     """Read the results produced during a CosmoSIS run.
 
     Parameters
@@ -343,13 +354,33 @@ def read_results_file(path):
         Table containing the results.
     """
     with open(path, "r", encoding="utf-8") as f:
-        header = f.readline().strip("#")
-        columns = header.replace("\n", "").split("\t")
-    matrix = np.atleast_2d(np.loadtxt(path))
+        header = f.readline()
+    if not header.startswith("#"):
+        raise ValueError("Expected first line header starting with '#'.")
+
+    columns = [col.strip().lower() for col in header.strip("# \n").split(delimiter)]
+    matrix = np.atleast_2d(np.loadtxt(path, delimiter=delimiter, comments="#"))
     table = Table()
-    if matrix.size > 1:
-        for ith, c in enumerate(columns):
-            table.add_column(matrix.T[ith], name=c.lower())
+    if matrix.size <= 1:
+        return table
+    if matrix.shape[1] != len(columns):
+        raise ValueError(
+            f"Data has {matrix.shape[1]} columns but header lists {len(columns)}."
+        )
+    for ith, name in enumerate(columns):
+        table[name] = matrix[:, ith]
+    
+    # Obtain metadata stored at the bottom of the file
+    with open(path, "r", encoding="utf-8") as f:
+        lines = reversed(f.readlines())
+        for line in lines:
+            if line.startswith("#"):
+                line = line.strip("# \n")
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    table.meta[key.strip()] = value.strip()
+            else:
+                break
     return table
 
 def load_class_from_path(file_path, class_name):
@@ -368,6 +399,110 @@ def load_class_from_path(file_path, class_name):
     spec.loader.exec_module(module)
 
     return getattr(module, class_name)
+
+def parse_table_format(path):
+    """Parse the format of a table file based on its extension.
+    
+    Parameters
+    ----------
+    path : str
+        Path to the table file.
+    
+    Returns
+    -------
+    format : str
+        Format of the table file (e.g., "csv", "fits", "ascii").
+    """
+    extension = os.path.splitext(path)[1].lower()
+    if extension in [".csv"]:
+        format = "csv"
+    elif extension in [".fits"]:
+        format = "fits"
+    elif extension in [".txt", ".dat"]:
+        format = "ascii"
+    else:
+        logger.warning(f"Could not guess file format from extension '{extension}'. Defaulting to ASCII.")
+        format = "ascii"
+
+    return format
+
+def burn_table(table, nwalkers: int, burn_in: int) -> Table:
+    """Discard the first `burn_in` samples per walker from the table."""
+    nrows = len(table)
+    expected = nwalkers * burn_in
+    if nrows < expected:
+        raise ValueError(f"Not enough rows in table ({nrows}) for burn_in={burn_in} and nwalkers={nwalkers} (expected at least {expected}).")
+    # Keep rows after burn-in for each walker
+    mask = np.ones(nrows, dtype=bool)
+    for w in range(nwalkers):
+        start = w * burn_in
+        end = (w + 1) * burn_in
+        mask[start:end] = False
+    return table[mask]
+
+def _select_parameter_keys(
+    table: Table,
+    *,
+    parameter_prefix: str = "--",
+    parameter_keys: Optional[Sequence[str]] = None,
+) -> List[str]:
+    if parameter_keys is not None:
+        keys = list(parameter_keys)
+    else:
+        keys = [k for k in table.colnames if parameter_prefix in k]
+    if len(keys) == 0:
+        raise ValueError("No parameter keys found/selected.")
+    return keys
+
+def _split_param_key(key: str, prefix: str = "--") -> Tuple[str, str]:
+    """
+    Split a parameter key into (section, name) using the delimiter/prefix.
+
+    If the key cannot be split, returns ("", key).
+    """
+    if prefix in key:
+        sect, name = key.split(prefix, 1)
+        return sect, name
+    return "", key
+
+def initial_guess_from_ini(ini: dict | str, outfile: str, n_samples=10, n_tries=None, seed=42):
+
+    if isinstance(ini, dict):
+        reader = Reader.from_config_dict(ini)
+    elif isinstance(ini, str):
+        reader = Reader.from_ini_file(ini, verbose=False)
+    else:
+        raise TypeError(f"Unrecognised input ini: {ini.__class__}")    
+
+    if n_tries is None:
+        n_tries = int(1e6)
+
+    
+    print(reader.ini_values_free)
+    np.random.seed(seed=seed)
+    samples = np.array(
+        [np.random.uniform(v[0], v[2], size=n_tries) for v in reader.ini_values_free.values()]).T
+
+    tries = 0
+    good_samples = []
+    pipe_modules = [reader.get_module(m) for m in reader.modules]
+    while tries < n_tries and len(good_samples) < n_samples:
+        sample = {"--".join(k):v for k, v in zip(reader.ini_values_free.keys(), samples[tries])}
+        db = reader.solution_to_datablock(sample, add_fixed=True)
+        if np.all([mod.config["sfh_model"].parse_datablock(db)[0] for mod in pipe_modules]):
+            good_samples.append(samples[tries])
+        tries += 1
+
+    good_samples = np.array(good_samples)
+    if len(good_samples) < n_samples:
+        print("Not enough samples found")
+    header = " ".join(sample.keys())
+    np.savetxt(outfile, good_samples, header=header)
+    return good_samples
+
+###################
+# Main reader class
+###################
 
 class Reader(object):
     r"""CosmoSIS run results reader.
@@ -459,7 +594,7 @@ class Reader(object):
     @property
     def values_file(self) -> str:
         """Path to the CosmoSIS (prior) values configuration file."""
-        return getattr(self, "_ini_file", None)
+        return getattr(self, "_values_file", None)
 
     @values_file.setter
     def values_file(self, value):
@@ -497,16 +632,20 @@ class Reader(object):
         module = load_class_from_path(self.ini[module_name]["file"], "module")
         logger.debug(f"Loaded module {module_name} from {self.ini[module_name]['file']}")
         return module(self.ini, alias=module_name)
-        # if not hasattr(pipeline_modules, module_class):
-        #     raise ValueError(
-        #         f"Module class {module_class} not found in besta.pipeline_modules.")
-        # return getattr(pipeline_modules, module_class)(options)
 
     #TODO: deprecate
     @property
     def last_module(self):
         """An instance of the last pipeline module used in the run."""
         return self.get_module(self.modules[-1])
+
+    @property
+    def samplers(self) -> list:
+        """List of samplers used in the pipeline."""
+        samplers = self.ini["runtime"]["sampler"]
+        if isinstance(samplers, str):
+            return [samplers]
+        return samplers
 
     @property
     def config(self) -> dict:
@@ -538,9 +677,19 @@ class Reader(object):
         """Set the path to the CosmoSIS results file."""
         self._results_file = value
 
-    def __init__(self, ini_file=None, results_file=None):
+    @property
+    def walkers(self) -> list:
+        last_sampler = self.samplers[-1]
+        walkers = self.ini[last_sampler].get("walkers", None)
+        return walkers
 
-        if ini_file is not None:
+    def __init__(self, *, ini=None, ini_file=None, results_file=None, verbose=True):
+
+        if ini is not None:
+            self.ini = ini if isinstance(ini, dict) else _ini_to_dict(ini)
+            self.ini_file = ini_file
+            self.results_file = results_file
+        elif ini_file is not None:
             self.ini_file = ini_file
             self.ini = self.read_ini_file(self.ini_file)
         elif results_file is not None:
@@ -548,6 +697,9 @@ class Reader(object):
             self.ini = self.read_ini_file_from_results(self.results_file)
         else:
             raise ValueError("Must provide either ini or results file")
+
+        if results_file is None:
+            self.results_file = self.ini["output"]["filename"]
 
         self.ini_values = self.read_ini_file(self.ini["pipeline"]["values"])
         self.ini_values_free = {
@@ -564,7 +716,7 @@ class Reader(object):
         self.config = {}
         
         # setup logging based on the first module in the pipeline (if any)
-        if self.modules:
+        if self.modules and verbose:
             logging_console = self.ini[self.modules[0]].get("logging_console")
             logging_level = self.ini[self.modules[0]].get("logging_level", "INFO").upper()
             logging_overwrite = self.ini[self.modules[0]].get("logging_overwrite", False)
@@ -573,13 +725,24 @@ class Reader(object):
             setup_logging(level=logging_level, log_file=logging_file,
                           overwrite=logging_overwrite, console=logging_console)
 
-
-    def load_results(self):
-        """Load the cosmosis run results associated to the ``ini`` file."""
+    def load_results(self, burn_in=0, nwalkers=1):
+        """Load the cosmosis run results associated to the ``ini`` file.
+        
+        Parameters
+        ----------
+        burn_in : int, optional
+            Number of initial samples to discard per walker. Default is 0 (no burn-in).
+        nwalkers : int, optional
+            Number of walkers used during the sampling. Required if burn_in > 0. Default is 1.
+        """
         path = self.ini["output"]["filename"]
         if ".txt" not in path:
             path += ".txt"
         self.results_table = read_results_file(path)
+        if burn_in > 0:
+            self.results_table = burn_table(
+                self.results_table,
+                nwalkers=self.ini["pipeline"].get("nwalkers", nwalkers), burn_in=burn_in)
 
     def get_maxlike_solution(self, log_prob="post", as_datablock=False,
                              **kwargs):
@@ -645,7 +808,8 @@ class Reader(object):
         --------
         :func:`solution_to_datablock`
         """
-        assert frac > 0 and frac <= 100, "Fraction must be in (0, 100]"
+        if not (0 < frac <= 100):
+            raise ValueError("Fraction must be in (0, 100].")
         good_sample = np.isfinite(self.results_table[log_prob])
         tab = self.results_table[good_sample]
         post_sort = np.argsort(tab[log_prob])
@@ -810,19 +974,29 @@ class Reader(object):
         dict
             Parsed ini configuration stored in the results header.
         """
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"{path} not found")
+
         with open(path, "r") as file:
             file_lines = file.readlines()
-            line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
-                "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
+            try:
+                line_start, line_end = [ith for ith, f in enumerate(file_lines) if (
+                    "START_OF_PARAMS_INI" in f) or ("END_OF_PARAMS_INI" in f)]
+            except:
+                raise ValueError(f"START_OF_PARAMS_INI and END_OF_PARAMS_INI not found in {path}")
             content = "".join([l.replace("## ", "") for l in file_lines[line_start + 1:line_end]])
             return _ini_string_to_dict(content)
 
     @classmethod
-    def from_ini_file(cls, path_to_ini):
+    def from_ini_file(cls, path_to_ini, **kwargs):
         """Create a reader from a CosmoSIS ini file."""
-        return cls(ini_file=path_to_ini)
+        return cls(ini_file=path_to_ini, **kwargs)
 
     @classmethod
-    def from_results_file(cls, path_to_results):
+    def from_config_dict(cls, config, **kwargs):
+        return cls(ini=_dict_to_ini(config), **kwargs)
+
+    @classmethod
+    def from_results_file(cls, path_to_results, **kwargs):
         """Create a reader from a CosmoSIS results file."""
-        return cls(results_file=path_to_results)
+        return cls(results_file=path_to_results, **kwargs)

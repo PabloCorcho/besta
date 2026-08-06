@@ -27,6 +27,69 @@ from besta.logging import get_logger
 logger = get_logger(__name__)
 
 
+def vacuum_to_air_wavelength(wavelength_vacuum):
+    """Convert vacuum wavelengths to air wavelengths Morton (1991, ApJS, 77, 119).
+
+    Parameters
+    ----------
+    wavelength_vacuum : array-like
+        Wavelengths in vacuum (in Angstrom).
+
+    Returns
+    -------
+    array-like
+        Wavelengths in air (in Angstrom).
+    """
+    if isinstance(wavelength_vacuum, u.Quantity):
+        wl = wavelength_vacuum.to_value(u.AA)
+        unit = u.AA
+    else:
+        wl = np.asanyarray(wavelength_vacuum)
+        unit = 1
+
+    wl_air = wl / (1.0 + 2.735182e-4 + 131.4182 / wl**2 + 2.76249e8 / wl**4)
+    return wl_air * unit
+
+def wavelength_offset_to_velocity(wavelength, rest_wavelength):
+    """Convert a wavelength offset to a velocity in km/s.
+
+    Parameters
+    ----------
+    wavelength : array-like
+        Observed wavelength (in Angstrom).
+    rest_wavelength : array-like
+        Reference rest wavelength (in Angstrom).
+
+    Returns
+    -------
+    array-like
+        Velocity offset in km/s. If input wavelengths are :class:`astropy.units.Quantity`,
+        the output will be a Quantity in km/s. Otherwise, it will be a dimensionless array.
+    """
+    # Preserve units if input is Quantity, otherwise return dimensionless array
+    if isinstance(wavelength, u.Quantity):
+        return (constants.c * (wavelength - rest_wavelength) / rest_wavelength).to(u.km / u.s)
+    return constants.c.to_value(u.km / u.s) * (wavelength - rest_wavelength) / rest_wavelength
+
+def wavelength_dispersion_to_velocity_dispersion(wavelength_sigma, rest_wavelength):
+    """Convert a wavelength dispersion (sigma) to a velocity dispersion in km/s.
+
+    Parameters
+    ----------
+    wavelength_sigma : array-like
+        Wavelength dispersion (sigma) in Angstrom.
+    rest_wavelength : array-like
+        Reference rest wavelength in Angstrom.
+
+    Returns
+    -------
+    array-like
+        Velocity dispersion in km/s. If input is Quantity, output will be Quantity in km/s. Otherwise, dimensionless array.
+    """
+    if isinstance(wavelength_sigma, u.Quantity):
+        return (constants.c * wavelength_sigma / rest_wavelength).to(u.km / u.s)
+    return constants.c.to_value(u.km / u.s) * wavelength_sigma / rest_wavelength
+
 def get_legendre_polynomial_array(
     wavelength, order, bounds=None, scale=None, clip_first_zero=True
 ):
@@ -245,6 +308,14 @@ class EmissionLine:
     flag: int = 0
     metadata: dict = field(default_factory=dict)
 
+    def velocity_offset(self, observed_wavelength, redshift=0.0):
+        """Compute velocity offset of the line given an observed wavelength."""
+        return wavelength_offset_to_velocity(observed_wavelength, self.rest_wavelength * (1 + redshift))
+
+    def velocity_dispersion(self, wavelength_sigma, redshift=0.0):
+        """Compute velocity dispersion of the line given a wavelength sigma."""
+        return wavelength_dispersion_to_velocity_dispersion(
+            wavelength_sigma, self.rest_wavelength * (1 + redshift))
 
 class EmissionLineList:
     """Collection of emission lines with helper methods."""
@@ -532,6 +603,9 @@ class EmissionLineList:
 def get_default_emission_lines():
     """Return the default optical emission-line list.
 
+    Lines are expressed in air wavelengths, and the default half-widths (in AA) are
+    nominal values in Angstrom for masking purposes.
+
     Returns
     -------
     EmissionLineList
@@ -583,7 +657,16 @@ def get_default_sky_emission_lines():
 
 
 def _parse_lines_param_decorator(func):
-    """Decorator to parse the `lines` parameter."""
+    """Decorator to parse the `lines` parameter in a function.
+    
+    Description
+    -----------
+
+    This decorator is designed to be applied to functions that accept a `lines`
+    parameter, which can be provided in multiple formats. The decorator will
+    handle the parsing of the `lines` parameter and convert it into a standardized
+    format (an instance of `EmissionLineList`) before passing it to the decorated function.
+    """
 
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -969,9 +1052,10 @@ def estimate_continuum(
     knots_idx[-1] = len(wl) - 1
 
     if use_log:
-        log_flux = np.where(flux > 0, np.log(flux), np.nan)
-        log_flux_err = np.where(flux > 0, err / flux, np.nan)
-        weights = np.where((flux > 0) & (err > 0), weights / log_flux_err**2, 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_flux = np.where(flux > 0, np.log(flux), np.nan)
+            log_flux_err = np.where(flux > 0, err / flux, np.nan)
+            weights = np.where((flux > 0) & (err > 0), weights / log_flux_err**2, 0.0)
     else:
         log_flux = flux
         log_flux_err = err
@@ -1238,7 +1322,26 @@ class LineSegmentationMap:
         )
 
     def fit_line(self, line_id: int) -> dict:
-        """Fit a Gaussian to the specified line_id and return fit parameters."""
+        """Fit a Gaussian to the specified line_id and return fit parameters.
+        
+        Parameters
+        ----------
+        line_id : int
+            The integer ID of the line segment to fit (corresponding to the segmentation map).
+        
+        Returns
+        -------
+        dict
+        A dictionary containing the fit parameters and metadata for the line:
+            - id: line_id
+            - line_flux: integrated flux of the fitted Gaussian
+            - line_flux_err: uncertainty of the line flux
+            - center: fitted central wavelength of the line
+            - sigma: fitted Gaussian sigma (line width in wavelength units)
+            - npixels: number of valid pixels used in the fit
+            - flag: fit quality flag (0=good fit, 1=no valid pixels, 2=not enough
+              pixels for fit, 3=fit failed, used MLE estimates)
+        """
         mask = self.get_line_mask(line_id)
         return self._gaussian_fit(
             wl=self.wavelength,
@@ -1250,7 +1353,31 @@ class LineSegmentationMap:
         )
 
     def fit_all_lines(self) -> Table:
-        """Fit all lines in the segmentation map and return a table of results."""
+        """Fit all lines in the segmentation map and return a table of results.
+        
+        Description
+        -----------
+        This method iterates over all unique line IDs in the segmentation map,
+        fits a Gaussian profile to each line segment using the continuum-subtracted flux,
+        and compiles the fit parameters into an Astropy Table.
+        
+        It also constructs an EmissionLineList with the fitted line parameters
+        and builds a composite emission line spectrum (``self.eline_flux``) by
+        summing the fitted Gaussians for all lines.
+
+        Returns
+        -------
+        Table
+        An Astropy Table containing the fit parameters for each line segment, with columns:
+            - id: line_id
+            - line_flux: integrated flux of the fitted Gaussian
+            - line_flux_err: uncertainty of the line flux
+            - center: fitted central wavelength of the line
+            - sigma: fitted Gaussian sigma (line width in wavelength units)
+            - npixels: number of valid pixels used in the fit
+            - flag: fit quality flag (0=good fit, 1=no valid pixels, 2=not enough
+              pixels for fit, 3=fit failed, used MLE estimates)
+        """
         output_table = Table(
             names=[
                 "id",
@@ -1267,6 +1394,7 @@ class LineSegmentationMap:
                 "flags": "0=good fit, 1=no valid pixels, 2=not enough pixels for fit, 3=fit failed, used MLE estimates",
             },
         )
+
         measured_lines = []
         for line_id in range(1, self.nlines + 1):
             fit_params = self.fit_line(line_id)
@@ -1308,8 +1436,10 @@ def _watershed_1d(
     """
     1D watershed segmentation for deblending overlapping emission lines.
 
-    Starting from labeled seed regions (markers), flood outward following
-    descending signal gradient until regions meet or the mask boundary is reached.
+    This function performs a simple 1D watershed flood-fill. It starts from
+    already-labeled seed pixels in markers and expands those labels into nearby
+    unlabeled pixels inside mask, always filling the currently highest-signal
+    available pixel first.
 
     Parameters
     ----------
@@ -1333,33 +1463,33 @@ def _watershed_1d(
     in_queue = np.zeros(len(signal), dtype=bool)
 
     # Priority queue: (-signal_value, pixel_index, label)
-    # Negative because heapq is a min-heap; we want to process highest signal first
+    # to use heapq (which is a min-heap, for smallest values are procesed first).
     heap = []
-
-    # Seed the queue with all boundary pixels of each marker region
+    # First seed the queue with all boundary pixels of each marker region
     for i in range(len(signal)):
         if labels[i] > 0 and mask[i]:
             for di in (-1, 1):
                 nb = i + di
+                # Pixel nb is currently unlabeled, but it touches label[i],
+                # so it is eligible for flooding
                 if (
                     0 <= nb < len(signal)
                     and mask[nb]
                     and labels[nb] == 0
                     and not in_queue[nb]
                 ):
+                    # Add to the queue
                     heappush(heap, (-signal[nb], nb, labels[i]))
                     in_queue[nb] = True
 
+    # Flood in descending signal order
     while heap:
         neg_val, idx, lbl = heappop(heap)
-
         # Skip if already labeled by a previous (higher-priority) flood
         if labels[idx] != 0:
             continue
-
         labels[idx] = lbl
-
-        # Expand to unlabeled neighbours
+        # Expand again to unlabeled neighbours
         for di in (-1, 1):
             nb = idx + di
             if (
@@ -1368,9 +1498,9 @@ def _watershed_1d(
                 and labels[nb] == 0
                 and not in_queue[nb]
             ):
+                # Flood this neighbour next, with the same label
                 heappush(heap, (-signal[nb], nb, lbl))
                 in_queue[nb] = True
-
     return labels
 
 
@@ -1571,11 +1701,18 @@ def find_emission_lines(
 
     if lines is not None:
         # Match detected lines to input line list based on proximity of centers
+        logger.info(
+            "Matching detected lines to input line list with redshift z=%.3f",
+            redshift)
         matched_line_names = []
+        matched_line_velocities = []
+        matched_line_velocity_dispersion = []
         for row in output_table:
             line_center = row["center"]
             if not np.isfinite(line_center):
                 matched_line_names.append("unknown")
+                matched_line_velocities.append(np.nan)
+                matched_line_velocity_dispersion.append(np.nan)
                 continue
             matched_line = lines.get_closest_line(line_center, redshift=redshift)
             tolerance = (
@@ -1589,15 +1726,28 @@ def find_emission_lines(
                 < tolerance
             ):
                 matched_line_names.append(matched_line.name)
+                matched_line_velocities.append(
+                    matched_line.velocity_offset(line_center, redshift=redshift))
+                matched_line_velocity_dispersion.append(
+                    matched_line.velocity_dispersion(row["sigma"], redshift=redshift))
             else:
                 matched_line_names.append("unknown")
+                matched_line_velocities.append(np.nan)
+                matched_line_velocity_dispersion.append(np.nan)
+
         output_table["line_name"] = matched_line_names
+        output_table["velocity"] = matched_line_velocities
+        output_table["velocity_dispersion"] = matched_line_velocity_dispersion
+
         if line_segm_map.lines is not None:
             line_segm_map.lines = line_segm_map.lines.with_names(matched_line_names)
 
     if to_rest_frame:
         output_table["center"] = output_table["center"] / (1 + redshift)
         output_table["sigma"] = output_table["sigma"] / (1 + redshift)
+        output_table.meta["rest_frame"] = True
+        output_table.meta["redshift"] = redshift
+
         if line_segm_map.lines is not None:
             line_segm_map.lines = EmissionLineList(
                 [
