@@ -251,8 +251,7 @@ def string_to_func_args(text: str):
 
     return args, kwargs
 
-def _ini_file_to_dict(path):
-    ini = Inifile(path)
+def _ini_to_dict(ini):
     ini_dict = {}
     values = [ini.items(s) for s in ini.sections()]
     for sec, params in zip(ini.sections(), values):
@@ -260,6 +259,10 @@ def _ini_file_to_dict(path):
         for k, v in params:
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
+
+def _ini_file_to_dict(path):
+    ini = Inifile(path)
+    return _ini_to_dict(ini)    
 
 def _ini_string_to_dict(text):
     ini = Inifile(None)
@@ -271,6 +274,30 @@ def _ini_string_to_dict(text):
         for k, v in params:
             ini_dict[sec][k] = _parse_value(v)
     return ini_dict
+
+def _config_to_string_lines(config, ignore_sec=None):
+    lines = []
+    for section in config.keys():
+        if section == ignore_sec:
+            continue
+        lines.append(f"[{section}]\n")
+        for key, value in config[section].items():
+            content = f"{key} = "
+            if type(value) is str:
+                content += " " + value
+            elif type(value) is list:
+                content += " ".join([str(v) for v in value])
+            # elif (type(value) is float) or (type(value) is int):
+            #     content += str(value)
+            elif value is None:
+                content += "None"
+            else:
+                content += str(value)
+            lines.append(f"{content}\n")
+    return lines
+
+def _dict_to_ini(config):
+    return Inifile.from_lines(_config_to_string_lines(config))
 
 @expand_env_vars()
 def make_ini_file(filename, config, ignore_sec="values"):
@@ -286,25 +313,9 @@ def make_ini_file(filename, config, ignore_sec="values"):
     logger.info("Writing .ini file: %s", filename)
     with open(filename, "w") as f:
         f.write(f"; File generated automatically by BESTA\n")
-        for section in config.keys():
-            # Ignore the Values section
-            if section.lower() == ignore_sec.lower():
-                continue
-            f.write(f"[{section}]\n")
-            for key, value in config[section].items():
-                content = f"{key} = "
-                if type(value) is str:
-                    content += " " + value
-                elif type(value) is list:
-                    content += " ".join([str(v) for v in value])
-                # elif (type(value) is float) or (type(value) is int):
-                #     content += str(value)
-                elif value is None:
-                    content += "None"
-                else:
-                    content += str(value)
-                f.write(f"{content}\n")
-        f.write(r"; \(ﾟ▽ﾟ)/")
+        lines = _config_to_string_lines(config, ignore_sec=ignore_sec)
+        f.writelines(lines)
+        f.write("; A galopar!")
 
 def make_values_file(config, overwrite=True, values_sec="values"):
     """Make a values.ini file from the configuration.
@@ -358,6 +369,18 @@ def read_results_file(path, delimiter="\t"):
         )
     for ith, name in enumerate(columns):
         table[name] = matrix[:, ith]
+    
+    # Obtain metadata stored at the bottom of the file
+    with open(path, "r", encoding="utf-8") as f:
+        lines = reversed(f.readlines())
+        for line in lines:
+            if line.startswith("#"):
+                line = line.strip("# \n")
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    table.meta[key.strip()] = value.strip()
+            else:
+                break
     return table
 
 def load_class_from_path(file_path, class_name):
@@ -442,6 +465,40 @@ def _split_param_key(key: str, prefix: str = "--") -> Tuple[str, str]:
         return sect, name
     return "", key
 
+def initial_guess_from_ini(ini: dict | str, outfile: str, n_samples=10, n_tries=None, seed=42):
+
+    if isinstance(ini, dict):
+        reader = Reader.from_config_dict(ini)
+    elif isinstance(ini, str):
+        reader = Reader.from_ini_file(ini, verbose=False)
+    else:
+        raise TypeError(f"Unrecognised input ini: {ini.__class__}")    
+
+    if n_tries is None:
+        n_tries = int(1e6)
+
+    
+    print(reader.ini_values_free)
+    np.random.seed(seed=seed)
+    samples = np.array(
+        [np.random.uniform(v[0], v[2], size=n_tries) for v in reader.ini_values_free.values()]).T
+
+    tries = 0
+    good_samples = []
+    pipe_modules = [reader.get_module(m) for m in reader.modules]
+    while tries < n_tries and len(good_samples) < n_samples:
+        sample = {"--".join(k):v for k, v in zip(reader.ini_values_free.keys(), samples[tries])}
+        db = reader.solution_to_datablock(sample, add_fixed=True)
+        if np.all([mod.config["sfh_model"].parse_datablock(db)[0] for mod in pipe_modules]):
+            good_samples.append(samples[tries])
+        tries += 1
+
+    good_samples = np.array(good_samples)
+    if len(good_samples) < n_samples:
+        print("Not enough samples found")
+    header = " ".join(sample.keys())
+    np.savetxt(outfile, good_samples, header=header)
+    return good_samples
 
 ###################
 # Main reader class
@@ -626,9 +683,13 @@ class Reader(object):
         walkers = self.ini[last_sampler].get("walkers", None)
         return walkers
 
-    def __init__(self, ini_file=None, results_file=None):
+    def __init__(self, *, ini=None, ini_file=None, results_file=None, verbose=True):
 
-        if ini_file is not None:
+        if ini is not None:
+            self.ini = ini if isinstance(ini, dict) else _ini_to_dict(ini)
+            self.ini_file = ini_file
+            self.results_file = results_file
+        elif ini_file is not None:
             self.ini_file = ini_file
             self.ini = self.read_ini_file(self.ini_file)
         elif results_file is not None:
@@ -636,6 +697,9 @@ class Reader(object):
             self.ini = self.read_ini_file_from_results(self.results_file)
         else:
             raise ValueError("Must provide either ini or results file")
+
+        if results_file is None:
+            self.results_file = self.ini["output"]["filename"]
 
         self.ini_values = self.read_ini_file(self.ini["pipeline"]["values"])
         self.ini_values_free = {
@@ -652,7 +716,7 @@ class Reader(object):
         self.config = {}
         
         # setup logging based on the first module in the pipeline (if any)
-        if self.modules:
+        if self.modules and verbose:
             logging_console = self.ini[self.modules[0]].get("logging_console")
             logging_level = self.ini[self.modules[0]].get("logging_level", "INFO").upper()
             logging_overwrite = self.ini[self.modules[0]].get("logging_overwrite", False)
@@ -660,7 +724,6 @@ class Reader(object):
 
             setup_logging(level=logging_level, log_file=logging_file,
                           overwrite=logging_overwrite, console=logging_console)
-
 
     def load_results(self, burn_in=0, nwalkers=1):
         """Load the cosmosis run results associated to the ``ini`` file.
@@ -925,11 +988,15 @@ class Reader(object):
             return _ini_string_to_dict(content)
 
     @classmethod
-    def from_ini_file(cls, path_to_ini):
+    def from_ini_file(cls, path_to_ini, **kwargs):
         """Create a reader from a CosmoSIS ini file."""
-        return cls(ini_file=path_to_ini)
+        return cls(ini_file=path_to_ini, **kwargs)
 
     @classmethod
-    def from_results_file(cls, path_to_results):
+    def from_config_dict(cls, config, **kwargs):
+        return cls(ini=_dict_to_ini(config), **kwargs)
+
+    @classmethod
+    def from_results_file(cls, path_to_results, **kwargs):
         """Create a reader from a CosmoSIS results file."""
-        return cls(results_file=path_to_results)
+        return cls(results_file=path_to_results, **kwargs)
