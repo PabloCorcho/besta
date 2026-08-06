@@ -357,6 +357,98 @@ class TestFixedMassFracSFH(unittest.TestCase):
         self.assertGreaterEqual(prior_penalty, -1e20)
 
 
+class TestFixedMassFracSFH2D(unittest.TestCase):
+
+    def setUp(self):
+        self.mass_fractions = np.array([0.2, 0.5, 0.8])
+        self.today = 10.0 * u.Gyr
+        self.model = sfh.FixedMassFracSFH2D(
+            self.mass_fractions,
+            today=self.today,
+            ism_metallicity_today=0.02,
+        )
+
+    def _make_parameters(self, sigma=0.3):
+        parameters = {
+            key: value
+            for key, value in zip(self.model.sfh_bin_keys, [2.0, 5.0, 8.0])
+        }
+        parameters.update(
+            alpha_powerlaw=0.5,
+            ism_metallicity_today=0.02,
+            sigma_log_metallicity=sigma,
+        )
+        return parameters
+
+    @staticmethod
+    def _make_toy_ssp():
+        ssp = pst.SSP.SSPBase()
+        ssp.name = "toy_besta_cem_2d"
+        ssp.ages = np.array([0.1, 1.0, 5.0, 10.0]) * u.Gyr
+        ssp.metallicities = (
+            np.array([0.002, 0.005, 0.01, 0.02, 0.05])
+            << u.dimensionless_unscaled
+        )
+        return ssp
+
+    def test_initialization_uses_pst_2d_model(self):
+        self.assertIsInstance(self.model.model, pst.cem.TabularMassFracCEM2D)
+        self.assertIsInstance(self.model.model, pst.cem.ChemicalEvolutionModel2D)
+        self.assertIn("sigma_log_metallicity", self.model.free_params)
+        self.assertTrue(
+            np.isclose(self.model.model.sigma_log_metallicity.to_value(), 0.25)
+        )
+
+    def test_parse_datablock_updates_scatter(self):
+        datablock = DataBlock.from_dict(
+            {self.model.sect_name: self._make_parameters(sigma=0.35)}
+        )
+
+        status, log_prior = self.model.parse_datablock(datablock)
+
+        self.assertEqual(status, 1)
+        self.assertEqual(log_prior, 0.0)
+        self.assertTrue(
+            np.isclose(self.model.model.sigma_log_metallicity.to_value(), 0.35)
+        )
+
+    def test_zero_scatter_matches_fixed_mass_frac_sfh(self):
+        deterministic = sfh.FixedMassFracSFH(
+            self.mass_fractions,
+            today=self.today,
+            ism_metallicity_today=0.02,
+        )
+        parameters_2d = self._make_parameters(sigma=0.0)
+        parameters_1d = parameters_2d.copy()
+        parameters_1d.pop("sigma_log_metallicity")
+
+        status_1d, _ = deterministic.parse_free_params(parameters_1d)
+        status_2d, _ = self.model.parse_free_params(parameters_2d)
+        ssp = self._make_toy_ssp()
+        weights_1d = deterministic.model.interpolate_ssp_masses(
+            ssp, self.today, oversample_factor=3
+        )
+        weights_2d = self.model.model.interpolate_ssp_masses(
+            ssp, self.today, oversample_factor=3
+        )
+
+        self.assertEqual(status_1d, 1)
+        self.assertEqual(status_2d, 1)
+        self.assertTrue(
+            u.allclose(weights_1d, weights_2d, rtol=0.0, atol=0.0 * u.Msun)
+        )
+
+    def test_finite_scatter_spreads_and_conserves_mass(self):
+        status, _ = self.model.parse_free_params(self._make_parameters(sigma=0.3))
+        weights = self.model.model.interpolate_ssp_masses(
+            self._make_toy_ssp(), self.today, oversample_factor=3
+        )
+
+        self.assertEqual(status, 1)
+        self.assertTrue(u.isclose(weights.sum(), 1.0 * u.Msun))
+        self.assertGreater(np.count_nonzero(weights.sum(axis=1).value), 2)
+
+
 class TestExponentialSFH(unittest.TestCase):
 
     def setUp(self):
@@ -499,12 +591,25 @@ class TestTransforms(unittest.TestCase):
         mass_fractions = np.array([0.2, 0.5, 0.8])
         model = sfh.FixedMassFracSFH(mass_fractions, ism_metallicity_today=0.02,
                                      use_transforms=True)
-        latent = np.array([0.0, 0.1, -0.2])
+        for key in model.sfh_bin_keys:
+            self.assertEqual(model.free_params[key], [0.0, 0.5, 1.0])
+        latent = np.array([0.2, 0.7, 0.4])
         physical = model.to_physical(latent)
         self.assertTrue(np.all(np.diff(physical) > 0))
+        self.assertGreater(physical[0], 0.0)
+        self.assertLess(physical[-1], model.today.to_value("Gyr"))
         inv = model.to_latent(physical)
-        # defined up to additive constant
-        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(), rtol=1e-6)
+        np.testing.assert_allclose(inv, latent, rtol=1e-6, atol=1e-12)
+
+        params = {k: v for k, v in zip(model.sfh_bin_keys, latent)}
+        params["alpha_powerlaw"] = 1.0
+        params["ism_metallicity_today"] = 0.02
+        status, prior_penalty = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: params})
+        )
+        self.assertEqual(status, 1)
+        self.assertEqual(prior_penalty, 0.0)
+        self.assertEqual(model.model.times.size, len(mass_fractions) + 2)
 
 
 if __name__ == "__main__":

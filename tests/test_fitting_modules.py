@@ -157,6 +157,39 @@ def test_prepare_sfh_model_forwards_smoothness_prior_options():
     assert prior.min_sfr == 1e-10
 
 
+def test_prepare_sfh_model_builds_fixed_mass_frac_2d():
+    class Dummy(SpectraFitModule):
+        name = "Dummy"
+
+        def make_observable(self, *args, **kwargs):
+            pass
+
+        def execute(self, *args, **kwargs):
+            pass
+
+        def plot_solution(self, *args, **kwargs):
+            pass
+
+    mod = Dummy.__new__(Dummy)
+    mod.alias = "Dummy"
+    mod.config = {}
+    options = mod.parse_options(
+        {
+            "Dummy": {
+                "SFHModel": "FixedMassFracSFH2D",
+                "SFHArgs": "[0.2, 0.5, 0.8]",
+            }
+        }
+    )
+
+    mod.prepare_sfh_model(options)
+
+    model = mod.config["sfh_model"]
+    assert isinstance(model, sfh.FixedMassFracSFH2D)
+    assert model.model.name == "tabular_mass_frac_cem_2d"
+    assert "sigma_log_metallicity" in model.free_params
+
+
 if __name__ == "__main__":
     import sys
     import unittest
