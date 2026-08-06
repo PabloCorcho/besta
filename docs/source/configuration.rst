@@ -283,8 +283,17 @@ These options are used by :meth:`besta.pipeline_modules.base_module.BaseModule.p
   ranges, e.g. ``-3 0 3``) rather than on the final fractions/times.
 
   Supported models: ``FixedTimeSFH``, ``FixedCosmicTimeSFH``, ``FlexibleCosmicTimeSFH``,
-  ``FixedMassFracSFH``, and ``FixedTime_sSFR_SFH``. See :mod:`besta.sfh` for the
-  precise mappings and their inverses (``to_physical``/``to_latent`` hooks).
+  ``FixedMassFracSFH``, ``FixedMassFracSFH2D``, and ``FixedTime_sSFR_SFH``. See
+  :mod:`besta.sfh` for the precise mappings and their inverses
+  (``to_physical``/``to_latent`` hooks).
+
+  ``FixedMassFracSFH2D`` extends ``FixedMassFracSFH`` with the free parameter
+  ``sigma_log_metallicity``, the log10 metallicity scatter in dex at fixed
+  formation time. Setting it to zero exactly recovers the deterministic
+  metallicity model, and positive widths converge continuously to that model
+  as ``sigma_log_metallicity`` tends to zero. The finite-width distribution is
+  projected using the same piecewise-linear ``log10(Z)`` interpolation basis
+  as the SSP model.
 
 
 Likelihood configuration options
