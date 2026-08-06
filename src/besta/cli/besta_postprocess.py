@@ -27,7 +27,7 @@ def pprint(*mssgs):
 def load_reader(file, from_ini=False):
     if from_ini:
         pprint("Loading INI config file", file)
-        reader = Reader(file)
+        reader = Reader(ini_file=file)
     else:
         pprint("Loading results file", file)
         reader= Reader.from_results_file(file)
