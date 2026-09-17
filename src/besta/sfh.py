@@ -414,18 +414,6 @@ class SFHBase(ABC):
                 relative_sfr_floor=relative_floor,
             )
 
-        legacy_prior_types = {
-            "legacy_index_gaussian",
-            "index_gaussian",
-            "legacy",
-        }
-        if prior_type in legacy_prior_types:
-            raise ValueError(
-                "The legacy Gaussian SFH smoothness prior has been removed. "
-                "Use sfh_smoothness_prior_type='robust_time_curvature' "
-                "or 'smoothness'."
-            )
-
         raise ValueError(
             "Unknown sfh_smoothness_prior_type "
             f"{prior_type!r}; expected 'robust_time_curvature', "
