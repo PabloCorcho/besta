@@ -52,7 +52,10 @@ class FullSpectralFitModule(SpectraFitModule):
         luminosity_model = sfh_model.model.compute_SED(
             self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
         )
-        flux_model = 1e10 * luminosity_model.to_value(self._default_luminosity_units
+
+        mass_scale = 1e10 if sfh_model.use_mass_normalization else 1.0
+        flux_model = mass_scale * luminosity_model.to_value(
+            self._default_luminosity_units
         ) / self.config["dl_sq"]
 
         # Apply dust extinction in the rest frame, before LOSVD convolution.
@@ -84,12 +87,14 @@ class FullSpectralFitModule(SpectraFitModule):
             normalization = np.nanmedian(
                 self.config["flux"][weights > 0] / flux_model[weights > 0]
             )
-            block["extra", "stellar_mass"] = np.log10(normalization) + 10
+            block["extra", "stellar_mass"] = np.log10(normalization) + 10.0
         else:
             normalization = 1.0
-            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
-                sfh_model.today
-            ).to_value("Msun")
+            block["extra", "stellar_mass"] = np.log10(
+                sfh_model.model.stellar_mass_formed(
+                    sfh_model.today
+                ).to_value("Msun")
+            )
 
         # Save SFH mass-fraction times
         if self.config.get("save_t_frac_at", False):
