@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import lgamma
 import numpy as np
+from numpy.polynomial import Polynomial
 from astropy import units as u
 
 from cosmosis import DataBlock
@@ -15,29 +16,52 @@ from besta.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Latent variables and transformations
 
 def _softmax(x):
-    """Numerically stable softmax."""
+    """Numerically stable softmax.
+    
+    The softmax is defined as:
+
+    .. math::
+
+        \mathrm{softmax}(x_i) = \frac{\exp(x_i)}{\sum_j \exp(x_j)}.
+
+    """
     x = np.asarray(x, dtype=float)
     x_shift = x - np.max(x)
     exp_x = np.exp(x_shift)
     return exp_x / np.sum(exp_x)
 
-
 def _sigmoid(x):
-    """Simple sigmoid to clamp values into (0, 1)."""
+    """Simple sigmoid to clamp values into (0, 1).
+    
+    This function maps any real number to the interval (0, 1).
+    The sigmoid is defined as:
+
+    .. math::
+
+        \mathrm{sigmoid}(x) = \frac{1}{1 + \exp(-x)}.
+
+    """
     return 1.0 / (1.0 + np.exp(-x))
 
-
 def _logit(x):
-    """Inverse of sigmoid on (0,1)."""
+    """Inverse of sigmoid on (0,1).
+    
+    The inverse sigmoid, or logit, is defined as:
+
+    .. math::
+
+        \mathrm{logit}(x) = \log\left(\frac{x}{1 - x}\right).
+
+    """
     x = np.asarray(x, dtype=float)
     if np.any((x <= 0) | (x >= 1)):
         raise ValueError("Logit is only defined for values strictly within (0, 1).")
     return np.log(x) - np.log1p(-x)
 
-
-def validate_monotonic(array, *, strict=True, name="array"):
+def _validate_monotonic(array, *, strict=True, name="array"):
     """Validate that the input array is monotonic increasing."""
     arr = np.asarray(array)
     diff = np.diff(arr)
@@ -50,182 +74,163 @@ def validate_monotonic(array, *, strict=True, name="array"):
     return True
 
 
-# SFH Priors
+class _OrderedUniformTransform:
+    r"""Map a unit hypercube to a uniform ordered region.
+
+    The target region is
+
+    .. math::
+
+        0 \leq x_1 < x_2 < \cdots < x_n,
+        \qquad x_i \leq w_i,
+
+    for strictly increasing positive upper bounds ``w_i``.
+    
+    The mapping is the inverse Rosenblatt transform of the uniform density on
+    this region. It generalises the equal-bound stick-breaking transform used by
+    :class:`FixedMassFracSFH`.
+    """
+
+    def __init__(self, upper_bounds):
+
+        # Set the upper bounds w_i
+        upper_bounds = np.asarray(upper_bounds, dtype=float)
+        if upper_bounds.ndim != 1 or upper_bounds.size == 0:
+            raise ValueError("upper_bounds must be a non-empty 1D array.")
+        if np.any(~np.isfinite(upper_bounds)) or np.any(upper_bounds <= 0.0):
+            raise ValueError("upper_bounds must be finite and positive.")
+        if np.any(np.diff(upper_bounds) <= 0.0):
+            raise ValueError("upper_bounds must be strictly increasing.")
+
+        self.upper_bounds = upper_bounds
+        self._volume_pieces = [None]
+        self._total_volumes = [1.0]
+
+        # V_k(x) is the volume of 0 <= x_1 < ... < x_k <= x, subject
+        # to x_i <= w_i.  Recursively,
+        # V_k(x) = integral_0^min(x, w_k) V_{k-1}(t) dt.
+        for order in range(1, upper_bounds.size + 1):
+            boundaries = np.concatenate(([0.0], upper_bounds[:order]))
+            pieces = []
+            cumulative_volume = 0.0
+
+            for interval, (left, right) in enumerate(
+                zip(boundaries[:-1], boundaries[1:])
+            ):
+                if order == 1:
+                    integrand = Polynomial([1.0])
+                elif interval < order - 1:
+                    integrand = self._volume_pieces[order - 1][interval]
+                else:
+                    integrand = Polynomial([self._total_volumes[order - 1]])
+
+                antiderivative = integrand.integ()
+                volume = antiderivative + (
+                    cumulative_volume - antiderivative(left)
+                )
+                pieces.append(volume)
+                cumulative_volume = float(volume(right))
+
+            self._volume_pieces.append(tuple(pieces))
+            self._total_volumes.append(cumulative_volume)
+
+    def _volume(self, order, value):
+        """Evaluate ``V_order(value)``."""
+        value = float(value)
+        if value <= 0.0:
+            return 0.0
+        if value >= self.upper_bounds[order - 1]:
+            return self._total_volumes[order]
+
+        interval = int(
+            np.searchsorted(
+                self.upper_bounds[:order],
+                value,
+                side="right",
+            )
+        )
+        return float(self._volume_pieces[order][interval](value))
+
+    def _inverse_volume(self, order, probability, conditional_upper):
+        """Invert a conditional ordered-coordinate CDF by bisection."""
+        support_upper = min(
+            float(conditional_upper),
+            self.upper_bounds[order - 1],
+        )
+        total_volume = self._volume(order, support_upper)
+        target_volume = float(probability) * total_volume
+
+        if target_volume <= 0.0:
+            return 0.0
+        if target_volume >= total_volume:
+            return support_upper
+
+        lower = 0.0
+        upper = support_upper
+        for _ in range(48):
+            midpoint = 0.5 * (lower + upper)
+            if self._volume(order, midpoint) < target_volume:
+                lower = midpoint
+            else:
+                upper = midpoint
+        return 0.5 * (lower + upper)
+
+    def to_ordered(self, latent):
+        """Map independent unit-uniform variables to the ordered region."""
+        latent = np.asarray(latent, dtype=float)
+        if latent.shape != self.upper_bounds.shape:
+            raise ValueError(
+                f"Expected {self.upper_bounds.size} latent variables."
+            )
+        if np.any(~np.isfinite(latent)) or np.any(
+            (latent < 0.0) | (latent > 1.0)
+        ):
+            raise ValueError("Latent variables must lie in [0, 1].")
+
+        ordered = np.empty_like(latent)
+        conditional_upper = self.upper_bounds[-1]
+        for order in range(latent.size, 0, -1):
+            ordered[order - 1] = self._inverse_volume(
+                order,
+                latent[order - 1],
+                conditional_upper,
+            )
+            conditional_upper = ordered[order - 1]
+        return ordered
+
+    def to_unit(self, ordered):
+        """Map an interior point of the ordered region to the unit cube."""
+        ordered = np.asarray(ordered, dtype=float)
+        if ordered.shape != self.upper_bounds.shape:
+            raise ValueError(
+                f"Expected {self.upper_bounds.size} ordered variables."
+            )
+        if np.any(~np.isfinite(ordered)) or np.any(ordered < 0.0) or np.any(
+            ordered > self.upper_bounds
+        ):
+            raise ValueError("Ordered variables lie outside their bounds.")
+        _validate_monotonic(
+            ordered,
+            strict=True,
+            name="ordered variables",
+        )
+
+        latent = np.empty_like(ordered)
+        conditional_upper = self.upper_bounds[-1]
+        for order in range(ordered.size, 0, -1):
+            denominator = self._volume(order, conditional_upper)
+            latent[order - 1] = (
+                self._volume(order, ordered[order - 1]) / denominator
+            )
+            conditional_upper = ordered[order - 1]
+        return latent
+
+
+
+# Non-parametric SFH smoothing priors
 
 @dataclass(frozen=True)
 class SFHSmoothnessPrior:
-    r"""Legacy index-based Gaussian smoothness prior.
-
-    This class preserves the original BESTA smoothness prior for
-    reproducibility. New fits use :class:`SFHRobustTimeCurvaturePrior` by
-    default when SFH smoothness regularisation is enabled.
-
-    This prior regularises a piecewise star formation history by penalising
-    variations in the logarithm of the bin-averaged star formation rate.
-
-    For a set of stellar masses, or mass fractions, formed in disjoint time
-    bins, the average star formation rate in bin :math:`i` is defined as
-
-    .. math::
-
-        \mathrm{SFR}_i = \frac{\Delta M_i}{\Delta t_i},
-
-    where :math:`\Delta M_i` is the stellar mass formed in the bin and
-    :math:`\Delta t_i` is its duration. The logarithmic star formation rate is
-
-    .. math::
-
-        y_i = \log_{10}\left(
-            \mathrm{SFR}_i + \mathrm{SFR}_{\mathrm{min}}
-        \right),
-
-    where :math:`\mathrm{SFR}_{\mathrm{min}}` is a small positive number used
-    to avoid evaluating the logarithm at zero.
-
-    For a first-order prior, the residuals are the differences between
-    neighbouring logarithmic star formation rates,
-
-    .. math::
-
-        r_i^{(1)} = y_{i+1} - y_i,
-
-    and the logarithmic prior is
-
-    .. math::
-
-        \ln p_{\mathrm{smooth}}
-        =
-        -\frac{1}{2}
-        \sum_i
-        \left(
-            \frac{r_i^{(1)}}{\sigma_{\mathrm{dex}}}
-        \right)^2.
-
-    This form favours similar star formation rates in adjacent bins and
-    therefore tends to favour approximately constant star formation histories.
-
-    For a second-order prior, the residuals are
-
-    .. math::
-
-        r_i^{(2)}
-        =
-        y_{i+2} - 2y_{i+1} + y_i,
-
-    and the logarithmic prior is
-
-    .. math::
-
-        \ln p_{\mathrm{smooth}}
-        =
-        -\frac{1}{2}
-        \sum_i
-        \left(
-            \frac{r_i^{(2)}}{\sigma_{\mathrm{dex}}}
-        \right)^2.
-
-    This form penalises changes in the local logarithmic SFR gradient. It
-    therefore suppresses isolated spikes while allowing smoothly rising or
-    declining star formation histories.
-
-    The current implementation defines finite differences with respect to the
-    bin index rather than physical time. Consequently, the second-order prior
-    corresponds exactly to a curvature prior only when the time-bin centres
-    are approximately uniformly spaced. For strongly irregular time grids, a
-    time-weighted finite-difference prior may be more appropriate.
-
-    Parameters
-    ----------
-    sigma_dex : float, optional
-        Characteristic allowed variation in logarithmic star formation rate,
-        in dex. For ``order=1``, this controls differences between adjacent
-        values of :math:`\log_{10}(\mathrm{SFR})`. For ``order=2``, it controls
-        second differences in :math:`\log_{10}(\mathrm{SFR})`. Smaller values
-        impose stronger smoothing. The default is 0.5.
-    order : {1, 2}, optional
-        Order of the finite-difference regularisation.
-
-        * ``1`` penalises differences between adjacent logarithmic SFRs.
-        * ``2`` penalises second differences in logarithmic SFR.
-
-        The default is 2.
-    min_sfr : float, optional
-        Positive numerical floor added to the bin-averaged SFR before taking
-        its base-10 logarithm. Its units must be consistent with the units of
-        ``mass_per_bin / delta_t`` used when evaluating the prior. The default
-        is ``1e-12``.
-
-    Notes
-    -----
-    The prior is invariant under multiplication of all bin masses by the same
-    positive constant because finite differences remove the corresponding
-    additive offset in :math:`\log_{10}(\mathrm{SFR})`.
-
-    The returned quantity is an additive log-prior contribution and should be
-    combined with the remaining terms in the posterior as
-
-    .. math::
-
-        \ln p(\boldsymbol{\theta}\mid D)
-        =
-        \ln \mathcal{L}(D\mid\boldsymbol{\theta})
-        + \ln p_{\mathrm{base}}(\boldsymbol{\theta})
-        + \ln p_{\mathrm{smooth}}(\boldsymbol{\theta}).
-
-    The normalisation constant of the Gaussian prior is omitted because it is
-    independent of the sampled SFH parameters when ``sigma_dex`` is fixed.
-    """
-    sigma_dex: float = 0.5
-    order: int = 2
-    min_sfr: float = 1e-12
-
-    def __post_init__(self):
-        if self.sigma_dex <= 0:
-            raise ValueError("sigma_dex must be strictly positive.")
-        if self.order not in (1, 2):
-            raise ValueError("order must be either 1 or 2.")
-        if self.min_sfr <= 0:
-            raise ValueError("min_sfr must be strictly positive.")
-
-    def __call__(self, mass_per_bin, time_edges) -> float:
-        mass_per_bin = np.asarray(mass_per_bin, dtype=float)
-        time_edges = np.asarray(time_edges, dtype=float)
-
-        if mass_per_bin.ndim != 1 or time_edges.ndim != 1:
-            raise ValueError("Inputs must be one-dimensional.")
-
-        if time_edges.size != mass_per_bin.size + 1:
-            raise ValueError(
-                "time_edges must have length len(mass_per_bin) + 1."
-            )
-
-        if (
-            not np.all(np.isfinite(mass_per_bin))
-            or not np.all(np.isfinite(time_edges))
-            or np.any(mass_per_bin < 0)
-        ):
-            return -1e20
-
-        delta_t = np.diff(time_edges)
-
-        if np.any(delta_t <= 0):
-            return -1e20
-
-        sfr = mass_per_bin / delta_t
-        log_sfr = np.log10(sfr + self.min_sfr)
-
-        if log_sfr.size <= self.order:
-            return 0.0
-
-        residuals = np.diff(log_sfr, n=self.order)
-
-        return float(
-            -0.5 * np.dot(residuals, residuals) / self.sigma_dex**2
-        )
-
-
-@dataclass(frozen=True)
-class SFHRobustTimeCurvaturePrior:
     r"""Robust smoothness prior defined on an irregular physical-time grid.
 
     The prior first converts the bin-averaged SFRs into dimensionless values
@@ -355,6 +360,7 @@ class SFHBase(ABC):
     """
 
     free_params = {}
+    _defines_latent_free_params = False
 
     def __init__(self, *args, **kwargs):
         self.sect_name = kwargs.get("sect_name", "stars.sfh")
@@ -388,6 +394,7 @@ class SFHBase(ABC):
             "robust_time_curvature",
             "time_curvature",
             "robust",
+            "smoothness",
         }:
             sigma_dex = float(kwargs.get("sfh_smoothness_sigma_dex", 0.3))
             dof = float(kwargs.get("sfh_smoothness_dof", 3.0))
@@ -401,37 +408,28 @@ class SFHBase(ABC):
                 dof,
                 relative_floor,
             )
-            return SFHRobustTimeCurvaturePrior(
+            return SFHSmoothnessPrior(
                 sigma_dex=sigma_dex,
                 dof=dof,
                 relative_sfr_floor=relative_floor,
             )
 
-        if prior_type in {
+        legacy_prior_types = {
             "legacy_index_gaussian",
             "index_gaussian",
             "legacy",
-        }:
-            sigma_dex = float(kwargs.get("sfh_smoothness_sigma_dex", 0.5))
-            order = int(kwargs.get("sfh_smoothness_order", 2))
-            min_sfr = float(kwargs.get("sfh_smoothness_min_sfr", 1e-12))
-            logger.info(
-                "Enabling legacy index-based Gaussian SFH smoothness prior "
-                "with sigma_dex=%s, order=%s, min_sfr=%s",
-                sigma_dex,
-                order,
-                min_sfr,
-            )
-            return SFHSmoothnessPrior(
-                sigma_dex=sigma_dex,
-                order=order,
-                min_sfr=min_sfr,
+        }
+        if prior_type in legacy_prior_types:
+            raise ValueError(
+                "The legacy Gaussian SFH smoothness prior has been removed. "
+                "Use sfh_smoothness_prior_type='robust_time_curvature' "
+                "or 'smoothness'."
             )
 
         raise ValueError(
             "Unknown sfh_smoothness_prior_type "
-            f"{prior_type!r}; expected 'robust_time_curvature' or "
-            "'legacy_index_gaussian'."
+            f"{prior_type!r}; expected 'robust_time_curvature', "
+            "'time_curvature', or 'smoothness'."
         )
 
     @property
@@ -489,7 +487,7 @@ class SFHBase(ABC):
 
         free_params = self.free_params.copy()
 
-        if self.use_transforms:
+        if self.use_transforms and not self._defines_latent_free_params:
             logger.info("transforming default SFH values into latent variables")
             if getattr(self, "sfh_bin_keys", None):
                 sfh_values = self.to_latent([free_params[k][1] for k in self.sfh_bin_keys])
@@ -568,10 +566,10 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     Description
     -----------
     The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to the mass fraction formed on each bin.
-
-    The default starting point for uniform priors corresponds to the mass
-    fraction formed assuming a constant star formation history.
+    parameters correspond to the mean SFR of each bin. The first bin ranges
+    from the present time to the first lookback time, the second bin from the
+    first to the second, and so on. The last bin ranges from the last lookback
+    time to the beginning of the Universe.
 
     Attributes
     ----------
@@ -581,14 +579,17 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not self.use_transforms:
-            self.use_mass_normalization = False
+        if self.use_transforms:
+            raise NotImplementedError(
+                "FixedTimeSFH does not support latent variable transforms."
+            )
+
         logger.info("Initialising FixedTimeSFH model")
         # From the begining of the Universe to the present date
         self.lookback_time = check_unit(
             np.sort(lookback_time_bins)[::-1], u.Gyr
         )
-        use_mass_normalization = False
+        self.use_mass_normalization = False
         # Add the present time as the last bin
         self.lookback_time = np.insert(
             self.lookback_time,
@@ -599,21 +600,22 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         self.time = self.today - self.lookback_time
         if (self.time < 0).any():
             logger.warning("lookback time bin larger than the age of the Universe")
+        self.delta_time = np.diff(self.time.to_value("yr"))
 
-        logm_min = kwargs.get("logmass_min", 1.0)
-        logm_max = kwargs.get("logmass_max", 12.0)
+        logsfr_min = kwargs.get("logsfr_min", -5.0)
+        logsfr_max = kwargs.get("logsfr_max", 3.0)
         logger.info("Setting up free parameters")
-        logger.info("Minimum log(M/Msun)=%s", logm_min)
-        logger.info("Maximum log(M/Msun)=%s", logm_max)
+        logger.info("Minimum log(SFR)=%s", logsfr_min)
+        logger.info("Maximum log(SFR)=%s", logsfr_max)
         self.sfh_bin_keys = []
         for lbt in self.lookback_time[:-1].to_value("Gyr"):
             # Initialise parameters assuming a constant star formation history
-            k = f"logmass_at_{lbt:.3f}"
+            k = f"logsfr_at_{lbt:.3f}"
             self.sfh_bin_keys.append(k)
-            self.free_params[k] = [logm_min,
+            self.free_params[k] = [logsfr_min,
                                 #    self.today._to_value("Gyr") / lbt,
-                                   6.0,
-                                   logm_max]
+                                   0.0,
+                                   logsfr_max]
 
         # Initialise PST
         self.model = cem.TabularCEM_ZPowerLaw(
@@ -625,23 +627,16 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
         )
+        self.model.times.fixed = True
 
     def parse_datablock(self, datablock: DataBlock):
         """Update the fixed-time SFH model from a CosmoSIS DataBlock."""
-        sampled_masses = self.get_sfh_parameters_array(datablock)
+        sampled_logsfr = self.get_sfh_parameters_array(datablock)
 
-        if self.use_transforms:
-            # Fractions formed in each disjoint time bin.
-            mass_per_bin = self.to_physical(sampled_masses)
-        else:
-            # Absolute mass formed in each disjoint time bin.
-            mass_per_bin = 10.0**sampled_masses
-
-        cumulative = np.insert(
-            np.cumsum(mass_per_bin),
-            0,
-            0.0,
-        )
+        # Convert mean SFR per bin into cumulative mass formed in each bin
+        mass_per_bin = 10.0**sampled_logsfr * self.delta_time
+        cumulative = np.cumsum(mass_per_bin)
+        cumulative = np.insert(cumulative, 0, 0.0) << u.Msun
 
         log_prior = self.evaluate_sfh_smoothness_prior(
             mass_per_bin=mass_per_bin,
@@ -666,25 +661,6 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         return 1, log_prior
 
-    def to_latent(self, physical):
-        """
-        Inverse of the softmax branch (up to an additive constant).
-        We center the log-fractions to have zero mean for determinism.
-        """
-        frac = np.asarray(physical, dtype=float)
-        if frac.ndim != 1:
-            raise ValueError("Expected 1D array of mass fractions.")
-        if not np.isclose(frac.sum(), 1.0, atol=1e-6):
-            raise ValueError("Mass fractions must sum to 1 to invert softmax.")
-        log_frac = np.log(frac)
-        return log_frac - log_frac.mean()
-
-    def to_physical(self, latent):
-        """Softmax-transform latent masses into fractions that sum to 1."""
-        if self.use_transforms:
-            return _softmax(latent)
-        return np.asarray(latent, dtype=float)
-
 
 class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
@@ -700,6 +676,8 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         Lookback time bin edges.
 
     """
+
+    _defines_latent_free_params = True
 
     def __init__(self, lookback_time, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -721,6 +699,10 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         self.sfh_bin_keys = []
         self.max_ssfr_logyr = np.zeros(self.lookback_time.size)
+        self.min_ssfr_logyr = np.full(self.lookback_time.size, -14.0)
+        self.log_lookback_time_yr = np.log10(
+            self.lookback_time.to_value("yr")
+        )
         for ith, lbt in enumerate(self.lookback_time.to_value("yr")):
             # This is the name of the value sampled by CosmoSIS
             k = f"logssfr_over_{np.log10(lbt):.2f}_logyr"
@@ -730,12 +712,28 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             self.max_ssfr_logyr[ith] = max_logssfr
             if not self.use_transforms:
                 self.free_params[k] = [
-                    -14.0,
+                    self.min_ssfr_logyr[ith],
                     np.log10(1 / self.today.to_value("yr")),
                     max_logssfr,
                 ]
             else:
-                self.free_params[k] = [-10.0, 0.0, 10.0]
+                self.free_params[k] = [0.0, 0.5, 1.0]
+
+        if self.use_transforms:
+            # For z_i = -log10(tau_i * sSFR_i), the direct rectangular
+            # log-sSFR prior conditioned on physical cumulative masses is
+            # uniform over 0 <= z_1 < ... < z_n <= w_i.  The unequal w_i
+            # arise from the shared lower log-sSFR bound.
+            ordered_upper = -(
+                self.min_ssfr_logyr + self.log_lookback_time_yr
+            )
+            self._latent_prior_transform = _OrderedUniformTransform(
+                ordered_upper
+            )
+            logger.info(
+                "Using a prior-preserving ordered transform for fixed-time "
+                "sSFR bins."
+            )
 
         # log(tau1 / tau2) where tau1 > tau2
         self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
@@ -780,37 +778,32 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return 1, log_prior
 
     def to_physical(self, latent):
-        """Return log10 sSFR over each timescale.
-
-        If transforms are enabled, map latent vars -> softmax increments -> cumulative
-        mass, then convert to average sSFR over each interval.
-        """
+        """Map unit-cube latents to the conditioned direct log-sSFR prior."""
         latent = np.asarray(latent, dtype=float)
         if self.use_transforms:
-            # Map unconstrained latents to positive fractions that sum to 1
-            increments = _softmax(latent)
-            ssfr = (1 - np.cumsum(increments)) / self.lookback_time.to_value("yr")
-            ssfr = np.clip(ssfr, 1e-20, None)
-            return np.log10(ssfr)
+            ordered_log_remaining_mass = (
+                self._latent_prior_transform.to_ordered(latent)
+            )
+            return -(
+                ordered_log_remaining_mass + self.log_lookback_time_yr
+            )
         return latent
 
     def to_latent(self, physical):
-        """Inverse mapping from log10 sSFR back to latent (softmax) space."""
+        """Map a physical log-sSFR sequence back to the unit hypercube."""
         physical = np.asarray(physical, dtype=float)
         if not self.use_transforms:
             return physical
-        lt_yr = self.lookback_time.to_value("yr")
-        ssfr = 10**physical
-        cumulative = 1 - lt_yr * ssfr
-        cumulative = np.insert(cumulative, [0, cumulative.size], [0.0, 1.0])
-        if (np.diff(cumulative) <= 0).any():
-            raise ValueError("Provided sSFR yields non-monotonic cumulative mass.")
-        # Rescale cumulative to [0, 1] and drop duplicate final edge
-        cumulative = (cumulative - cumulative[0]) / (cumulative[-1] - cumulative[0])
-        increments = np.diff(cumulative)[:-1]
-        increments /= increments.sum()
-        log_inc = np.log(increments)
-        return log_inc - log_inc.mean()
+        if physical.shape != self.log_lookback_time_yr.shape:
+            raise ValueError(
+                f"Expected {self.lookback_time.size} log-sSFR values."
+            )
+        ordered_log_remaining_mass = -(
+            physical + self.log_lookback_time_yr
+        )
+        return self._latent_prior_transform.to_unit(
+            ordered_log_remaining_mass
+        )
 
 
 class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
@@ -832,6 +825,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """
 
     cem_model_class = cem.TabularMassFracCEM
+    _defines_latent_free_params = True
 
     def __init__(self, mass_fraction, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -946,9 +940,8 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return 1, log_prior
 
     def to_physical(self, latent):
-        """Map unit-cube latents to strictly increasing times (Gyr)."""
+        """Map unit hypercube latents to strictly increasing times (Gyr)."""
         if self.use_transforms:
-            latent = np.asarray(latent, dtype=float)
             if np.any(~np.isfinite(latent)) or np.any(
                 (latent < 0.0) | (latent > 1.0)
             ):
@@ -965,13 +958,13 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             )
             time_frac = np.cumsum(remaining * breaks)
             return time_frac * self.today.to_value("Gyr")
-        return np.asarray(latent, dtype=float)
+        return latent
 
     def to_latent(self, physical):
-        """Map strictly increasing times back to unit-cube variables."""
+        """Map strictly increasing times back to unit hypercube variables."""
         if self.use_transforms:
             times = np.asarray(physical, dtype=float)
-            validate_monotonic(times, strict=True, name="times")
+            _validate_monotonic(times, strict=True, name="times")
             today = self.today.to_value("Gyr")
             if np.any(~np.isfinite(times)) or np.any(times <= 0.0) or np.any(
                 times >= today
@@ -1343,8 +1336,8 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
         t_start = datablock[self.sect_name, "t_start"]
         t_end = datablock[self.sect_name, "t_end"]
         if t_start >= t_end:
-            return 0, t_start - t_end
-    
+            return 0, -1e20
+
         self.model = cem.BetaZPowerLawCEM(
             today=self.today,
             mass_today=1.0 << u.Msun,
