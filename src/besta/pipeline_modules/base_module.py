@@ -204,11 +204,6 @@ class BaseModule(ClassModule):
     def execute(self, block: DataBlock, *args, **kwargs):
         """Execute the pipeline."""
 
-    @abstractmethod
-    def plot_solution(self, *args, **kwargs):
-        """Plot the fit results."""
-        pass
-
     @classmethod
     def get_path(cls):
         """Get the path to the module file."""
