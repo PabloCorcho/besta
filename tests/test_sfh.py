@@ -100,8 +100,8 @@ class TestFixedTimeSFH(unittest.TestCase):
         self.lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
         self.model = sfh.FixedTimeSFH(self.lookback_bins, ism_metallicity_today=0.02)
 
-    def _make_db(self, logmass_value=-6.0, alpha=1.0, ism_z=0.02):
-        parameters = {key: logmass_value for key in self.model.sfh_bin_keys}
+    def _make_db(self, logsfr_value=-6.0, alpha=1.0, ism_z=0.02):
+        parameters = {key: logsfr_value for key in self.model.sfh_bin_keys}
         parameters['alpha_powerlaw'] = alpha
         parameters['ism_metallicity_today'] = ism_z
         return DataBlock.from_dict({self.model.sect_name: parameters})
@@ -135,7 +135,7 @@ class TestFixedTimeSFH(unittest.TestCase):
             self.assertIn(f"{lbt:.3f}", key)
 
     def test_parse_datablock_valid(self):
-        db = self._make_db(logmass_value=-6.0)
+        db = self._make_db(logsfr_value=-6.0)
         status, info = self.model.parse_datablock(db)
 
         self.assertEqual(status, 1)
@@ -144,7 +144,7 @@ class TestFixedTimeSFH(unittest.TestCase):
 
     def test_table_mass_size_matches_time(self):
         # table_mass must align with the internal time array
-        db = self._make_db(logmass_value=-6.0)
+        db = self._make_db(logsfr_value=-6.0)
         self.model.parse_datablock(db)
         self.assertEqual(
             len(self.model.model.table_mass),
@@ -153,25 +153,34 @@ class TestFixedTimeSFH(unittest.TestCase):
 
     def test_table_mass_starts_at_zero(self):
         # The first mass value (at the earliest time) should be 0
-        db = self._make_db(logmass_value=-6.0)
+        db = self._make_db(logsfr_value=-6.0)
         self.model.parse_datablock(db)
         self.assertAlmostEqual(
             self.model.model.table_mass[0].to_value(u.Msun), 0.0
         )
 
     def test_table_mass_monotonically_increasing(self):
-        db = self._make_db(logmass_value=-6.0)
+        db = self._make_db(logsfr_value=-6.0)
         self.model.parse_datablock(db)
         masses = self.model.model.table_mass.to_value(u.Msun)
         self.assertTrue(np.all(np.diff(masses) >= 0))
 
+    def test_log_sfr_sets_absolute_formed_mass(self):
+        # log10(SFR / (Msun / yr)) = 0 over five Gyr forms 5e9 Msun.
+        self.model.parse_datablock(self._make_db(logsfr_value=0.0))
+        self.assertAlmostEqual(
+            self.model.model.table_mass[-1].to_value(u.Msun),
+            5e9,
+        )
+        self.assertFalse(self.model.use_mass_normalization)
+
     def test_parse_datablock_updates_alpha(self):
-        db = self._make_db(logmass_value=-6.0, alpha=2.5)
+        db = self._make_db(logsfr_value=-6.0, alpha=2.5)
         self.model.parse_datablock(db)
         self.assertAlmostEqual(self.model.model.alpha_powerlaw, 2.5)
 
     def test_parse_datablock_updates_metallicity(self):
-        db = self._make_db(logmass_value=-6.0, ism_z=0.03)
+        db = self._make_db(logsfr_value=-6.0, ism_z=0.03)
         self.model.parse_datablock(db)
         self.assertAlmostEqual(
             self.model.model.ism_metallicity_today.value, 0.03
@@ -212,20 +221,6 @@ class TestFixedTimeSFH(unittest.TestCase):
                 self.assertIn(key, content)
         finally:
             os.unlink(path)
-
-    def test_use_transforms_mode(self):
-        model = sfh.FixedTimeSFH(
-            self.lookback_bins, ism_metallicity_today=0.02, use_transforms=True
-        )
-        # In transforms mode, latent values go through softmax → always valid
-        params = {key: 0.0 for key in model.sfh_bin_keys}  # equal fractions
-        params['alpha_powerlaw'] = 0.5
-        params['ism_metallicity_today'] = 0.02
-        db = DataBlock.from_dict({model.sect_name: params})
-        status, info = model.parse_datablock(db)
-        self.assertEqual(status, 1)
-        self.assertTrue(info == 0.0)
-
 
 class TestFixedTime_sSFR_SFH(unittest.TestCase):
 
@@ -558,34 +553,94 @@ class TestBetaSFH(unittest.TestCase):
 
 class TestTransforms(unittest.TestCase):
 
-    def test_fixed_time_softmax_roundtrip(self):
-        lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
-        model = sfh.FixedTimeSFH(lookback_bins, ism_metallicity_today=0.02,
-                                 use_transforms=True)
-        latent = np.array([0.1, -0.2, 0.3, 0.0])
-        physical = model.to_physical(latent)
-        np.testing.assert_allclose(physical.sum(), 1.0, rtol=1e-6)
-        # softmax inverse defined up to additive constant; center both
-        inv = model.to_latent(physical)
-        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(),
-                                   rtol=1e-6, atol=1e-8)
-        params = {k: v for k, v in zip(model.sfh_bin_keys, latent)}
-        params["alpha_powerlaw"] = 1.0
-        params["ism_metallicity_today"] = 0.02
-        status, prior_penalty = model.parse_datablock(DataBlock.from_dict({model.sect_name: params}))
-        self.assertEqual(status, 1)
-        self.assertTrue(prior_penalty == 0.0)
-        self.assertAlmostEqual(model.model.table_mass.to_value(u.Msun)[-1], 1.0, places=6)
-
-    def test_fixed_time_ssfr_softmax_roundtrip(self):
+    def test_fixed_time_ssfr_prior_preserving_roundtrip(self):
         lookback_bins = np.array([0.5, 1.0, 2.0]) * u.Gyr
         model = sfh.FixedTime_sSFR_SFH(lookback_bins, ism_metallicity_today=0.02,
                                        use_transforms=True)
-        latent = np.array([0.0, 0.1, -0.1])
+        for key in model.sfh_bin_keys:
+            self.assertEqual(model.free_params[key], [0.0, 0.5, 1.0])
+
+        latent = np.array([0.2, 0.7, 0.4])
         physical_logssfr = model.to_physical(latent)
         inv = model.to_latent(physical_logssfr)
-        np.testing.assert_allclose(inv - inv.mean(), latent - latent.mean(),
-                                   rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(inv, latent, rtol=1e-8, atol=1e-10)
+        self.assertTrue(np.all(physical_logssfr >= model.min_ssfr_logyr))
+        self.assertTrue(np.all(physical_logssfr <= model.max_ssfr_logyr))
+        self.assertTrue(
+            np.all(np.diff(physical_logssfr) < model.delta_logtau)
+        )
+
+        parameters = {
+            key: value
+            for key, value in zip(model.sfh_bin_keys, latent)
+        }
+        parameters["alpha_powerlaw"] = 1.0
+        parameters["ism_metallicity_today"] = 0.02
+        status, prior_penalty = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: parameters})
+        )
+        self.assertEqual(status, 1)
+        self.assertEqual(prior_penalty, 0.0)
+
+        # The old n-logit softmax forced the latest of n+1 mass bins to zero.
+        remaining_mass = (
+            model.lookback_time.to_value("yr") * 10**physical_logssfr
+        )
+        self.assertGreater(remaining_mass[-1], 0.0)
+
+    def test_fixed_time_ssfr_transform_preserves_uniform_prior_volume(self):
+        lookback_bins = np.array([0.5, 1.0, 2.0]) * u.Gyr
+        model = sfh.FixedTime_sSFR_SFH(
+            lookback_bins,
+            ism_metallicity_today=0.02,
+            use_transforms=True,
+        )
+
+        def numerical_jacobian_determinant(latent):
+            step = 1e-5
+            columns = []
+            for index in range(latent.size):
+                offset = np.zeros_like(latent)
+                offset[index] = step
+                columns.append(
+                    (
+                        model.to_physical(latent + offset)
+                        - model.to_physical(latent - offset)
+                    )
+                    / (2 * step)
+                )
+            return abs(np.linalg.det(np.column_stack(columns)))
+
+        expected_volume = model._latent_prior_transform._total_volumes[-1]
+        for latent in (
+            np.array([0.2, 0.7, 0.4]),
+            np.array([0.7, 0.3, 0.8]),
+        ):
+            self.assertAlmostEqual(
+                numerical_jacobian_determinant(latent),
+                expected_volume,
+                places=5,
+            )
+
+    def test_fixed_time_ssfr_transformed_ini_uses_unit_priors(self):
+        import os
+        import tempfile
+
+        model = sfh.FixedTime_sSFR_SFH(
+            np.array([0.5, 1.0, 2.0]) * u.Gyr,
+            ism_metallicity_today=0.02,
+            use_transforms=True,
+        )
+        with tempfile.NamedTemporaryFile(suffix=".ini", delete=False) as file:
+            path = file.name
+        try:
+            model.make_ini(path, mode="w")
+            with open(path, encoding="utf-8") as file:
+                content = file.read()
+            for key in model.sfh_bin_keys:
+                self.assertIn(f"{key} = 0.0 0.5 1.0", content)
+        finally:
+            os.unlink(path)
 
     def test_fixed_mass_frac_time_roundtrip(self):
         mass_fractions = np.array([0.2, 0.5, 0.8])

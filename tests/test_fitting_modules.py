@@ -102,6 +102,58 @@ def test_full_spectral_fit_make_observable(tmp_path):
     assert np.isfinite(block["extra", "ssfr_over_tau_1.0000"])
 
 
+def test_full_spectral_fit_fixed_time_uses_absolute_mass(tmp_path):
+    spec = make_dummy_spectrum(tmp_path)
+    block = DataBlock()
+    parameters = {
+        "dust.attenuation": {"a_v": 0.0},
+        "kinematics": {
+            "los_vel": 0.0,
+            "los_sigma": 100.0,
+            "los_h3": 0.0,
+            "los_h4": 0.0,
+        },
+        "stars.sfh": {
+            "alpha_powerlaw": 1.0,
+            "ism_metallicity_today": 0.02,
+            "logsfr_at_5.000": 0.0,
+            "logsfr_at_2.000": 0.0,
+            "logsfr_at_1.000": 0.0,
+            "logsfr_at_0.500": 0.0,
+        },
+    }
+    for section, values in parameters.items():
+        for key, value in values.items():
+            block[section, key] = value
+
+    options = {
+        "FullSpectralFit": {
+            "inputSpectrum": spec,
+            "SSPModel": "PopStar",
+            "SSPModelArgs": "cha",
+            "SSPDir": "None",
+            "wlUnits": "Angstrom",
+            "fluxUnits": "1e-16 erg / (s cm2 Angstrom)",
+            "wlRange": [4010, 4990],
+            "velscale": 200.0,
+            "ExtinctionLaw": "ccm89",
+            "SFHModel": "FixedTimeSFH",
+            "SFHArgs": "[0.5, 1.0, 2.0, 5.0]",
+        }
+    }
+    module = FullSpectralFitModule(options)
+    flux_model, _ = module.make_observable(block, parse=True)
+    formed_mass = module.config["sfh_model"].model.stellar_mass_formed(
+        module.config["sfh_model"].today
+    ).to_value("Msun")
+
+    assert np.all(np.isfinite(flux_model))
+    assert module.config["sfh_model"].use_mass_normalization is False
+    assert block["extra", "stellar_mass"] == pytest.approx(
+        np.log10(formed_mass)
+    )
+
+
 def test_full_spectral_fit_rejects_zero_penalty_invalid_sample():
     class InvalidSFH:
         @staticmethod
