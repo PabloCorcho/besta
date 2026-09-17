@@ -192,10 +192,10 @@ def test_prepare_sfh_model_forwards_smoothness_prior_options():
                 "SFHModel": "FixedTimeSFH",
                 "SFHArgs": "[0.5, 1.0, 2.0, 5.0]",
                 "use_sfh_smoothness_prior": True,
-                "sfh_smoothness_prior_type": "legacy_index_gaussian",
+                "sfh_smoothness_prior_type": "robust_time_curvature",
                 "sfh_smoothness_sigma_dex": 0.7,
-                "sfh_smoothness_order": 1,
-                "sfh_smoothness_min_sfr": 1e-10,
+                "sfh_smoothness_dof": 5.0,
+                "sfh_smoothness_relative_floor": 1e-6,
             }
         }
     )
@@ -205,8 +205,8 @@ def test_prepare_sfh_model_forwards_smoothness_prior_options():
     prior = mod.config["sfh_model"].sfh_smoothness_prior
     assert isinstance(prior, sfh.SFHSmoothnessPrior)
     assert prior.sigma_dex == 0.7
-    assert prior.order == 1
-    assert prior.min_sfr == 1e-10
+    assert prior.dof == 5.0
+    assert prior.relative_sfr_floor == 1e-6
 
 
 def test_prepare_sfh_model_builds_fixed_mass_frac_2d():

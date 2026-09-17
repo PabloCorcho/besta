@@ -17,7 +17,7 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
             self.time_edges[:-1] + self.time_edges[1:]
         )
 
-    def test_robust_time_curvature_is_default(self):
+    def test_smoothness_prior_is_default(self):
         model = sfh.FixedTimeSFH(
             np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
             ism_metallicity_today=0.02,
@@ -25,7 +25,7 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
         )
         self.assertIsInstance(
             model.sfh_smoothness_prior,
-            sfh.SFHRobustTimeCurvaturePrior,
+            sfh.SFHSmoothnessPrior,
         )
         self.assertAlmostEqual(model.sfh_smoothness_prior.sigma_dex, 0.3)
         self.assertAlmostEqual(model.sfh_smoothness_prior.dof, 3.0)
@@ -34,26 +34,24 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
             1e-4,
         )
 
-    def test_legacy_index_gaussian_remains_available(self):
-        model = sfh.FixedTimeSFH(
-            np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
-            ism_metallicity_today=0.02,
-            use_sfh_smoothness_prior=True,
-            sfh_smoothness_prior_type="legacy_index_gaussian",
-        )
-        self.assertIsInstance(model.sfh_smoothness_prior, sfh.SFHSmoothnessPrior)
-        self.assertAlmostEqual(model.sfh_smoothness_prior.sigma_dex, 0.5)
-        self.assertEqual(model.sfh_smoothness_prior.order, 2)
+    def test_legacy_prior_type_is_rejected(self):
+        with self.assertRaises(ValueError):
+            sfh.FixedTimeSFH(
+                np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
+                ism_metallicity_today=0.02,
+                use_sfh_smoothness_prior=True,
+                sfh_smoothness_prior_type="legacy_index_gaussian",
+            )
 
     def test_prior_is_invariant_to_mass_normalization(self):
-        prior = sfh.SFHRobustTimeCurvaturePrior()
+        prior = sfh.SFHSmoothnessPrior()
         masses = np.array([0.4, 0.3, 0.2, 0.1])
         value = prior(masses, self.time_edges)
         rescaled_value = prior(1e10 * masses, self.time_edges)
         self.assertAlmostEqual(value, rescaled_value, places=12)
 
     def test_physical_time_linear_history_is_preferred(self):
-        prior = sfh.SFHRobustTimeCurvaturePrior(
+        prior = sfh.SFHSmoothnessPrior(
             relative_sfr_floor=1e-12,
         )
         physical_log_sfr = 0.1 * self.time_centres
@@ -72,7 +70,7 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
         )
 
     def test_burst_has_finite_heavy_tailed_penalty(self):
-        prior = sfh.SFHRobustTimeCurvaturePrior()
+        prior = sfh.SFHSmoothnessPrior()
         smooth_masses = self.delta_t.copy()
         burst_masses = smooth_masses.copy()
         burst_masses[1] *= 1e4
@@ -278,7 +276,7 @@ class TestFixedTime_sSFR_SFH(unittest.TestCase):
         self.assertTrue(np.isfinite(log_prior))
         self.assertIsInstance(
             model.sfh_smoothness_prior,
-            sfh.SFHRobustTimeCurvaturePrior,
+            sfh.SFHSmoothnessPrior,
         )
 
     def test_parse_datablock_monotonicity_error(self):
