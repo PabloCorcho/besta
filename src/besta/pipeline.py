@@ -181,9 +181,8 @@ class MainPipeline(object):
             logger.info("MAP solution: %s", solution)
 
             if plot_result:
-                solution_datablock = reader.solution_to_datablock(
-                    prev_solution)
-                    
+                solution_datablock = reader.solution_to_datablock(prev_solution)
+
                 # Initialise the module to reconstruct the solution
                 for par_module in reader.modules:
                     logger.info("Plotting results for module: %s", par_module)
@@ -193,8 +192,18 @@ class MainPipeline(object):
                         subpipe_config["output"]["filename"].replace(".txt", "")
                         + f"_{par_module}_best_fit_solution.png",
                     )
-                    pipeline_module.plot_solution(solution_datablock,
-                                             figname=figname)
+                    fig_dir = os.path.dirname(figname)
+                    if fig_dir:
+                        os.makedirs(fig_dir, exist_ok=True)
+                    try:
+                        pipeline_module.plot_solution(solution_datablock,
+                                                     figname=figname)
+                    except Exception:
+                        logger.exception(
+                            "Plot generation failed for module %s; save path: %s",
+                            par_module,
+                            figname,
+                        )
             # Check for section postprocess
             #TODO
         return 0
