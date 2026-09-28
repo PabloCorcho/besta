@@ -1110,7 +1110,15 @@ class SpectraFitModule(BaseModule):
         logger.info(f"Using feature weights with power-law exponent: {weight_powlaw}")
         w = np.abs(z_continuum)**weight_powlaw
         w = np.where(np.isfinite(w), w, 0.0)
-        w /= w.max()
+        w_max = w.max() if w.size else 0.0
+        if w_max > 0:
+            w /= w_max
+        else:
+            # e.g. zero continuum scatter (noiseless input) or no features
+            logger.warning(
+                "No spectral features found relative to the continuum; "
+                "feature weights set to 1 (no feature weighting).")
+            w = np.ones_like(w)
         # Clip to 0 those pixels that have a very low value
         min_weight = options.get_double("feature_weight_min", 0.01)
         logger.info(f"Clipping feature weights below {min_weight} to zero")
