@@ -119,6 +119,79 @@ def test_emission_lines_masked_at_rest_frame_position(tmp_path):
     assert np.all(mod.config["weights"][mask] == 0.0)
 
 
+@pytest.mark.parametrize("with_features", [True, False])
+def test_redshift_sweep_weights_apply_features_once(with_features):
+    """Feature weights must enter the sweep and the likelihood exactly once.
+
+    Previously ``SpectraRedshiftFit`` recomputed the feature weights on
+    already feature-weighted weights and multiplied them in again (w**2).
+    """
+    mask = np.array([1.0, 1.0, 0.5, 0.0, 1.0])
+    feat = np.array([0.0, 1.0, 0.8, 1.0, 0.2])
+    var = np.full(5, 2.0)
+
+    mod = SpectraRedshiftFitModule.__new__(SpectraRedshiftFitModule)
+    mod.config = {
+        "flux": np.ones(5),
+        "mask_weights": mask.copy(),
+        "norm_obs_var": var,
+    }
+    if with_features:
+        # As left by prepare_observed_spectra(use_features=T)
+        mod.config["feature_weights"] = feat.copy()
+        mod.config["weights"] = mask * feat
+        expected_sweep = feat * mask / var
+    else:
+        mod.config["weights"] = mask.copy()
+        expected_sweep = mask / var
+    weights_before = mod.config["weights"].copy()
+
+    mod._setup_sweep_weights()
+
+    np.testing.assert_allclose(mod.config["sweep_weights"], expected_sweep)
+    # Likelihood weights are not modified (features applied once, upstream)
+    np.testing.assert_allclose(mod.config["weights"], weights_before)
+    # "Original" weights are the masking-only weights
+    np.testing.assert_allclose(mod.config["weights_orig"], mask)
+    np.testing.assert_array_equal(
+        mod.config["good_idx"], np.flatnonzero(expected_sweep > 0))
+
+
+def test_prepare_observed_spectra_keeps_mask_weights_with_features(tmp_path):
+    """``mask_weights`` holds the pre-feature weights; features applied once."""
+    wl = np.arange(4000.0, 5000.0, 1.0)
+    flux = 1.0 - 0.3 * np.exp(-0.5 * ((wl - 4500.0) / 5.0) ** 2)
+    err = np.full_like(wl, 0.01)
+    spec = tmp_path / "spec_features.dat"
+    np.savetxt(spec, np.vstack([wl, flux, err]).T)
+
+    class Dummy(SpectraFitModule):
+        name = "Dummy"
+
+        def __init__(self, options):
+            super().__init__(options)
+            options = self.parse_options(options)
+            self.prepare_observed_spectra(options)
+
+        def make_observable(self, *args, **kwargs):
+            pass
+
+        def execute(self, *args, **kwargs):
+            pass
+
+        def plot_solution(self, *args, **kwargs):
+            pass
+
+    mod = Dummy({"Dummy": {"inputSpectrum": str(spec), "use_features": True}})
+
+    assert np.all(mod.config["mask_weights"] == 1.0)
+    np.testing.assert_allclose(
+        mod.config["weights"],
+        mod.config["mask_weights"] * mod.config["feature_weights"])
+    # The absorption feature gets a non-zero feature weight
+    assert mod.config["feature_weights"][np.argmin(np.abs(wl - 4500.0))] > 0
+
+
 def test_full_spectral_fit_make_observable(tmp_path):
     spec = make_dummy_spectrum(tmp_path)
     block = DataBlock()
