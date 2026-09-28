@@ -450,9 +450,12 @@ class PieceWisePixelKernel(LOSVDPixelKernel):
         self.bin_ids = np.arange(0, self.velocity_bin_edges.size - 1, 1)
         pixel_min = velocity_min / self.velocity_scale
         pixel_max = velocity_max / self.velocity_scale
-        # Ensure kernel array is odd, symmetric and covers both edges
-        edges = np.abs([pixel_min, pixel_max]).max()
-        self.x_pixel_edges = np.arange(-edges - 0.5, edges + 1.5, 1.0)
+        # Kernel half-width in whole pixels, so that bin edges lie at
+        # +-0.5, +-1.5, ... pixels: the kernel is odd, centred on zero velocity
+        # and covers both edges.
+        self.half_width = int(np.ceil(np.abs([pixel_min, pixel_max]).max() - 1e-9))
+        self.x_pixel_edges = np.arange(
+            -self.half_width - 0.5, self.half_width + 1.0, 1.0)
         self.x_vel_edges = self.x_pixel_edges * self.velocity_scale
 
     def parse_parameters(self, datablock):
@@ -467,7 +470,7 @@ class PieceWisePixelKernel(LOSVDPixelKernel):
             left=0.0,
             right=cum_kernel[-1],
         )
-        self.edge_pixels = int(np.ceil(np.max(np.abs(self.x_pixel_edges))))
+        self.edge_pixels = self.half_width
         self.kernel_weight = np.diff(cum_kernel)
 
     @classmethod
