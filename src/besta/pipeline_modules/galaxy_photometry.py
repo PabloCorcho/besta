@@ -85,8 +85,8 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         """
         valid, penalty = self.config["sfh_model"].parse_datablock(block)
         if not valid:
-            # print("Invalid sample")
-            block[section_names.likelihoods, self.like_name] = -1e20 * penalty
+            # Reject with a large negative log-likelihood.
+            block[section_names.likelihoods, self.like_name] = -1e20
             block["extra", "stellar_mass"] = np.nan
             return 0
         # Obtain parameters from setup
