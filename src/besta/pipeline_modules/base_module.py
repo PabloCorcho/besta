@@ -569,78 +569,21 @@ class BaseModule(ClassModule):
             Input options to initialise the model.
         """
         _log("Configuring SFH model")
-        sfh_model_name = options["SFHModel"]
-        sfh_args = []
-        sfh_kwargs = {}
-
-        if options.has_value("SFHArgs"):
-            sfh_all_args = options["SFHArgs"]
-            if isinstance(sfh_all_args, str):
-                sfh_args, sfh_kwargs = io.string_to_func_args(sfh_all_args)
-            elif isinstance(sfh_all_args, list):
-                for arg in sfh_all_args:
-                    if isinstance(arg, str):
-                        a, ka = io.string_to_func_args(arg)
-                        sfh_args.extend(a)
-                        sfh_kwargs.update(ka)
-                    elif isinstance(arg, dict):
-                        sfh_kwargs.update(arg)
-                    else:
-                        sfh_args.append(arg)
-            else:
-                sfh_args.append(sfh_all_args)
-
-        logger.info("SFH Model extra arguments: %s", sfh_args)
-        logger.info("SFH Model extra keyword arguments: %s", sfh_kwargs)
-
-        # Optional: enable parameter transforms inside SFH models
-        self.config["use_transforms"] = False
-        if options.has_value("use_transforms"):
-            self.config["use_transforms"] = bool(options["use_transforms"])
-        if self.config["use_transforms"]:
-            _log("Enabling parameter transforms inside SFH model")
-
-        self.config["use_sfh_smoothness_prior"] = options.get_bool(
-            "use_sfh_smoothness_prior",
-            default=False,
-        )
-        if options.has_value("sfh_smoothness_prior_type"):
-            self.config["sfh_smoothness_prior_type"] = options.get_string(
-                "sfh_smoothness_prior_type"
-            )
-        if options.has_value("sfh_smoothness_sigma_dex"):
-            self.config["sfh_smoothness_sigma_dex"] = options.get_double(
-                "sfh_smoothness_sigma_dex"
-            )
-        if options.has_value("sfh_smoothness_dof"):
-            self.config["sfh_smoothness_dof"] = options.get_double(
-                "sfh_smoothness_dof"
-            )
-        if options.has_value("sfh_smoothness_relative_floor"):
-            self.config["sfh_smoothness_relative_floor"] = options.get_double(
-                "sfh_smoothness_relative_floor"
-            )
-        if options.has_value("sfh_smoothness_order"):
-            self.config["sfh_smoothness_order"] = options.get_int(
-                "sfh_smoothness_order"
-            )
-        if options.has_value("sfh_smoothness_min_sfr"):
-            self.config["sfh_smoothness_min_sfr"] = options.get_double(
-                "sfh_smoothness_min_sfr"
-            )
-
-        _log("SFH model name: ", sfh_model_name)
-        sfh_model = getattr(sfh, sfh_model_name)
-        sfh_model = sfh_model(*sfh_args, **sfh_kwargs, **self.config)
+        # Only the SFH options (and the source redshift) are passed to the
+        # model
+        sfh_model = sfh.build_sfh_from_options(
+            options, redshift=self.config.get("redshift"))
         self.config["sfh_model"] = sfh_model
-        _log("Configuration done")
+        self.config["use_transforms"] = sfh_model.use_transforms
+        if sfh_model.use_transforms:
+            _log("Enabling parameter transforms inside SFH model")
 
         if options.has_value("save_t_frac_at"):
             self.config["save_t_frac_at"] = True
             self.config["t_frac_at"] = np.array(options["save_t_frac_at"],
                                                 dtype=float)
             _log("Will save the time at which mass history reaches = ",
-                 self.config["save_t_frac_at"])
+                 self.config["t_frac_at"])
 
         if options.has_value("save_ssfr_over_tau"):
             self.config["save_ssfr_over_tau"] = True
