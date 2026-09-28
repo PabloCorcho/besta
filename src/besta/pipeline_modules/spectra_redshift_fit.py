@@ -138,7 +138,8 @@ class SpectraRedshiftFitModule(SpectraFitModule):
         logger.info(f"{self.config['ssp_model'].wavelength[0]:.1f} - "
                     + f"{self.config['ssp_model'].wavelength[-1]:.1f} AA (rest frame)")
         # Precompute the model wavelength grid in the observed frame for redshift
-        norm = np.nanmedian(self.config["flux"][self.config["weights"] > 0])
+        # Use masking-only weights so the scale is not set by feature pixels only
+        norm = np.nanmedian(self.config["flux"][self.config["mask_weights"] > 0])
         if not np.isfinite(norm) or norm == 0:
             raise ValueError("Observed flux normalization is not finite; cannot perform redshift fit.")
         self.config["norm_obs_flux_scale"] = norm
@@ -231,21 +232,32 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             f"Model wavelength range in rest frame: {self.config['ssp_model'].wavelength[model_start].to_value('AA'):.1f} - {self.config['ssp_model'].wavelength[model_stop-1].to_value('AA'):.1f} AA")
         logger.info(f"Number of redshift steps: {len(model_slices)} (z={z_max:.1f} to {z_min:.1f})")
 
-        if options.get_bool("use_features", default=False):
-            self.get_feature_weights(options)
+        self._setup_sweep_weights()
+
+    def _setup_sweep_weights(self):
+        """Build the per-pixel weights used by the redshift sweep.
+
+        Feature weights (``use_features = T``) are computed once, in
+        ``prepare_observed_spectra``, from the masking-only weights, and
+        ``config["weights"]`` already includes them. They must not be
+        recomputed or applied again here.
+        """
+        mask_weights = self.config["mask_weights"]
+        if "feature_weights" in self.config:
+            logger.info("Using feature weights for redshift fitting.")
+            w = self.config["feature_weights"]
         else:
             logger.info("Using original weights for redshift fitting.")
+            w = np.ones_like(self.config["flux"], dtype=float)
 
-        w = self.config.get("feature_weights",
-                            np.ones_like(self.config["flux"], dtype=np.float32))
-        self.config["sweep_weights"] = np.where(
-            (w > 0) & np.isfinite(self.config["norm_obs_var"]),
-            w * self.config["weights"] / self.config["norm_obs_var"],
-            0.0
-        )
-        # This are used for the likelihood in combination with the variance
-        self.config["weights_orig"] = self.config["weights"].copy()
-        self.config["weights"] *= w
+        with np.errstate(divide="ignore", invalid="ignore"):
+            self.config["sweep_weights"] = np.where(
+                (w > 0) & np.isfinite(self.config["norm_obs_var"]),
+                w * mask_weights / self.config["norm_obs_var"],
+                0.0
+            )
+        # Masking-only weights, used to estimate the normalization
+        self.config["weights_orig"] = mask_weights.copy()
         self.config["good"] = self.config["sweep_weights"] > 0
         self.config["good_idx"] = np.flatnonzero(self.config["good"]).astype(np.int64)
 

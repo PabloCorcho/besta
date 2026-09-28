@@ -875,6 +875,9 @@ class SpectraFitModule(BaseModule):
 
         self.prepare_noise_model(options)
 
+        # Modules that need the un-featured weights must use this instead of recomputing
+        self.config["mask_weights"] = self.config["weights"].copy()
+
         if options.get_bool("use_features", default=False):
             feature_type = options.get_string("use_features_type", default="auto")
             if feature_type == "auto":
