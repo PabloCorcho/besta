@@ -4,7 +4,7 @@ import os
 import numpy as np
 from astropy.table import Table
 
-from besta.pipeline_modules.base_module import SpectraFitModule
+from besta.pipeline_modules.base_module import SpectraFitModule, ml_amplitude
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta import spectrum
@@ -256,13 +256,12 @@ class SpectraRedshiftFitModule(SpectraFitModule):
                 w * mask_weights / self.config["norm_obs_var"],
                 0.0
             )
-        # Masking-only weights, used to estimate the normalization
+        # Masking-only weights (without feature weighting)
         self.config["weights_orig"] = mask_weights.copy()
         self.config["good"] = self.config["sweep_weights"] > 0
         self.config["good_idx"] = np.flatnonzero(self.config["good"]).astype(np.int64)
 
 
-    @spectrum.legendre_decorator
     def make_observable(self, block, parse=False, ):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
@@ -318,22 +317,23 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             z_chi2[best_fit_slice_index],
         )
 
-        # TODO: I am not sure if this will bias the likelihood
-        # Use the original weights to estimate the normalization
-        w = self.config["weights_orig"]
-        candidate_flux = flux_model[best_fit_index : best_fit_index + w.size]
-        denominator = np.nansum(w[good] * candidate_flux[good]**2)
+        # Best-fit model on the observed grid, with the multiplicative
+        # polynomial applied before the normalization
+        weights = self.config["weights"]
+        candidate_flux = flux_model[best_fit_index : best_fit_index + weights.size]
+        candidate_flux = candidate_flux * self.legendre_polynomial(block)
 
-        if denominator <= 0:
+        # Maximum-likelihood amplitude with the likelihood's weights and ivar
+        inv_var = self.get_effective_ivar(block) * weights
+        normalization = ml_amplitude(self.config["flux"], candidate_flux, inv_var)
+        if not (np.isfinite(normalization) and normalization > 0):
             logger.warning(
-                f"Denominator for redshift step {best_fit_slice_index} is non-positive; skipping this step."
+                f"Undefined or non-positive amplitude for redshift step {best_fit_slice_index}; skipping this step."
             )
-            return np.full_like(candidate_flux, np.nan), w
+            return np.full_like(candidate_flux, np.nan), weights
 
-        scale = np.nansum(w[good] * candidate_flux[good] * target_flux) / denominator
-        normalization = scale * self.config["norm_obs_flux_scale"]        
         #block["extra", "stellar_mass"] = np.log10(normalization) + 10
-        return candidate_flux * normalization, self.config["weights"]
+        return candidate_flux * normalization, weights
 
     def execute(self, block):
         """Function executed by sampler

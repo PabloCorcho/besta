@@ -42,7 +42,6 @@ class FullSpectralFitModule(SpectraFitModule):
         self.prepare_losvd_kernel(options)
         self._losvd_kernel = self.config["losvd_kernel"]
 
-    @spectrum.legendre_decorator
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""
         # Stellar population synthesis
@@ -71,16 +70,16 @@ class FullSpectralFitModule(SpectraFitModule):
         self._losvd_kernel.parse_parameters(block)
         flux_model = self.convolve_losvd_and_trim(flux_model)
         weights = self.config["weights"].copy()
+        # Multiplicative polynomial, applied before the normalization
+        flux_model = flux_model * self.legendre_polynomial(block)
 
         # Compute normalization and stellar mass
         if sfh_model.use_mass_normalization:
-            norm_pixels = (weights > 0) & (flux_model > 0)
-            normalization = np.nanmedian(
-                self.config["flux"][norm_pixels] / flux_model[norm_pixels]
-            )
+            # Maximum-likelihood amplitude (same weights and ivar as the likelihood)
+            flux_model, normalization = self.normalize_to_data(
+                flux_model, weights, block)
             block["extra", "stellar_mass"] = np.log10(normalization) + 10.0
         else:
-            normalization = 1.0
             block["extra", "stellar_mass"] = np.log10(
                 sfh_model.model.stellar_mass_formed(
                     sfh_model.today
@@ -95,7 +94,7 @@ class FullSpectralFitModule(SpectraFitModule):
             for tau in self.config.get("ssfr_tau", []):
                 self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
 
-        return flux_model * normalization, weights
+        return flux_model, weights
 
     def execute(self, block):
         """Function executed by sampler

@@ -27,10 +27,31 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         super().__init__(options, likelihood_kind="photometry", **kwargs)
         options = self.parse_options(options)
         self.prepare_observed_photometry(options)
+        self.prepare_amplitude_weights()
         self.prepare_galaxy(options)
 
         # Set parameters fixed in this module
         self.config["galaxy"].redshift.fixed = True
+
+    def prepare_amplitude_weights(self):
+        """Precompute the static terms of the maximum-likelihood amplitude.
+
+        The amplitude ``s = sum(iv * d * m) / sum(iv * m**2)`` uses detections
+        only (upper/lower limits do not constrain a Gaussian amplitude). ``iv``
+        and ``iv * d`` do not change during sampling, so they are computed once
+        here and each likelihood call only needs two dot products.
+        """
+        flux = np.asarray(self.config["photometry_flux"], dtype=float)
+        var = np.asarray(self.config["photometry_flux_var"], dtype=float)
+        usable = np.isfinite(flux) & np.isfinite(var) & (var > 0)
+        for limits in (self.config.get("photometry_upper_limit"),
+                       self.config.get("photometry_lower_limit")):
+            if limits is not None:
+                usable &= ~np.asarray(limits, dtype=bool)
+        inv_var = np.zeros_like(flux)
+        inv_var[usable] = 1.0 / var[usable]
+        self.config["amplitude_inv_var"] = inv_var
+        self.config["amplitude_weighted_flux"] = np.where(usable, inv_var * flux, 0.0)
 
     def make_observable(self, block, parse=False, include_spec=False):
         """Create the photometric model from the input parameters."""
@@ -48,12 +69,19 @@ class GalaxyPhotometryModule(PhotometryFitModule):
             self.config["photometry_flux_unit"])
         sfh_model = self.config["sfh_model"]
         if sfh_model.use_mass_normalization:
-            non_zero = flux_model > 0
-            if non_zero.any():
-                normalization = np.mean(self.config["photometry_flux"][non_zero] / flux_model[non_zero])
+            # Maximum-likelihood amplitude from detections only, using the
+            # terms precomputed in prepare_amplitude_weights()
+            if "amplitude_inv_var" not in self.config:
+                self.prepare_amplitude_weights()
+            denominator = np.dot(self.config["amplitude_inv_var"],
+                                 flux_model * flux_model)
+            normalization = (
+                np.dot(self.config["amplitude_weighted_flux"], flux_model)
+                / denominator if denominator > 0 else np.nan)
+            if np.isfinite(normalization) and normalization > 0:
                 block["extra", "stellar_mass"] = np.log10(normalization) + 10
             else:
-                logger.warning("All fluxes are zero")
+                logger.warning("Undefined or non-positive photometric amplitude")
                 normalization = 0
                 block["extra", "stellar_mass"] = np.nan
         else:

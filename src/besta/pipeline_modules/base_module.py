@@ -50,6 +50,39 @@ def _log(*args):
     logger.info(" ".join(str(arg) for arg in args))
 
 
+def ml_amplitude(data, model, inv_var):
+    """Maximum-likelihood amplitude of ``model`` given ``data``.
+
+    For a Gaussian likelihood ``-0.5 * sum(inv_var * (data - s * model)**2)``
+    the best-fit amplitude is
+
+    ``s = sum(inv_var * data * model) / sum(inv_var * model**2)``.
+
+    Parameters
+    ----------
+    data, model : array_like
+        Observed values and (unscaled) model prediction.
+    inv_var : array_like
+        Per-point inverse variance, including any likelihood weights. Points
+        with ``inv_var <= 0`` or non-finite values are ignored.
+
+    Returns
+    -------
+    float
+        Best-fit amplitude, or NaN if it is undefined (no usable points or a
+        zero model).
+    """
+    data = np.asarray(data, dtype=float)
+    model = np.asarray(model, dtype=float)
+    inv_var = np.asarray(inv_var, dtype=float)
+    use = ((inv_var > 0) & np.isfinite(inv_var)
+           & np.isfinite(data) & np.isfinite(model))
+    denominator = np.sum(inv_var[use] * model[use] ** 2)
+    if not denominator > 0:
+        return np.nan
+    return float(np.sum(inv_var[use] * data[use] * model[use]) / denominator)
+
+
 # Conversion factor between Gaussian FWHM and sigma
 _FWHM_TO_SIGMA = 2.355
 
@@ -996,6 +1029,45 @@ class SpectraFitModule(BaseModule):
         flux_model = kernel.convolve(flux_model, pad_mode="edge")
         n_pix = flux_model.shape[-1]
         return flux_model[..., extra:n_pix - extra]
+
+    def legendre_polynomial(self, block):
+        """Multiplicative Legendre polynomial for the current sample.
+
+        Same convention as :func:`besta.spectrum.legendre_decorator`: the
+        degree-0 coefficient is fixed to 1 and the others are read from the
+        ``legendre`` section. Returns ``1.0`` when no polynomial is configured.
+        Modules apply it *before* computing the amplitude, so that the mass
+        normalisation accounts for it.
+        """
+        if "legendre_pol" not in self.config:
+            return 1.0
+        legendre_pol = self.config["legendre_pol"]
+        coeffs = np.array(
+            [1.0] + [block["legendre", f"legendre_{ith}"]
+                     for ith in range(1, legendre_pol.shape[0])])
+        return coeffs @ legendre_pol
+
+    def normalize_to_data(self, flux_model, weights, block):
+        """Scale a model spectrum to the data with its maximum-likelihood amplitude.
+
+        Uses the same weights and effective inverse variance (noise model
+        included) as the likelihood.
+
+        Returns
+        -------
+        scaled_model : np.ndarray
+            ``flux_model * amplitude``, or zeros if the amplitude is undefined
+            or not positive (a finite, very poor fit instead of NaNs).
+        amplitude : float
+            Best-fit amplitude, NaN if undefined or not positive.
+        """
+        inv_var = self.get_effective_ivar(block) * weights
+        amplitude = ml_amplitude(self.config["flux"], flux_model, inv_var)
+        if not (np.isfinite(amplitude) and amplitude > 0):
+            logger.debug("Undefined or non-positive model amplitude (%s); "
+                         "model set to zero.", amplitude)
+            return np.zeros_like(flux_model), np.nan
+        return flux_model * amplitude, amplitude
 
     def prepare_legendre_polynomials(self, options):
         """Prepare the set of Legendre polynomials used during the fit.
