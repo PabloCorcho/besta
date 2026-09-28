@@ -7,6 +7,9 @@ from cosmosis import DataBlock
 from besta import sfh
 from besta.pipeline_modules.base_module import SpectraFitModule
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
+from besta.pipeline_modules.galaxy_spectra import GalaxySpectraModule
+from besta.pipeline_modules.galaxy_photometry import GalaxyPhotometryModule
+from besta.pipeline_modules.spectra_redshift_fit import SpectraRedshiftFitModule
 import importlib
 
 
@@ -154,20 +157,91 @@ def test_full_spectral_fit_fixed_time_uses_absolute_mass(tmp_path):
     )
 
 
-def test_full_spectral_fit_rejects_zero_penalty_invalid_sample():
+@pytest.mark.parametrize(
+    "module_class, sets_stellar_mass",
+    [
+        (FullSpectralFitModule, True),
+        (GalaxySpectraModule, True),
+        (GalaxyPhotometryModule, True),
+        (SpectraRedshiftFitModule, False),
+    ],
+)
+def test_invalid_sample_is_rejected(module_class, sets_stellar_mass):
+    """Invalid SFH samples must get a large *negative* log-likelihood.
+
+    ``SFHBase.parse_datablock`` returns ``(0, -1e20)`` for invalid samples.
+    Regression test for modules that stored ``-1e20 * penalty`` (= +1e40).
+    """
     class InvalidSFH:
         @staticmethod
         def parse_datablock(block):
             return 0, -1e20  # invalid sample with a prior penalty
 
-    mod = FullSpectralFitModule.__new__(FullSpectralFitModule)
+    mod = module_class.__new__(module_class)
     mod.config = {"sfh_model": InvalidSFH()}
-    mod.like_name = "full_spectral_fit_like"
+    mod.like_name = "test_like"
     block = DataBlock()
 
     assert mod.execute(block) == 0
     assert block["likelihoods", mod.like_name] == -1e20
-    assert np.isnan(block["extra", "stellar_mass"])
+    if sets_stellar_mass:
+        assert np.isnan(block["extra", "stellar_mass"])
+
+
+@pytest.mark.parametrize(
+    "module_class, is_photometry, saves_chi2",
+    [
+        (FullSpectralFitModule, False, True),
+        (GalaxySpectraModule, False, True),
+        (GalaxyPhotometryModule, True, False),
+        (SpectraRedshiftFitModule, False, False),
+    ],
+)
+@pytest.mark.parametrize("log_prior", [-3.5, 0.0, None])
+def test_valid_sample_includes_sfh_log_prior(
+    module_class, is_photometry, saves_chi2, log_prior
+):
+    """The SFH log-prior (e.g. smoothness prior) must be added to the likelihood.
+
+    ``chi2`` diagnostics must stay likelihood-only (no prior contribution).
+    """
+    data_loglike = -10.0
+
+    class ValidSFH:
+        @staticmethod
+        def parse_datablock(block):
+            return 1, log_prior
+
+    mod = module_class.__new__(module_class)
+    mod.like_name = "test_like"
+    mod.noise_model = None
+    mod.log_like = lambda *args, **kwargs: data_loglike
+    if is_photometry:
+        mod.config = {
+            "sfh_model": ValidSFH(),
+            "photometry_flux": np.ones(3),
+            "photometry_flux_var": np.ones(3),
+            "photometry_lower_limit": None,
+            "photometry_upper_limit": None,
+        }
+        mod.make_observable = lambda block: np.ones(3)
+    else:
+        mod.config = {
+            "sfh_model": ValidSFH(),
+            "flux": np.ones(5),
+            "ivar": np.ones(5),
+            "save_chi2": True,
+        }
+        mod.make_observable = lambda block: (np.full(5, 0.9), np.ones(5))
+    block = DataBlock()
+
+    assert mod.execute(block) == 0
+    expected = data_loglike + (0.0 if log_prior is None else log_prior)
+    assert block["likelihoods", mod.like_name] == pytest.approx(expected)
+    if saves_chi2:
+        assert block["extra", mod.like_name + "_chi2"] == pytest.approx(
+            -2 * data_loglike
+        )
 
 
 def test_prepare_sfh_model_forwards_smoothness_prior_options():
