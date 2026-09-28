@@ -1558,4 +1558,148 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
         )
         return 1, 0.0
 
+
+# Building SFH models from configuration options
+
+# Options forwarded to the SFH constructor (name, type). Everything else comes
+# from ``SFHArgs``.
+_SFH_SMOOTHNESS_OPTIONS = (
+    ("sfh_smoothness_prior_type", str),
+    ("sfh_smoothness_sigma_dex", float),
+    ("sfh_smoothness_dof", float),
+    ("sfh_smoothness_relative_floor", float),
+    ("sfh_smoothness_order", int),
+    ("sfh_smoothness_min_sfr", float),
+)
+
+
+class _OptionReader:
+    """Uniform access to CosmoSIS ``SectionOptions`` or plain (ini) dicts.
+
+    Dict keys are matched case-insensitively, as CosmoSIS does.
+    """
+
+    def __init__(self, options):
+        if hasattr(options, "has_value"):
+            self._block = options
+            self._dict = None
+        else:
+            self._block = None
+            self._dict = {str(key).lower(): value for key, value in dict(options).items()}
+
+    def has(self, name):
+        if self._block is not None:
+            return self._block.has_value(name)
+        return name.lower() in self._dict
+
+    def get(self, name, default=None):
+        if not self.has(name):
+            return default
+        if self._block is not None:
+            return self._block[name]
+        return self._dict[name.lower()]
+
+
+def _as_bool(value):
+    """Interpret ini-style booleans (``T``/``F``, ``true``/``false``, 1/0)."""
+    if isinstance(value, str):
+        return value.strip().lower() in {"t", "true", "yes", "on", "1"}
+    return bool(value)
+
+
+def _parse_sfh_args(value):
+    """Split the ``SFHArgs`` option into positional and keyword arguments."""
+    from besta.io import string_to_func_args
+
+    args, kwargs = [], {}
+    if value is None:
+        return args, kwargs
+    if isinstance(value, str):
+        return string_to_func_args(value)
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                item_args, item_kwargs = string_to_func_args(item)
+                args.extend(item_args)
+                kwargs.update(item_kwargs)
+            elif isinstance(item, dict):
+                kwargs.update(item)
+            else:
+                args.append(item)
+        return args, kwargs
+    args.append(value)
+    return args, kwargs
+
+
+def build_sfh_from_options(options, *, redshift=None, today=None):
+    """Build an SFH model from module configuration options.
+
+    Lightweight: only the SFH is built (no SSPs or data), so it can be used
+    both by the pipeline modules and in post-processing.
+
+    Parameters
+    ----------
+    options : cosmosis ``SectionOptions`` or dict
+        Module options. Recognised keys (case-insensitive):
+
+        - ``SFHModel`` (required): name of an :class:`SFHBase` subclass.
+        - ``SFHArgs``: positional/keyword arguments of the model.
+        - ``use_transforms``: sample latent variables (default ``False``).
+        - ``use_sfh_smoothness_prior`` and ``sfh_smoothness_*`` settings.
+        - ``redshift``: used when the ``redshift`` argument is ``None``.
+    redshift : float, optional
+        Redshift of the source (sets the age of the Universe at observation).
+        Defaults to the ``redshift`` option, or 0.
+    today : astropy.units.Quantity, optional
+        Age of the Universe at observation; overrides the redshift-based value.
+
+    Returns
+    -------
+    SFHBase
+        The configured SFH model.
+
+    Notes
+    -----
+    Keyword arguments given in ``SFHArgs`` take precedence over the options
+    above.
+    """
+    opts = _OptionReader(options)
+    if not opts.has("SFHModel"):
+        raise ValueError("Missing required option 'SFHModel'.")
+    model_name = str(opts.get("SFHModel")).strip()
+    model_class = globals().get(model_name)
+    if not (isinstance(model_class, type) and issubclass(model_class, SFHBase)):
+        raise ValueError(f"Unknown SFH model '{model_name}'.")
+
+    args, sfh_kwargs = _parse_sfh_args(opts.get("SFHArgs"))
+
+    if redshift is None:
+        redshift = opts.get("redshift", 0.0)
+    try:
+        redshift = float(redshift)
+    except (TypeError, ValueError):
+        redshift = 0.0
+
+    settings = {
+        "redshift": redshift,
+        "use_transforms": _as_bool(opts.get("use_transforms", False)),
+        "use_sfh_smoothness_prior": _as_bool(
+            opts.get("use_sfh_smoothness_prior", False)),
+    }
+    if today is not None:
+        settings["today"] = today
+    for name, cast in _SFH_SMOOTHNESS_OPTIONS:
+        if opts.has(name):
+            settings[name] = cast(opts.get(name))
+
+    overridden = sorted(set(settings) & set(sfh_kwargs))
+    if overridden:
+        logger.info("SFHArgs override the options: %s", ", ".join(overridden))
+    settings.update(sfh_kwargs)
+
+    logger.info("SFH model: %s", model_name)
+    logger.info("SFH model arguments: %s", args)
+    logger.info("SFH model keyword arguments: %s", settings)
+    return model_class(*args, **settings)
+
 # Mr Krtxo \(ﾟ▽ﾟ)/
