@@ -1316,6 +1316,213 @@ class ResultsSummary:
 
 
 # -----------------------------------------------------------------------------
+# Latent -> physical SFH parameters
+# -----------------------------------------------------------------------------
+#
+# Non-parametric SFH models sampled with ``use_transforms = T`` store latent
+# (unit-cube) variables in the results. The transforms used by BESTA map the
+# uniform latent prior onto a uniform prior over the physical ordered region,
+# so their Jacobian is constant: transformed samples are physical posterior
+# samples with unchanged weights, and the ``post`` column remains a valid
+# (unnormalised) physical log-posterior.
+
+_SFH_SPACE_META_KEY = "besta_sfh_space"
+
+
+def _get_option(section: Mapping[str, Any], name: str, default=None):
+    """Case-insensitive lookup of an option in an ini section."""
+    lowered = {str(key).lower(): value for key, value in section.items()}
+    return lowered.get(name.lower(), default)
+
+
+def find_sfh_modules(ini: Mapping[str, Any]) -> List[str]:
+    """Return the pipeline modules whose configuration defines an SFH model.
+
+    Parameters
+    ----------
+    ini : dict
+        Parsed CosmoSIS configuration (e.g. :attr:`besta.io.Reader.ini`).
+
+    Returns
+    -------
+    list of str
+        Module (section) names with an ``SFHModel`` option, in pipeline order.
+    """
+    modules = ini["pipeline"]["modules"]
+    if isinstance(modules, str):
+        modules = modules.replace(",", " ").split()
+    return [
+        module for module in modules
+        if module in ini and _get_option(ini[module], "SFHModel") is not None
+    ]
+
+
+def build_sfh_model(ini: Mapping[str, Any], module_name: Optional[str] = None):
+    """Rebuild the SFH model of a run from its configuration.
+
+    Uses :func:`besta.sfh.build_sfh_from_options`, the same builder as the
+    pipeline modules, so the model (bins, ``use_transforms``, age of the
+    Universe at the source redshift, ...) matches the one used during
+    sampling. No SSP models or data are loaded.
+
+    Parameters
+    ----------
+    ini : dict
+        Parsed CosmoSIS configuration (e.g. :attr:`besta.io.Reader.ini`).
+    module_name : str, optional
+        Module section defining the SFH. Defaults to the first module with an
+        ``SFHModel`` option.
+
+    Returns
+    -------
+    :class:`besta.sfh.SFHBase`
+        The configured SFH model.
+    """
+    from besta.sfh import build_sfh_from_options
+
+    candidates = find_sfh_modules(ini)
+    if module_name is None:
+        if not candidates:
+            raise ValueError(
+                "No pipeline module with an 'SFHModel' option was found.")
+        module_name = candidates[0]
+        if len(candidates) > 1:
+            logger.warning(
+                "Several modules define an SFH model (%s); using '%s'.",
+                ", ".join(candidates), module_name)
+    elif module_name not in candidates:
+        raise ValueError(
+            f"Module '{module_name}' does not define an 'SFHModel' option.")
+
+    return build_sfh_from_options(ini[module_name])
+
+
+def sfh_parameter_columns(
+    table: Table, sfh_model, *, parameter_prefix: str = "--"
+) -> List[str]:
+    """Table columns holding the SFH bin parameters, ordered as ``sfh_bin_keys``.
+
+    Returns an empty list for models without bin parameters (parametric SFHs).
+    Matching is case-insensitive (results files store lower-case names).
+    """
+    bin_keys = getattr(sfh_model, "sfh_bin_keys", None)
+    if not bin_keys:
+        return []
+    lookup = {name.lower(): name for name in table.colnames}
+    columns = []
+    for key in bin_keys:
+        wanted = f"{sfh_model.sect_name}{parameter_prefix}{key}".lower()
+        if wanted not in lookup:
+            raise KeyError(
+                f"Column '{wanted}' for SFH parameter '{key}' not found in the table.")
+        columns.append(lookup[wanted])
+    return columns
+
+
+def latent_to_physical_table(
+    table: Table,
+    sfh_model,
+    *,
+    parameter_prefix: str = "--",
+    keep_latent: bool = False,
+    latent_prefix: str = "latent_",
+) -> Table:
+    """Convert the latent SFH columns of a results table to physical values.
+
+    Parameters
+    ----------
+    table : astropy.table.Table
+        Results table (e.g. :attr:`besta.io.Reader.results_table`).
+    sfh_model : :class:`besta.sfh.SFHBase`
+        SFH model used in the run (see :func:`build_sfh_model`).
+    parameter_prefix : str
+        Section/name delimiter in the column names (default ``"--"``).
+    keep_latent : bool
+        If ``True``, keep copies of the latent columns named
+        ``latent_prefix + column``. Note that these still contain
+        ``parameter_prefix`` and are therefore picked up by
+        :func:`summarize_results` unless ``parameter_keys`` is given.
+    latent_prefix : str
+        Prefix for the latent copies.
+
+    Returns
+    -------
+    astropy.table.Table
+        A copy of ``table`` whose SFH columns hold physical values (same
+        column names). Rows that cannot be mapped are NaN (and are dropped by
+        :func:`summarize_results`). ``meta["besta_sfh_space"]`` is set to
+        ``"physical"``. The input table is not modified.
+
+    Notes
+    -----
+    The weights and the ``post`` column are unchanged: the SFH transforms
+    have a constant Jacobian (see the section comment above).
+    """
+    out = table.copy()
+    if table.meta.get(_SFH_SPACE_META_KEY) == "physical":
+        logger.warning("Table is already in physical SFH space; not converting again.")
+        return out
+    out.meta[_SFH_SPACE_META_KEY] = "physical"
+    out.meta["besta_sfh_model"] = type(sfh_model).__name__
+    if not getattr(sfh_model, "use_transforms", False):
+        logger.info("The SFH model does not use latent transforms; "
+                    "the table is already in physical space.")
+        return out
+
+    columns = sfh_parameter_columns(
+        table, sfh_model, parameter_prefix=parameter_prefix)
+    if not columns:
+        return out
+
+    latent = np.column_stack([_as_float_array(table[col]) for col in columns])
+    physical = sfh_model.to_physical_batch(latent)
+
+    n_unmapped = int(np.sum(
+        np.all(np.isfinite(latent), axis=1) & ~np.all(np.isfinite(physical), axis=1)))
+    if n_unmapped:
+        logger.warning(
+            "%d of %d samples lie outside the latent support and were set to NaN.",
+            n_unmapped, len(table))
+
+    for index, col in enumerate(columns):
+        if keep_latent:
+            out[latent_prefix + col] = table[col].copy()
+        out[col] = physical[:, index]
+    logger.info("Converted %d SFH parameters of %d samples to physical space.",
+                len(columns), len(table))
+    return out
+
+
+def to_physical_table(reader, *, module_name: Optional[str] = None, **kwargs) -> Table:
+    """Results of a run with the SFH parameters in physical space.
+
+    Parameters
+    ----------
+    reader : :class:`besta.io.Reader`
+        Reader of the run. Its results are loaded if needed.
+    module_name : str, optional
+        Module defining the SFH (see :func:`build_sfh_model`).
+    **kwargs
+        Passed to :func:`latent_to_physical_table`.
+
+    Returns
+    -------
+    astropy.table.Table
+
+    Examples
+    --------
+    >>> reader = Reader.from_results_file("results.txt")
+    >>> summary = summarize_results(to_physical_table(reader))
+    """
+    table = getattr(reader, "_results_table", None)
+    if table is None:
+        reader.load_results()
+        table = reader.results_table
+    sfh_model = build_sfh_model(reader.ini, module_name)
+    return latent_to_physical_table(table, sfh_model, **kwargs)
+
+
+# -----------------------------------------------------------------------------
 # Main summarization function
 # -----------------------------------------------------------------------------
 
@@ -1345,6 +1552,7 @@ def summarize_results(
     kde_2d: bool = True,
     extra_info: Optional[Dict[str, Any]] = None,
     verbose: bool = False,
+    sfh_model: Optional[Any] = None,
 ) -> ResultsSummary:
     """
     Summarize posterior results from a samples table into a ResultsSummary.
@@ -1378,6 +1586,11 @@ def summarize_results(
         Arbitrary metadata included in exports.
     verbose : bool
         Print progress.
+    sfh_model : :class:`besta.sfh.SFHBase`, optional
+        If given, latent SFH parameters are converted to physical values
+        before summarizing (see :func:`latent_to_physical_table` and
+        :func:`build_sfh_model`). No effect if the model does not use
+        transforms or the table is already in physical space.
 
     Returns
     -------
@@ -1385,6 +1598,10 @@ def summarize_results(
     """
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
+
+    if sfh_model is not None:
+        table = latent_to_physical_table(
+            table, sfh_model, parameter_prefix=parameter_prefix)
 
     keys = io._select_parameter_keys(
         table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
@@ -1408,6 +1625,8 @@ def summarize_results(
 
     extra_info = extra_info or {}
     extra_info["burn_in"] = burn_in
+    if _SFH_SPACE_META_KEY in table.meta:
+        extra_info["sfhspace"] = table.meta[_SFH_SPACE_META_KEY]
 
     # Extract and filter samples
     logpost_all = _as_float_array(table[posterior_key])
