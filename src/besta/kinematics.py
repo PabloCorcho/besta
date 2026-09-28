@@ -113,18 +113,45 @@ class LOSVDPixelKernel:
                 self._cache.pop(next(iter(self._cache)))
         self.kernel_weight = kernel
 
-    def convolve(self, spectra):
-        """Convolve the input spectra with the LOSVD kernel."""
-        if self.kernel_weight is not None:
-            if self.skip_convolution:
-                return spectra
-            if np.ndim(spectra) == 1:
-                return fftconvolve(spectra, self.kernel_weight, mode="same")
+    def convolve(self, spectra, pad_mode=None):
+        """Convolve the input spectra with the LOSVD kernel.
 
-            kernel = self.kernel_weight.reshape((1,) * (np.ndim(spectra) - 1) + (-1,))
-            return fftconvolve(spectra, kernel, mode="same", axes=-1)
-        else:
+        Parameters
+        ----------
+        spectra : np.ndarray
+            Spectra to convolve; the last axis is the wavelength axis.
+        pad_mode : str, optional
+            If given (e.g. ``"edge"``), the spectra are padded along the last
+            axis by half the kernel size with :func:`numpy.pad` using this mode
+            before convolving, and cropped back afterwards. The default
+            (``None``) keeps the implicit zero padding of ``fftconvolve``,
+            which makes the flux drop near the edges.
+
+        Returns
+        -------
+        np.ndarray
+            Convolved spectra with the same shape as the input.
+        """
+        if self.kernel_weight is None:
             raise ValueError("Kernel weights are not set.")
+        if self.skip_convolution:
+            return spectra
+
+        half_width = self.kernel_weight.size // 2
+        n_pix = np.shape(spectra)[-1]
+        if pad_mode is not None and half_width > 0:
+            pad_width = [(0, 0)] * (np.ndim(spectra) - 1) + [(half_width, half_width)]
+            spectra = np.pad(spectra, pad_width, mode=pad_mode)
+
+        if np.ndim(spectra) == 1:
+            out = fftconvolve(spectra, self.kernel_weight, mode="same")
+        else:
+            kernel = self.kernel_weight.reshape((1,) * (np.ndim(spectra) - 1) + (-1,))
+            out = fftconvolve(spectra, kernel, mode="same", axes=-1)
+
+        if pad_mode is not None and half_width > 0:
+            out = out[..., half_width:half_width + n_pix]
+        return out
 
     def get_percentile_pixel(self, percentile):
         """Get a percentile location in pixel units relative to kernel center.

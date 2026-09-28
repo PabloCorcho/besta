@@ -40,6 +40,7 @@ from besta import utils
 from besta.grid import ModelGrid
 from . import likelihoods
 from besta.config import cosmology, memory
+from besta import config as besta_config
 from besta.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
@@ -316,7 +317,7 @@ class BaseModule(ClassModule):
             options = SectionOptions(options)
         return options
 
-    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=800.0):
+    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=None):
         """Prepare the SSP data.
 
         Parameters
@@ -325,13 +326,23 @@ class BaseModule(ClassModule):
             Input options to initialise the model.
         normalize : bool, optional
             If ``True``, normalizes the spectra using the given wavelength range.
-        velocity_buffer : float
-            Buffer offset (in terms of velocity) to keep extra wavelength
-            elements. This reduced the corruption of the spectra at the edges
-            during convolution. The buffer is applied to both sides of the
-            SSP spectra.
+        velocity_buffer : float, optional
+            Buffer (km/s) of extra SSP pixels kept on both sides of the
+            observed range so the LOSVD convolution is exact inside it. It
+            should be at least ``sigma_truncation * max(los_sigma) +
+            max(|los_vel|)`` over the prior. Resolution order: this argument,
+            the module option ``velocity_buffer``, the global
+            ``kinematics.extra_velocity_buffer`` setting, 800 km/s.
         """
         _log("Configuring SSP model")
+        if velocity_buffer is None:
+            if options.has_value("velocity_buffer"):
+                velocity_buffer = options.get_double("velocity_buffer")
+            else:
+                velocity_buffer = float(
+                    getattr(besta_config, "kinematics", {}).get(
+                        "extra_velocity_buffer", 800.0))
+        _log("Velocity buffer for LOSVD convolution: ", velocity_buffer, " km/s")
 
         if options.has_value("SSPModelFromPickle"):
             _log("Loading preconfigured SSP model from pickle")
@@ -949,6 +960,35 @@ class SpectraFitModule(BaseModule):
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
+
+    def convolve_losvd_and_trim(self, flux_model):
+        """Convolve the rest-frame model with the LOSVD and trim the buffer.
+
+        The model is edge-padded before convolving, and the ``extra_pixels``
+        buffer on each side is removed so the output matches the observed
+        grid. The set of pixels entering the likelihood does not depend on the
+        kinematic parameters. If the kernel half-width exceeds the buffer, the
+        outermost observed pixels rely on the edge padding (constant
+        continuation of the model) and a warning is logged once.
+        """
+        kernel = self._losvd_kernel
+        extra = self.config["extra_pixels"]
+        half_width = kernel.size // 2
+        if half_width > extra and not getattr(self, "_warned_losvd_buffer", False):
+            velscale = self.config.get("velscale", np.nan)
+            logger.warning(
+                "LOSVD kernel half-width (%d pix, ~%.0f km/s) exceeds the SSP "
+                "velocity buffer (%d pix, ~%.0f km/s): the outermost observed "
+                "pixels use edge-padded models. Increase 'velocity_buffer' to at "
+                "least sigma_truncation * max(los_sigma) + max(|los_vel|). "
+                "This warning is shown once.",
+                half_width, half_width * velscale, extra, extra * velscale,
+            )
+            self._warned_losvd_buffer = True
+
+        flux_model = kernel.convolve(flux_model, pad_mode="edge")
+        n_pix = flux_model.shape[-1]
+        return flux_model[..., extra:n_pix - extra]
 
     def prepare_legendre_polynomials(self, options):
         """Prepare the set of Legendre polynomials used during the fit.

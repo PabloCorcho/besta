@@ -45,24 +45,16 @@ class GalaxySpectraModule(SpectraFitModule):
         flux_model = galaxy.emission_spectrum(
             to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
 
+        # Kinematics: convolve and trim to the observed grid
         self._losvd_kernel.parse_parameters(block)
-        # Perform the convolution
-        flux_model = self._losvd_kernel.convolve(flux_model)
-        # Track those pixels at the edges
-        mask = flux_model > 0
-        mask[:self._losvd_kernel.size // 2] = False
-        mask[-self._losvd_kernel.size // 2:] = False
-        # Sample to observed resolution
-        extra_pixels = self.config["extra_pixels"]
-        pixels = slice(extra_pixels, -extra_pixels)
-        flux_model = flux_model[pixels]
-        mask = mask[pixels]
+        flux_model = self.convolve_losvd_and_trim(flux_model)
+        weights = self.config["weights"].copy()
 
-        weights = self.config["weights"] * mask
         sfh_model = self.config["sfh_model"]
         if sfh_model.use_mass_normalization:
+            norm_pixels = (weights > 0) & (flux_model > 0)
             normalization = np.nanmedian(
-                self.config["flux"][weights > 0] / flux_model[weights > 0]
+                self.config["flux"][norm_pixels] / flux_model[norm_pixels]
             )
             block["extra", "stellar_mass"] = np.log10(normalization)
         else:
