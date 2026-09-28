@@ -8,11 +8,13 @@ from besta import kinematics, sfh
 from besta.pipeline_modules.base_module import (
     SpectraFitModule,
     effective_lsf_sigma,
+    ml_amplitude,
     rest_frame_instrumental_fwhm,
 )
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.pipeline_modules.galaxy_spectra import GalaxySpectraModule
 from besta.pipeline_modules.galaxy_photometry import GalaxyPhotometryModule
+from besta.pipeline_modules import spectra_redshift_fit as srf_module
 from besta.pipeline_modules.spectra_redshift_fit import SpectraRedshiftFitModule
 import importlib
 
@@ -291,6 +293,169 @@ def test_likelihood_pixel_set_independent_of_kinematics(
     np.testing.assert_array_equal(weights, mod.config["weights"])
     # Constant SED stays constant after convolution (edge padding, no flux loss)
     np.testing.assert_allclose(flux_model, 1.0)
+
+
+def test_ml_amplitude():
+    model = np.array([1.0, 2.0, 3.0, 4.0])
+    inv_var = np.array([1.0, 0.5, 2.0, 0.0])      # last point ignored
+    data = 2.5 * model
+    data[-1] = 1e6                                  # outlier with zero weight
+    assert ml_amplitude(data, model, inv_var) == pytest.approx(2.5)
+    # Weighted least squares with noise: sum(w d m) / sum(w m^2)
+    noisy = 2.5 * model + np.array([0.1, -0.2, 0.3, 0.0])
+    expected = np.sum(inv_var * noisy * model) / np.sum(inv_var * model**2)
+    assert ml_amplitude(noisy, model, inv_var) == pytest.approx(expected)
+    assert np.isnan(ml_amplitude(data, np.zeros(4), inv_var))
+
+
+def _legendre_setup(n_pix):
+    """Legendre array (P0, P1, P2) and an asymmetric polynomial 1 + 0.3 P1 + 0.4 P2."""
+    x = np.linspace(-1.0, 1.0, n_pix)
+    legendre_pol = np.vstack([np.ones(n_pix), x, 1.5 * x**2 - 0.5])
+    poly = 1.0 + 0.3 * legendre_pol[1] + 0.4 * legendre_pol[2]
+    return legendre_pol, poly
+
+
+@pytest.mark.parametrize(
+    "module_class, mass_scale, log_mass_offset",
+    [(FullSpectralFitModule, 1e10, 10.0), (GalaxySpectraModule, 1.0, 0.0)],
+)
+def test_mass_normalization_is_ml_amplitude_with_polynomial(
+    module_class, mass_scale, log_mass_offset
+):
+    """The amplitude is the weighted ML scale of the polynomial-corrected model.
+
+    Previously it was ``median(data / model)`` computed *before* the Legendre
+    polynomial was applied, ignoring ivar.
+    """
+    n_obs, true_amplitude = 60, 3.0
+    legendre_pol, poly = _legendre_setup(n_obs)
+    sfh_model = _FakeSFH(n_obs)
+    sfh_model.use_mass_normalization = True
+    model = mass_scale * np.ones(n_obs) * poly
+    flux = true_amplitude * model
+    weights = np.ones(n_obs)
+    weights[5] = 0.0
+    flux[5] = 1e6  # masked outlier must not affect the amplitude
+
+    mod = module_class.__new__(module_class)
+    mod.noise_model = None
+    mod.config = {
+        "sfh_model": sfh_model,
+        "ssp_model": None,
+        "galaxy": _FakeGalaxy(n_obs),
+        "dl_sq": 1.0,
+        "extinction_law": None,
+        "extra_pixels": 0,
+        "velscale": 50.0,
+        "flux": flux,
+        "ivar": np.linspace(1.0, 10.0, n_obs),
+        "weights": weights,
+        "legendre_pol": legendre_pol,
+    }
+    mod._losvd_kernel = kinematics.GaussianPixelKernel(velocity_scale=50.0)
+
+    block = DataBlock()
+    block["kinematics", "los_vel"] = 0.0
+    block["kinematics", "los_sigma"] = 0.0
+    block["legendre", "legendre_1"] = 0.3
+    block["legendre", "legendre_2"] = 0.4
+
+    flux_model, _ = mod.make_observable(block)
+
+    good = weights > 0
+    np.testing.assert_allclose(flux_model[good], flux[good])
+    assert block["extra", "stellar_mass"] == pytest.approx(
+        np.log10(true_amplitude) + log_mass_offset)
+
+
+def test_redshift_fit_normalization_is_ml_amplitude_with_polynomial(monkeypatch):
+    """Final scale of the redshift module: likelihood weights, ivar and polynomial."""
+    n_obs, true_amplitude = 10, 2.0
+    legendre_pol, poly = _legendre_setup(n_obs)
+    sed = np.linspace(1.0, 2.0, 20)
+
+    class _SFH(_FakeSFH):
+        def __init__(self):
+            super().__init__(sed.size)
+            self.model.compute_SED = lambda *a, **k: _FakeQuantity(sed)
+
+    # Best redshift step: slice starting at model pixel 5
+    monkeypatch.setattr(
+        srf_module, "compute_redshift_chi2_from_slices",
+        lambda *args: (np.array([5.0, 1.0]), np.array([1.0, 1.0])))
+
+    mod = SpectraRedshiftFitModule.__new__(SpectraRedshiftFitModule)
+    mod.noise_model = None
+    flux = true_amplitude * sed[5:5 + n_obs] * poly
+    mod.config = {
+        "sfh_model": _SFH(),
+        "ssp_model": None,
+        "extinction_law": None,
+        "flux": flux,
+        "ivar": np.linspace(1.0, 3.0, n_obs),
+        "weights": np.ones(n_obs),
+        "legendre_pol": legendre_pol,
+        "sweep_weights": np.ones(n_obs),
+        "good": np.ones(n_obs, dtype=bool),
+        "good_idx": np.arange(n_obs, dtype=np.int64),
+        "model_start": np.array([0, 5]),
+        "model_stop": np.array([n_obs, 5 + n_obs]),
+        "norm_obs_flux": flux,
+        "slice_redshifts": np.array([0.1, 0.05]),
+    }
+    mod.z_loglike = np.full(2, -1e20)
+
+    block = DataBlock()
+    block["legendre", "legendre_1"] = 0.3
+    block["legendre", "legendre_2"] = 0.4
+
+    flux_model, weights = mod.make_observable(block)
+
+    assert block["redshift", "redshift"] == pytest.approx(0.05)
+    np.testing.assert_allclose(flux_model, flux)
+    np.testing.assert_array_equal(weights, mod.config["weights"])
+
+
+def test_photometry_amplitude_ignores_limits_and_uses_errors():
+    """Photometric amplitude: inverse-variance weighted, detections only.
+
+    Previously an unweighted mean of ``obs / model`` including upper limits.
+    """
+    model = np.array([1.0, 2.0, 3.0, 4.0])
+
+    class _Galaxy(_FakeGalaxy):
+        def emission_photometry(self, *args, **kwargs):
+            return _FakeQuantity(model)
+
+    sfh_model = _FakeSFH(4)
+    sfh_model.use_mass_normalization = True
+    flux = 2.0 * 1e10 * model
+    flux[3] = 1.0  # upper limit far below the model
+
+    mod = GalaxyPhotometryModule.__new__(GalaxyPhotometryModule)
+    mod.config = {
+        "sfh_model": sfh_model,
+        "galaxy": _Galaxy(4),
+        "photometry_flux": flux,
+        "photometry_flux_var": np.array([1.0, 4.0, 9.0, 16.0]) * 1e18,
+        "photometry_flux_unit": None,
+        "photometry_upper_limit": np.array([False, False, False, True]),
+        "photometry_lower_limit": None,
+    }
+    block = DataBlock()
+
+    flux_model = mod.make_observable(block)
+
+    assert block["extra", "stellar_mass"] == pytest.approx(np.log10(2.0) + 10)
+    np.testing.assert_allclose(flux_model, 2.0 * 1e10 * model)
+    # Static amplitude terms are precomputed once, with the limit excluded
+    inv_var = mod.config["amplitude_inv_var"]
+    assert inv_var[3] == 0.0
+    np.testing.assert_allclose(inv_var[:3], 1.0 / mod.config["photometry_flux_var"][:3])
+    np.testing.assert_allclose(mod.config["amplitude_weighted_flux"], inv_var * flux)
+    # ...and give the same amplitude as the generic ML formula
+    assert ml_amplitude(flux, 1e10 * model, inv_var) == pytest.approx(2.0)
 
 
 def test_full_spectral_fit_make_observable(tmp_path):
