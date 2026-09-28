@@ -845,9 +845,11 @@ class SpectraFitModule(BaseModule):
             self.config["sky_lines_used"] = lines_used
         # Optional masking of emission lines
         if options.has_value("mask_emission_lines") and options["mask_emission_lines"]:
+            # ``wavelength`` is already rest-frame, so line centres must not be
+            # redshifted again (the function places them at rest * (1 + z)).
             weights_el, line_mask, lines_used = spectrum.mask_strong_emission_lines(
                 wavelength, flux, np.sqrt(cov), weights,
-                redshift=redshift,
+                redshift=0.0,
                 # line_list=emission_line_list,
                 # half_width=line_half_width,
                 return_mask=True, return_lines_masked=True)
