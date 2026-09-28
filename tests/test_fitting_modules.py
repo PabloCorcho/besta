@@ -723,6 +723,44 @@ def test_prepare_sfh_model_forwards_smoothness_prior_options():
     assert prior.relative_sfr_floor == 1e-6
 
 
+def test_prepare_sfh_model_passes_only_sfh_options():
+    """Only SFH options and the source redshift reach the SFH constructor.
+
+    Previously the whole module config was forwarded as keyword arguments, so
+    a keyword in SFHArgs that also existed in the config raised a TypeError.
+    """
+    class Dummy(SpectraFitModule):
+        name = "Dummy"
+
+        def make_observable(self, *args, **kwargs):
+            pass
+
+        def execute(self, *args, **kwargs):
+            pass
+
+        def plot_solution(self, *args, **kwargs):
+            pass
+
+    def prepared(sfh_args):
+        mod = Dummy.__new__(Dummy)
+        mod.alias = "Dummy"
+        mod.config = {"redshift": 0.1, "flux": np.ones(3), "weights": np.ones(3)}
+        options = mod.parse_options({"Dummy": {
+            "SFHModel": "FixedTimeSFH", "SFHArgs": sfh_args}})
+        mod.prepare_sfh_model(options)
+        return mod
+
+    mod = prepared("[0.5, 1.0, 2.0]")
+    model = mod.config["sfh_model"]
+    assert model.redshift == pytest.approx(0.1)  # source redshift from config
+    assert mod.config["use_transforms"] is False
+    assert "use_sfh_smoothness_prior" not in mod.config
+
+    # SFHArgs keyword duplicating a config key: no TypeError, SFHArgs wins
+    model = prepared("[0.5, 1.0, 2.0], redshift=0.4").config["sfh_model"]
+    assert model.redshift == pytest.approx(0.4)
+
+
 def test_prepare_sfh_model_builds_fixed_mass_frac_2d():
     class Dummy(SpectraFitModule):
         name = "Dummy"

@@ -258,5 +258,120 @@ class TestPostprocessing(unittest.TestCase):
             self.assertTrue(os.path.isfile(out_corner), "Corner plot not written")
 
 
+class TestPhysicalSFHPostprocessing(unittest.TestCase):
+    """Latent -> physical conversion of SFH parameters in results tables."""
+
+    mass_fractions = (0.1, 0.5, 0.9)
+
+    @staticmethod
+    def _ini(use_transforms=True, redshift=0.1):
+        # Values parsed as in ``besta.io.Reader`` (strings from the ini file)
+        section = {
+            "file": "full_spectral_fit.py",
+            "SFHModel": "FixedMassFracSFH",
+            "SFHArgs": "(0.1, 0.5, 0.9)",
+            "use_transforms": "T" if use_transforms else "F",
+            "redshift": str(redshift),
+        }
+        return {
+            "pipeline": {"modules": "FullSpectralFit"},
+            "FullSpectralFit": {k: io._parse_value(v) for k, v in section.items()},
+        }
+
+    def setUp(self):
+        from besta import sfh
+        self.model = sfh.FixedMassFracSFH(
+            np.array(self.mass_fractions), ism_metallicity_today=0.02,
+            use_transforms=True)
+        rng = np.random.default_rng(7)
+        n = 400
+        self.latent = rng.uniform(size=(n, 3))
+        self.columns = [f"stars.sfh--{key}" for key in self.model.sfh_bin_keys]
+        table = Table()
+        for index, col in enumerate(self.columns):
+            table[col] = self.latent[:, index]
+        table["stars.sfh--alpha_powerlaw"] = rng.uniform(0, 3, n)
+        table["extra--stellar_mass"] = rng.normal(10, 0.1, n)
+        table["post"] = rng.normal(-100, 1, n)
+        self.table = table
+
+    def test_latent_to_physical_table(self):
+        from besta.postprocess import latent_to_physical_table
+        original = self.table.copy()
+        physical = latent_to_physical_table(self.table, self.model)
+
+        expected = self.model.to_physical_batch(self.latent)
+        for index, col in enumerate(self.columns):
+            np.testing.assert_allclose(physical[col], expected[:, index])
+        # Other columns untouched, input table not modified
+        for col in ("stars.sfh--alpha_powerlaw", "extra--stellar_mass", "post"):
+            np.testing.assert_array_equal(physical[col], self.table[col])
+        for col in self.table.colnames:
+            np.testing.assert_array_equal(self.table[col], original[col])
+        self.assertEqual(physical.meta["besta_sfh_space"], "physical")
+
+        # Converting twice is a no-op
+        again = latent_to_physical_table(physical, self.model)
+        for col in self.columns:
+            np.testing.assert_array_equal(again[col], physical[col])
+
+        # Optional copies of the latent columns
+        with_latent = latent_to_physical_table(self.table, self.model, keep_latent=True)
+        for col in self.columns:
+            np.testing.assert_array_equal(with_latent["latent_" + col], self.table[col])
+
+    def test_unmapped_samples_are_dropped_by_summary(self):
+        from besta.postprocess import latent_to_physical_table
+        table = self.table.copy()
+        table[self.columns[0]][0] = 1.5  # outside the latent support
+        physical = latent_to_physical_table(table, self.model)
+        self.assertTrue(np.isnan(physical[self.columns[0]][0]))
+        summary = summarize_results(physical, compute_1d=False)
+        self.assertEqual(summary.n_samples, len(table) - 1)
+
+    def test_summarize_results_in_physical_space(self):
+        from besta.postprocess import latent_to_physical_table
+        direct = summarize_results(self.table, sfh_model=self.model, compute_1d=False)
+        converted = summarize_results(
+            latent_to_physical_table(self.table, self.model), compute_1d=False)
+        np.testing.assert_allclose(direct.percentiles_values, converted.percentiles_values)
+        self.assertEqual(direct.extra_info["sfhspace"], "physical")
+
+        # Physical times (Gyr) differ from the latent unit-cube values
+        latent = summarize_results(self.table, compute_1d=False)
+        index = direct.parameter_keys.index(self.columns[-1])
+        self.assertGreater(direct.percentiles_values[index, 0], 1.0)
+        self.assertLessEqual(latent.percentiles_values[index, -1], 1.0)
+        # The MAP sample is the same (constant Jacobian)
+        self.assertEqual(direct.map_index, latent.map_index)
+
+    def test_build_sfh_model_from_ini(self):
+        from besta.config import cosmology
+        from besta.postprocess import build_sfh_model, find_sfh_modules
+        ini = self._ini(use_transforms=True, redshift=0.1)
+        self.assertEqual(find_sfh_modules(ini), ["FullSpectralFit"])
+
+        model = build_sfh_model(ini)
+        self.assertEqual(type(model).__name__, "FixedMassFracSFH")
+        self.assertTrue(model.use_transforms)
+        self.assertEqual(model.sfh_bin_keys, self.model.sfh_bin_keys)
+        self.assertAlmostEqual(
+            model.today.to_value("Gyr"), cosmology.age(0.1).to_value("Gyr"))
+
+        self.assertFalse(build_sfh_model(self._ini(use_transforms=False)).use_transforms)
+
+        with self.assertRaises(ValueError):
+            build_sfh_model({"pipeline": {"modules": "Other"}, "Other": {"x": 1}})
+
+    def test_to_physical_table_from_reader(self):
+        from besta.postprocess import to_physical_table
+        reader = io.Reader.__new__(io.Reader)
+        reader.ini = self._ini(use_transforms=True, redshift=0.0)
+        reader.results_table = self.table
+        physical = to_physical_table(reader)
+        expected = self.model.to_physical_batch(self.latent)
+        np.testing.assert_allclose(physical[self.columns[1]], expected[:, 1])
+
+
 if __name__ == "__main__":
     unittest.main()

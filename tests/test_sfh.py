@@ -739,5 +739,66 @@ class TestTransforms(unittest.TestCase):
         np.testing.assert_array_equal(model.to_latent_batch(values), values)
 
 
+class TestBuildSFHFromOptions(unittest.TestCase):
+    """``sfh.build_sfh_from_options``: dict (ini) and CosmoSIS options."""
+
+    def test_from_parsed_ini_dict(self):
+        from besta import io
+        from besta.config import cosmology
+        # As stored by besta.io.Reader (values parsed from the ini strings)
+        raw = {
+            "SFHModel": "FixedMassFracSFH",
+            "SFHArgs": "(0.1, 0.5, 0.9)",
+            "use_transforms": "T",
+            "redshift": "0.2",
+            "use_sfh_smoothness_prior": "T",
+            "sfh_smoothness_sigma_dex": "0.7",
+            "file": "full_spectral_fit.py",   # unrelated options are ignored
+        }
+        options = {key: io._parse_value(value) for key, value in raw.items()}
+        model = sfh.build_sfh_from_options(options)
+
+        self.assertIsInstance(model, sfh.FixedMassFracSFH)
+        self.assertTrue(model.use_transforms)
+        np.testing.assert_allclose(model.mass_fraction, [0.1, 0.5, 0.9])
+        self.assertAlmostEqual(model.redshift, 0.2)
+        self.assertAlmostEqual(
+            model.today.to_value("Gyr"), cosmology.age(0.2).to_value("Gyr"))
+        self.assertIsInstance(model.sfh_smoothness_prior, sfh.SFHSmoothnessPrior)
+        self.assertEqual(model.sfh_smoothness_prior.sigma_dex, 0.7)
+
+    def test_keys_are_case_insensitive_and_booleans_parsed(self):
+        model = sfh.build_sfh_from_options({
+            "sfhmodel": "FixedMassFracSFH",
+            "sfhargs": "[0.2, 0.8]",
+            "USE_TRANSFORMS": "F",
+        })
+        self.assertFalse(model.use_transforms)
+        self.assertIsNone(model.sfh_smoothness_prior)
+        self.assertAlmostEqual(model.redshift, 0.0)
+
+    def test_redshift_argument_and_sfhargs_precedence(self):
+        options = {
+            "SFHModel": "FixedTimeSFH",
+            "SFHArgs": "[0.5, 1.0, 2.0], logsfr_min=-4.0",
+            "redshift": 0.1,
+        }
+        # Explicit argument overrides the option
+        model = sfh.build_sfh_from_options(options, redshift=0.3)
+        self.assertAlmostEqual(model.redshift, 0.3)
+        self.assertEqual(model.free_params[model.sfh_bin_keys[0]][0], -4.0)
+        # Keywords in SFHArgs override everything (no duplicate-kwarg error)
+        options["SFHArgs"] = "[0.5, 1.0, 2.0], redshift=0.5"
+        model = sfh.build_sfh_from_options(options, redshift=0.3)
+        self.assertAlmostEqual(model.redshift, 0.5)
+
+    def test_invalid_model_names(self):
+        with self.assertRaises(ValueError):
+            sfh.build_sfh_from_options({"SFHArgs": "[0.5]"})
+        for name in ("NotAModel", "cosmology", "SFHSmoothnessPrior"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                sfh.build_sfh_from_options({"SFHModel": name})
+
+
 if __name__ == "__main__":
     unittest.main()
