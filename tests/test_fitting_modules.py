@@ -4,7 +4,7 @@ import pytest
 
 from cosmosis import DataBlock
 
-from besta import sfh
+from besta import kinematics, sfh
 from besta.pipeline_modules.base_module import (
     SpectraFitModule,
     effective_lsf_sigma,
@@ -157,11 +157,13 @@ def test_redshift_sweep_weights_apply_features_once(with_features):
         mod.config["good_idx"], np.flatnonzero(expected_sweep > 0))
 
 
-def test_prepare_observed_spectra_keeps_mask_weights_with_features(tmp_path):
-    """``mask_weights`` holds the pre-feature weights; features applied once."""
+def _make_features_dummy_module(tmp_path, noise):
+    """Dummy spectral module on a flat spectrum with one absorption line."""
     wl = np.arange(4000.0, 5000.0, 1.0)
     flux = 1.0 - 0.3 * np.exp(-0.5 * ((wl - 4500.0) / 5.0) ** 2)
     err = np.full_like(wl, 0.01)
+    if noise:
+        flux = flux + np.random.default_rng(1).normal(scale=err)
     spec = tmp_path / "spec_features.dat"
     np.savetxt(spec, np.vstack([wl, flux, err]).T)
 
@@ -183,13 +185,112 @@ def test_prepare_observed_spectra_keeps_mask_weights_with_features(tmp_path):
             pass
 
     mod = Dummy({"Dummy": {"inputSpectrum": str(spec), "use_features": True}})
+    return mod, wl
+
+
+def test_prepare_observed_spectra_keeps_mask_weights_with_features(tmp_path):
+    """``mask_weights`` holds the pre-feature weights; features applied once."""
+    mod, wl = _make_features_dummy_module(tmp_path, noise=True)
 
     assert np.all(mod.config["mask_weights"] == 1.0)
+    assert np.all(np.isfinite(mod.config["feature_weights"]))
     np.testing.assert_allclose(
         mod.config["weights"],
         mod.config["mask_weights"] * mod.config["feature_weights"])
     # The absorption feature gets a non-zero feature weight
     assert mod.config["feature_weights"][np.argmin(np.abs(wl - 4500.0))] > 0
+
+
+def test_feature_weights_fall_back_to_ones_without_continuum_scatter(tmp_path):
+    """Noiseless input gives zero continuum scatter: no NaN feature weights."""
+    mod, _ = _make_features_dummy_module(tmp_path, noise=False)
+
+    np.testing.assert_array_equal(mod.config["feature_weights"], 1.0)
+    np.testing.assert_array_equal(mod.config["weights"], mod.config["mask_weights"])
+
+
+class _FakeQuantity:
+    def __init__(self, value):
+        self.value = np.asarray(value, dtype=float)
+
+    def to_value(self, *args, **kwargs):
+        return self.value
+
+
+class _FakeSFH:
+    sect_name = "stars.sfh"
+    use_mass_normalization = False
+    today = 13.0
+
+    def __init__(self, n_model):
+        n = n_model
+
+        class _Model:
+            @staticmethod
+            def compute_SED(*args, **kwargs):
+                return _FakeQuantity(np.ones(n))
+
+            @staticmethod
+            def stellar_mass_formed(*args, **kwargs):
+                return _FakeQuantity(1.0)
+
+        self.model = _Model()
+
+    def parse_datablock(self, block):
+        return 1, 0.0
+
+
+class _FakeGalaxy:
+    def __init__(self, n_model):
+        self.n_model = n_model
+
+    def update_parameters(self, *args, **kwargs):
+        pass
+
+    def emission_spectrum(self, *args, **kwargs):
+        return _FakeQuantity(np.ones(self.n_model))
+
+
+@pytest.mark.parametrize("module_class", [FullSpectralFitModule, GalaxySpectraModule])
+@pytest.mark.parametrize("extra_pixels", [16, 0])
+@pytest.mark.parametrize("los_sigma", [50.0, 300.0, 600.0])
+def test_likelihood_pixel_set_independent_of_kinematics(
+    module_class, extra_pixels, los_sigma
+):
+    """The likelihood pixel set must not change with the LOSVD parameters.
+
+    velscale = 50 km/s and a 16-pixel (800 km/s) buffer: sigma = 600 km/s gives
+    a kernel half-width of ~64 pixels, larger than the buffer. Previously the
+    edge pixels were then dropped from the likelihood (and extra_pixels = 0
+    returned an empty model).
+    """
+    n_obs = 200
+    n_model = n_obs + 2 * extra_pixels
+    mod = module_class.__new__(module_class)
+    mod.config = {
+        "sfh_model": _FakeSFH(n_model),
+        "ssp_model": None,
+        "galaxy": _FakeGalaxy(n_model),
+        "dl_sq": 1.0,
+        "extinction_law": None,
+        "extra_pixels": extra_pixels,
+        "velscale": 50.0,
+        "flux": np.ones(n_obs),
+        "weights": np.ones(n_obs),
+    }
+    mod._losvd_kernel = kinematics.GaussianPixelKernel(
+        velocity_scale=50.0, sigma_truncation=5.0)
+
+    block = DataBlock()
+    block["kinematics", "los_vel"] = 100.0
+    block["kinematics", "los_sigma"] = los_sigma
+
+    flux_model, weights = mod.make_observable(block)
+
+    assert flux_model.shape == (n_obs,)
+    np.testing.assert_array_equal(weights, mod.config["weights"])
+    # Constant SED stays constant after convolution (edge padding, no flux loss)
+    np.testing.assert_allclose(flux_model, 1.0)
 
 
 def test_full_spectral_fit_make_observable(tmp_path):

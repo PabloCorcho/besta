@@ -29,6 +29,31 @@ class TestKinematics(unittest.TestCase):
         self.assertTrue(kernel.skip_convolution)
         self.assertTrue(np.allclose(y, x, atol=0.0, rtol=0.0))
 
+    def test_convolve_edge_padding(self):
+        """``pad_mode='edge'`` removes the zero-padding flux drop at the edges
+        and matches the default convolution away from them."""
+        kernel = kinematics.GaussianPixelKernel(velocity_scale=50.0, sigma_truncation=5.0)
+        kernel.set_parameters(vel=100.0, sigma=300.0)
+        half_width = kernel.size // 2
+
+        const = np.ones(200)
+        padded = kernel.convolve(const, pad_mode="edge")
+        default = kernel.convolve(const)
+        self.assertEqual(padded.shape, const.shape)
+        self.assertTrue(np.allclose(padded, 1.0))
+        self.assertLess(default[0], 0.9)  # zero padding loses flux at the edge
+
+        rng = np.random.default_rng(0)
+        spec = rng.normal(size=300)
+        self.assertTrue(np.allclose(
+            kernel.convolve(spec, pad_mode="edge")[half_width:-half_width],
+            kernel.convolve(spec)[half_width:-half_width]))
+
+        spec_2d = np.tile(spec, (3, 1))
+        conv_2d = kernel.convolve(spec_2d, pad_mode="edge")
+        self.assertEqual(conv_2d.shape, spec_2d.shape)
+        self.assertTrue(np.allclose(conv_2d[1], kernel.convolve(spec, pad_mode="edge")))
+
     def test_gausshermite_parse_parameters_from_datablock(self):
         block = {
             ("kinematics", "los_vel"): 30.0,
