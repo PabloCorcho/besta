@@ -48,6 +48,85 @@ logger = get_logger(__name__)
 def _log(*args):
     logger.info(" ".join(str(arg) for arg in args))
 
+
+# Conversion factor between Gaussian FWHM and sigma
+_FWHM_TO_SIGMA = 2.355
+
+
+def rest_frame_instrumental_fwhm(rest_wavelength, spectrum_rest_wavelength,
+                                 lsf_fwhm_obs, redshift):
+    """Instrumental LSF FWHM expressed in rest-frame wavelength units.
+
+    A rest-frame wavelength ``lambda`` is observed at ``lambda * (1 + z)``,
+    where the instrument has ``FWHM_obs(lambda * (1 + z))`` (observed-frame
+    Angstrom). Wavelength intervals shrink by ``(1 + z)`` when moving to the
+    rest frame, hence
+
+    ``FWHM_rest(lambda) = FWHM_obs(lambda * (1 + z)) / (1 + z)``.
+
+    Parameters
+    ----------
+    rest_wavelength : array_like
+        Rest-frame wavelengths (Angstrom) where the LSF is evaluated
+        (e.g. the SSP wavelength grid).
+    spectrum_rest_wavelength : array_like
+        Rest-frame wavelengths (Angstrom) of the observed spectrum.
+    lsf_fwhm_obs : array_like
+        Instrumental FWHM (observed-frame Angstrom) at each pixel of the
+        observed spectrum, i.e. at ``spectrum_rest_wavelength * (1 + z)``.
+    redshift : float
+        Redshift used to bring the spectrum to the rest frame.
+
+    Returns
+    -------
+    numpy.ndarray
+        Instrumental FWHM in rest-frame Angstrom at ``rest_wavelength``.
+        Values outside the observed range are clamped to the edge values.
+    """
+    fwhm_obs = np.interp(np.asarray(rest_wavelength, dtype=float),
+                         np.asarray(spectrum_rest_wavelength, dtype=float),
+                         np.asarray(lsf_fwhm_obs, dtype=float))
+    return fwhm_obs / (1.0 + redshift)
+
+
+def effective_lsf_sigma(inst_fwhm, template_fwhm, wavelength=None):
+    """Gaussian sigma needed to degrade the templates to the instrumental LSF.
+
+    Both LSFs are assumed Gaussian and must be in the same (rest-frame)
+    wavelength units. Where the templates are already broader than the
+    instrument, no extra broadening is possible: sigma is set to 0 there and a
+    warning is logged instead of raising.
+
+    Parameters
+    ----------
+    inst_fwhm, template_fwhm : array_like
+        Instrumental and template FWHM.
+    wavelength : array_like, optional
+        Wavelengths, only used to report where clipping happens.
+
+    Returns
+    -------
+    numpy.ndarray
+        Effective sigma, same units as the inputs, clipped at 0.
+    """
+    inst_fwhm = np.asarray(inst_fwhm, dtype=float)
+    template_fwhm = np.asarray(template_fwhm, dtype=float)
+    dispersion = ((inst_fwhm / _FWHM_TO_SIGMA) ** 2
+                  - (template_fwhm / _FWHM_TO_SIGMA) ** 2)
+    too_sharp = dispersion < 0
+    if too_sharp.any():
+        msg = (
+            "Instrumental LSF is sharper than the template LSF in "
+            f"{np.count_nonzero(too_sharp)}/{too_sharp.size} pixels "
+            f"(max FWHM deficit {np.max(template_fwhm[too_sharp] - inst_fwhm[too_sharp]):.3f})"
+        )
+        if wavelength is not None:
+            wl = np.asarray(wavelength, dtype=float)[too_sharp]
+            msg += f" between {wl.min():.1f} and {wl.max():.1f}"
+        logger.warning(msg + "; no extra broadening applied there.")
+    return np.sqrt(np.clip(dispersion, 0.0, None))
+
+
 class BaseModule(ClassModule):
     """BESTA Pipeline module base class."""
 
@@ -350,13 +429,15 @@ class BaseModule(ClassModule):
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
-            # A given rest-frame wavelength is observed at a redshifted wavelength
-            # so the instrumental LSF in the rest frame is given by interpolating
-            # the input LSF at the observed wavelength
-            inst_lsf = np.interp(
-                ssp.wavelength,
-                self.config["wavelength"] * (1 + self.config["redshift"]),
-                self.config["lsf"])
+            # A rest-frame wavelength is observed at lambda * (1 + z), and
+            # observed-frame widths shrink by (1 + z) in the rest frame:
+            # FWHM_rest(lambda) = FWHM_obs(lambda * (1 + z)) / (1 + z)
+            ssp_wl_aa = ssp.wavelength.to_value("Angstrom")
+            inst_lsf = rest_frame_instrumental_fwhm(
+                ssp_wl_aa,
+                self.config["wavelength"].to_value("Angstrom"),
+                self.config["lsf"],
+                self.config.get("redshift", 0.0))
 
             if options.has_value("SSPLSF"):
                 _log("Including SSP resolution")
@@ -364,21 +445,15 @@ class BaseModule(ClassModule):
                 ssp_lsf_wl, ssp_lsf_fwhm = np.loadtxt(
                     os.path.expandvars(options["SSPLSF"]),
                     unpack=True, usecols=(0, 1))
-                ssp_lsf_fwhm = np.interp(ssp.wavelength, ssp_lsf_wl << u.AA,
-                                         ssp_lsf_fwhm)
+                ssp_lsf_fwhm = np.interp(ssp_wl_aa, ssp_lsf_wl, ssp_lsf_fwhm)
             else:
                 ssp_lsf_fwhm = np.zeros(ssp.wavelength.size, dtype=float)
-            # Assume both LSF are Gaussian
-            effective_lsf_disp = (inst_lsf / 2.355)**2 - (ssp_lsf_fwhm / 2.355)**2
-
-            if (effective_lsf_disp < 0).any():
-                logger.error("Effective LSF dispersion has negative values. Check the input instrumental and SSP LSFs.")
-                logger.debug("Instrumental LSF (FWHM): %s", inst_lsf)
-                logger.debug("SSP LSF (FWHM): %s", ssp_lsf_fwhm)
-                logger.debug("Effective LSF dispersion: %s", effective_lsf_disp)
-                raise ValueError("Effective SSP LSF cannot be negative!"
-                                 + "SSP models do not have enough resolution")
-            effective_lsf = np.sqrt(effective_lsf_disp)
+            logger.debug("Instrumental LSF (rest-frame FWHM): %s", inst_lsf)
+            logger.debug("SSP LSF (FWHM): %s", ssp_lsf_fwhm)
+            # Assume both LSF are Gaussian. Where the SSPs are already broader
+            # than the instrument, no extra broadening is applied (warning).
+            effective_lsf = effective_lsf_sigma(inst_lsf, ssp_lsf_fwhm,
+                                                wavelength=ssp_wl_aa)
             # Convert to pixels
             lsf_sigma_pixels = effective_lsf / np.diff(np.exp(lnlam_bin_edges))
             _log("Starting convolution of SSP models with wavelength-dependent",
