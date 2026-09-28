@@ -664,6 +664,80 @@ class TestTransforms(unittest.TestCase):
         self.assertEqual(prior_penalty, 0.0)
         self.assertEqual(model.model.times.size, len(mass_fractions) + 2)
 
+    # --- Batch (vectorised) transforms ---------------------------------
+
+    @staticmethod
+    def _latent_samples(n_params, n_samples=200, seed=3):
+        """Random unit-cube samples plus edge rows and two invalid rows."""
+        rng = np.random.default_rng(seed)
+        latent = rng.uniform(size=(n_samples, n_params))
+        latent[0] = 0.0
+        latent[1] = 1.0
+        latent[2, -1] = 1.5      # outside [0, 1]
+        latent[3, 0] = np.nan    # non-finite
+        return latent
+
+    def _check_batch_matches_single(self, model, n_params):
+        latent = self._latent_samples(n_params)
+        physical = model.to_physical_batch(latent)
+        self.assertEqual(physical.shape, latent.shape)
+
+        # Invalid rows -> NaN, all others finite
+        self.assertTrue(np.all(np.isnan(physical[2:4])))
+        self.assertTrue(np.all(np.isfinite(np.delete(physical, [2, 3], axis=0))))
+
+        # Same result as the per-sample method
+        for index in (0, 1, *range(4, latent.shape[0])):
+            np.testing.assert_allclose(
+                physical[index], model.to_physical(latent[index]),
+                rtol=1e-12, atol=1e-12)
+
+        # Round trip on interior samples
+        interior = physical[4:]
+        latent_back = model.to_latent_batch(interior)
+        for index in range(0, interior.shape[0], 20):
+            np.testing.assert_allclose(
+                latent_back[index], model.to_latent(interior[index]),
+                rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(latent_back, latent[4:], rtol=1e-6, atol=1e-8)
+
+        # A single sample is accepted and returned as a (1, n) array
+        self.assertEqual(model.to_physical_batch(latent[5]).shape, (1, n_params))
+
+    def test_fixed_time_ssfr_batch_transforms_match_single_sample(self):
+        model = sfh.FixedTime_sSFR_SFH(
+            np.array([0.1, 0.5, 1.0, 2.0, 5.0]) * u.Gyr,
+            ism_metallicity_today=0.02,
+            use_transforms=True,
+        )
+        self._check_batch_matches_single(model, 5)
+        # Physically invalid rows (sSFR above 1 / tau) map back to NaN
+        bad = np.full((1, 5), 0.0)
+        self.assertTrue(np.all(np.isnan(model.to_latent_batch(bad))))
+
+    def test_fixed_mass_frac_batch_transforms_match_single_sample(self):
+        for model_class in (sfh.FixedMassFracSFH, sfh.FixedMassFracSFH2D):
+            with self.subTest(model_class=model_class.__name__):
+                model = model_class(
+                    np.array([0.1, 0.3, 0.5, 0.8, 0.95]),
+                    ism_metallicity_today=0.02,
+                    use_transforms=True,
+                )
+                self._check_batch_matches_single(model, 5)
+                today = model.today.to_value("Gyr")
+                bad = np.array([
+                    [2.0, 1.0, 3.0, 4.0, 5.0],               # not increasing
+                    [1.0, 2.0, 3.0, 4.0, today + 1.0],       # after today
+                ])
+                self.assertTrue(np.all(np.isnan(model.to_latent_batch(bad))))
+
+    def test_batch_transforms_are_identity_without_transforms(self):
+        model = sfh.FixedTimeSFH(
+            np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr, ism_metallicity_today=0.02)
+        values = np.random.default_rng(0).normal(size=(10, 4))
+        np.testing.assert_array_equal(model.to_physical_batch(values), values)
+        np.testing.assert_array_equal(model.to_latent_batch(values), values)
+
 
 if __name__ == "__main__":
     unittest.main()
