@@ -64,6 +64,61 @@ def test_prepare_observed_spectra_weights_guard(tmp_path):
         Dummy(opts)
 
 
+def test_emission_lines_masked_at_rest_frame_position(tmp_path):
+    """Emission-line masks must land on the rest-frame line centre.
+
+    ``prepare_observed_spectra`` de-redshifts the wavelength array before
+    masking, so the lines must not be shifted by (1 + z) again. Previously
+    H-alpha at z = 0.1 was searched for at 6563 * 1.1 = 7219 AA on the
+    rest-frame axis (here outside the range, so nothing was masked).
+    """
+    z = 0.1
+    rest_wl = np.arange(6200.0, 6900.0, 1.0)
+    obs_wl = rest_wl * (1 + z)
+    flux = np.ones_like(obs_wl)
+    # Strong H-alpha emission at the observed position
+    flux += 5.0 * np.exp(-0.5 * ((obs_wl - 6562.80 * (1 + z)) / 3.0) ** 2)
+    err = np.full_like(obs_wl, 0.05)
+    spec = tmp_path / "spec_emission.dat"
+    np.savetxt(spec, np.vstack([obs_wl, flux, err]).T)
+
+    class Dummy(SpectraFitModule):
+        name = "Dummy"
+
+        def __init__(self, options):
+            super().__init__(options)
+            options = self.parse_options(options)
+            self.prepare_observed_spectra(options)
+
+        def make_observable(self, *args, **kwargs):
+            pass
+
+        def execute(self, *args, **kwargs):
+            pass
+
+        def plot_solution(self, *args, **kwargs):
+            pass
+
+    mod = Dummy({
+        "Dummy": {
+            "inputSpectrum": str(spec),
+            "redshift": z,
+            "wlRange": [6250.0, 6850.0],  # rest frame
+            "mask_emission_lines": True,
+        }
+    })
+
+    wl = mod.config["wavelength"].to_value("Angstrom")
+    mask = mod.config["emission_lines_mask"]
+    names = [line.name for line in mod.config["emission_lines_used"]]
+
+    assert "Ha" in names
+    assert mask[np.argmin(np.abs(wl - 6562.80))]
+    # Only the H-alpha/[NII] complex is masked, nothing elsewhere
+    assert np.all(np.abs(wl[mask] - 6562.80) < 40.0)
+    assert np.all(mod.config["weights"][mask] == 0.0)
+
+
 def test_full_spectral_fit_make_observable(tmp_path):
     spec = make_dummy_spectrum(tmp_path)
     block = DataBlock()
