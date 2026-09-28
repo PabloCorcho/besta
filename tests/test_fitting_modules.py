@@ -5,7 +5,11 @@ import pytest
 from cosmosis import DataBlock
 
 from besta import sfh
-from besta.pipeline_modules.base_module import SpectraFitModule
+from besta.pipeline_modules.base_module import (
+    SpectraFitModule,
+    effective_lsf_sigma,
+    rest_frame_instrumental_fwhm,
+)
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.pipeline_modules.galaxy_spectra import GalaxySpectraModule
 from besta.pipeline_modules.galaxy_photometry import GalaxyPhotometryModule
@@ -242,6 +246,48 @@ def test_valid_sample_includes_sfh_log_prior(
         assert block["extra", mod.like_name + "_chi2"] == pytest.approx(
             -2 * data_loglike
         )
+
+
+def test_rest_frame_instrumental_fwhm_constant_lsf():
+    """A constant observed FWHM shrinks by (1 + z) in the rest frame."""
+    spec_rest_wl = np.linspace(4000.0, 5000.0, 101)
+    lsf_obs = np.full_like(spec_rest_wl, 3.0)
+    fwhm = rest_frame_instrumental_fwhm(
+        [4200.0, 4800.0], spec_rest_wl, lsf_obs, redshift=1.0)
+    np.testing.assert_allclose(fwhm, 1.5)
+
+
+def test_rest_frame_instrumental_fwhm_preserves_resolving_power():
+    """R = lambda / FWHM is frame-invariant; LSF is read at lambda * (1 + z).
+
+    With FWHM_obs(lambda_obs) = lambda_obs / R, the rest-frame FWHM must be
+    lambda_rest / R. Reading the LSF at lambda_rest (old bug) or skipping the
+    (1 + z) factor both break this.
+    """
+    resolving_power, z = 1000.0, 0.5
+    spec_rest_wl = np.linspace(4000.0, 5000.0, 1001)
+    # instrumental FWHM at each pixel's *observed* wavelength
+    lsf_obs = spec_rest_wl * (1 + z) / resolving_power
+    query = np.array([4100.0, 4500.0, 4900.0])
+    fwhm = rest_frame_instrumental_fwhm(query, spec_rest_wl, lsf_obs, z)
+    np.testing.assert_allclose(fwhm, query / resolving_power, rtol=1e-6)
+
+
+def test_effective_lsf_sigma_quadrature():
+    sigma = effective_lsf_sigma([3.0, 4.0], [2.51, 0.0])
+    expected = np.sqrt([(3.0 / 2.355) ** 2 - (2.51 / 2.355) ** 2,
+                        (4.0 / 2.355) ** 2])
+    np.testing.assert_allclose(sigma, expected)
+
+
+def test_effective_lsf_sigma_clips_when_templates_are_broader():
+    """Templates broader than the instrument: no broadening, no exception."""
+    sigma = effective_lsf_sigma([2.28, 2.51, 3.0], [2.51, 2.51, 2.51],
+                                wavelength=[3900.0, 5000.0, 6000.0])
+    assert sigma[0] == 0.0
+    assert sigma[1] == 0.0
+    assert sigma[2] > 0.0
+    assert np.all(np.isfinite(sigma))
 
 
 def test_prepare_sfh_model_forwards_smoothness_prior_options():
