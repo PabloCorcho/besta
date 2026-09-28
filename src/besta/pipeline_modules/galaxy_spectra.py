@@ -86,7 +86,9 @@ class GalaxySpectraModule(SpectraFitModule):
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
         """        
-        valid, penalty = self.config["sfh_model"].parse_datablock(block)
+        valid, log_prior = self.config["sfh_model"].parse_datablock(block)
+        if log_prior is None:
+            log_prior = 0.0
         if not valid:
             # Reject with a large negative log-likelihood.
             block[section_names.likelihoods, self.like_name] = -1e20
@@ -101,8 +103,8 @@ class GalaxySpectraModule(SpectraFitModule):
                              flux_model[good_pixels],
                              ivar_eff[good_pixels] * weights[good_pixels],
                              include_norm=True)
-        # Final posterior for sampling
-        block[section_names.likelihoods, self.like_name] = like
+        # Final posterior for sampling (includes the SFH log-prior)
+        block[section_names.likelihoods, self.like_name] = like + log_prior
 
         if self.config.get("save_chi2", False):
             block["extra", self.like_name + "_chi2"] = -2 * like

@@ -83,7 +83,9 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         likelihood resulting from this function is the evidence on the basis
         of which the parameter space is sampled.
         """
-        valid, penalty = self.config["sfh_model"].parse_datablock(block)
+        valid, log_prior = self.config["sfh_model"].parse_datablock(block)
+        if log_prior is None:
+            log_prior = 0.0
         if not valid:
             # Reject with a large negative log-likelihood.
             block[section_names.likelihoods, self.like_name] = -1e20
@@ -98,8 +100,8 @@ class GalaxyPhotometryModule(PhotometryFitModule):
                              self.config["photometry_flux_var"],
                              is_lower=self.config["photometry_lower_limit"],
                              is_upper=self.config["photometry_upper_limit"])
-        # Final posterior for sampling
-        block[section_names.likelihoods, self.like_name] = like
+        # Final posterior for sampling (includes the SFH log-prior)
+        block[section_names.likelihoods, self.like_name] = like + log_prior
         return 0
 
     def cleanup(self):
