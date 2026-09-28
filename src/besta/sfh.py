@@ -225,6 +225,103 @@ class _OrderedUniformTransform:
             conditional_upper = ordered[order - 1]
         return latent
 
+    # --- Vectorised versions for batch processing -----------------------------
+
+    def _volume_batch(self, order, values):
+        """Vectorised :meth:`_volume` (NaN in, NaN out)."""
+        values = np.asarray(values, dtype=float)
+        out = np.full(values.shape, np.nan)
+        finite = np.isfinite(values)
+        below = finite & (values <= 0.0)
+        above = finite & (values >= self.upper_bounds[order - 1])
+        inside = finite & ~(below | above)
+        out[below] = 0.0
+        out[above] = self._total_volumes[order]
+        if np.any(inside):
+            inner = values[inside]
+            interval = np.searchsorted(
+                self.upper_bounds[:order], inner, side="right")
+            result = np.empty_like(inner)
+            for index, piece in enumerate(self._volume_pieces[order]):
+                selected = interval == index
+                if np.any(selected):
+                    result[selected] = piece(inner[selected])
+            out[inside] = result
+        return out
+
+    def to_ordered_batch(self, latent):
+        """Vectorised :meth:`to_ordered` for an ``(n_samples, n)`` array.
+
+        Uses the same 48-step bisection as the scalar method, run on all
+        samples at once. Rows with values outside ``[0, 1]`` or non-finite
+        values are returned as NaN.
+        """
+        latent = np.asarray(latent, dtype=float)
+        if latent.ndim != 2 or latent.shape[1] != self.upper_bounds.size:
+            raise ValueError(
+                f"Expected an array of shape (n_samples, {self.upper_bounds.size}).")
+        ordered = np.full(latent.shape, np.nan)
+        valid = np.all(
+            np.isfinite(latent) & (latent >= 0.0) & (latent <= 1.0), axis=1)
+        if not np.any(valid):
+            return ordered
+
+        values = latent[valid]
+        result = np.empty_like(values)
+        conditional_upper = np.full(values.shape[0], self.upper_bounds[-1])
+        for order in range(values.shape[1], 0, -1):
+            support_upper = np.minimum(
+                conditional_upper, self.upper_bounds[order - 1])
+            total_volume = self._volume_batch(order, support_upper)
+            target_volume = values[:, order - 1] * total_volume
+
+            lower = np.zeros_like(support_upper)
+            upper = support_upper.copy()
+            for _ in range(48):
+                midpoint = 0.5 * (lower + upper)
+                below = self._volume_batch(order, midpoint) < target_volume
+                lower = np.where(below, midpoint, lower)
+                upper = np.where(below, upper, midpoint)
+            solution = 0.5 * (lower + upper)
+            solution = np.where(target_volume <= 0.0, 0.0, solution)
+            solution = np.where(
+                target_volume >= total_volume, support_upper, solution)
+
+            result[:, order - 1] = solution
+            conditional_upper = solution
+        ordered[valid] = result
+        return ordered
+
+    def to_unit_batch(self, ordered):
+        """Vectorised :meth:`to_unit` for an ``(n_samples, n)`` array.
+
+        Rows outside the bounds, non-finite or not strictly increasing are
+        returned as NaN.
+        """
+        ordered = np.asarray(ordered, dtype=float)
+        if ordered.ndim != 2 or ordered.shape[1] != self.upper_bounds.size:
+            raise ValueError(
+                f"Expected an array of shape (n_samples, {self.upper_bounds.size}).")
+        latent = np.full(ordered.shape, np.nan)
+        with np.errstate(invalid="ignore"):
+            valid = np.all(
+                np.isfinite(ordered) & (ordered >= 0.0)
+                & (ordered <= self.upper_bounds), axis=1)
+            valid &= np.all(np.diff(ordered, axis=1) > 0, axis=1)
+        if not np.any(valid):
+            return latent
+
+        values = ordered[valid]
+        result = np.empty_like(values)
+        conditional_upper = np.full(values.shape[0], self.upper_bounds[-1])
+        for order in range(values.shape[1], 0, -1):
+            denominator = self._volume_batch(order, conditional_upper)
+            result[:, order - 1] = (
+                self._volume_batch(order, values[:, order - 1]) / denominator)
+            conditional_upper = values[:, order - 1]
+        latent[valid] = result
+        return latent
+
 
 
 # Non-parametric SFH smoothing priors
@@ -460,6 +557,65 @@ class SFHBase(ABC):
     def to_latent(self, physical):
         """Map physical parameters back to latent space (default: identity)."""
         return physical
+
+    @staticmethod
+    def _as_batch(values):
+        """Return ``values`` as a float ``(n_samples, n_parameters)`` array."""
+        values = np.asarray(values, dtype=float)
+        if values.ndim == 1:
+            values = values[np.newaxis, :]
+        if values.ndim != 2:
+            raise ValueError(
+                "Expected a 1D or 2D array (n_samples, n_parameters).")
+        return values
+
+    def to_physical_batch(self, latent):
+        """Map many latent samples to physical space.
+
+        Parameters
+        ----------
+        latent : array_like, shape (n_samples, n_parameters) or (n_parameters,)
+            Latent SFH parameters, columns ordered as ``sfh_bin_keys``.
+
+        Returns
+        -------
+        np.ndarray, shape (n_samples, n_parameters)
+            Physical parameters. Rows that cannot be mapped (outside the
+            latent support, non-finite) are NaN.
+
+        Notes
+        -----
+        Without ``use_transforms`` this is the identity. Otherwise this default
+        loops over :meth:`to_physical`; models override it with a vectorised
+        implementation.
+        """
+        latent = self._as_batch(latent)
+        if not self.use_transforms:
+            return latent.copy()
+        physical = np.full(latent.shape, np.nan)
+        for index, row in enumerate(latent):
+            try:
+                physical[index] = self.to_physical(row)
+            except ValueError:
+                pass
+        return physical
+
+    def to_latent_batch(self, physical):
+        """Map many physical samples back to latent space.
+
+        Inverse of :meth:`to_physical_batch`, with the same conventions
+        (2D output, NaN for rows outside the physical support).
+        """
+        physical = self._as_batch(physical)
+        if not self.use_transforms:
+            return physical.copy()
+        latent = np.full(physical.shape, np.nan)
+        for index, row in enumerate(physical):
+            try:
+                latent[index] = self.to_latent(row)
+            except ValueError:
+                pass
+        return latent
 
     def make_ini(self, ini_file, mode="a"):
         """Create a cosmosis .ini file.
@@ -793,6 +949,24 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             ordered_log_remaining_mass
         )
 
+    def to_physical_batch(self, latent):
+        """Vectorised :meth:`to_physical` (see :meth:`SFHBase.to_physical_batch`)."""
+        latent = self._as_batch(latent)
+        if not self.use_transforms:
+            return latent.copy()
+        ordered_log_remaining_mass = (
+            self._latent_prior_transform.to_ordered_batch(latent))
+        return -(ordered_log_remaining_mass + self.log_lookback_time_yr)
+
+    def to_latent_batch(self, physical):
+        """Vectorised :meth:`to_latent` (see :meth:`SFHBase.to_latent_batch`)."""
+        physical = self._as_batch(physical)
+        if not self.use_transforms:
+            return physical.copy()
+        ordered_log_remaining_mass = -(physical + self.log_lookback_time_yr)
+        return self._latent_prior_transform.to_unit_batch(
+            ordered_log_remaining_mass)
+
 
 class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed mass fraction bins.
@@ -965,6 +1139,51 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             powers = np.arange(times.size, 0, -1, dtype=float)
             return 1.0 - (1.0 - breaks) ** powers
         return np.asarray(physical, dtype=float)
+
+    def to_physical_batch(self, latent):
+        """Vectorised :meth:`to_physical` (see :meth:`SFHBase.to_physical_batch`)."""
+        latent = self._as_batch(latent)
+        if not self.use_transforms:
+            return latent.copy()
+        physical = np.full(latent.shape, np.nan)
+        valid = np.all(
+            np.isfinite(latent) & (latent >= 0.0) & (latent <= 1.0), axis=1)
+        if not np.any(valid):
+            return physical
+
+        values = latent[valid]
+        powers = np.arange(values.shape[1], 0, -1, dtype=float)
+        breaks = 1.0 - (1.0 - values) ** (1.0 / powers)
+        remaining = np.concatenate(
+            (np.ones((values.shape[0], 1)),
+             np.cumprod(1.0 - breaks, axis=1)[:, :-1]),
+            axis=1)
+        time_frac = np.cumsum(remaining * breaks, axis=1)
+        physical[valid] = time_frac * self.today.to_value("Gyr")
+        return physical
+
+    def to_latent_batch(self, physical):
+        """Vectorised :meth:`to_latent` (see :meth:`SFHBase.to_latent_batch`)."""
+        physical = self._as_batch(physical)
+        if not self.use_transforms:
+            return physical.copy()
+        latent = np.full(physical.shape, np.nan)
+        today = self.today.to_value("Gyr")
+        with np.errstate(invalid="ignore"):
+            valid = np.all(
+                np.isfinite(physical) & (physical > 0.0) & (physical < today),
+                axis=1)
+            valid &= np.all(np.diff(physical, axis=1) > 0, axis=1)
+        if not np.any(valid):
+            return latent
+
+        time_frac = physical[valid] / today
+        previous = np.concatenate(
+            (np.zeros((time_frac.shape[0], 1)), time_frac[:, :-1]), axis=1)
+        breaks = (time_frac - previous) / (1.0 - previous)
+        powers = np.arange(time_frac.shape[1], 0, -1, dtype=float)
+        latent[valid] = 1.0 - (1.0 - breaks) ** powers
+        return latent
 
 
 class FixedMassFracSFH2D(FixedMassFracSFH):
