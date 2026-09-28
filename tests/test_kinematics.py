@@ -94,6 +94,43 @@ class TestKinematics(unittest.TestCase):
         self.assertTrue(np.isclose(np.sum(kernel.kernel_weight), 1.0, atol=1e-10))
         self.assertTrue(np.isclose(kernel.get_percentile_velocity(50.0), 0.0, atol=100.0))
 
+    def test_piecewise_kernel_is_pixel_aligned_for_non_integer_bounds(self):
+        """Velocity bounds that are not a whole number of pixels
+        (500 / 70 km/s) must still give an odd kernel centred on v = 0.
+
+        Previously the bin edges were offset from the pixel grid (even kernel,
+        -25 km/s spurious median for a symmetric LOSVD).
+        """
+        velscale = 70.0
+        kernel = kinematics.PieceWisePixelKernel(
+            velocity_scale=velscale,
+            velocity_bin_size=100.0,
+            velocity_min=-500.0,
+            velocity_max=500.0,
+        )
+        n_bins = kernel.bin_ids.size
+        self.assertEqual(kernel.half_width, 8)  # ceil(500 / 70)
+
+        # Symmetric LOSVD about zero velocity
+        weights = np.exp(-0.5 * ((np.arange(n_bins) - (n_bins - 1) / 2) / 1.5) ** 2)
+        kernel.parse_parameters(
+            {("kinematics", f"vel_bin_{i}"): w for i, w in enumerate(weights)})
+        self.assertEqual(kernel.size % 2, 1)
+        self.assertTrue(np.allclose(kernel.kernel_weight, kernel.kernel_weight[::-1]))
+        self.assertTrue(np.isclose(kernel.get_percentile_velocity(50.0), 0.0, atol=1e-6))
+
+        # All weight in the [100, 200] km/s bin shifts a line by ~ +150 km/s
+        # (up to the pixel discretisation of the top-hat bin).
+        shifted = np.zeros(n_bins)
+        shifted[6] = 1.0
+        kernel.parse_parameters(
+            {("kinematics", f"vel_bin_{i}"): w for i, w in enumerate(shifted)})
+        x = np.arange(401)
+        line = np.exp(-0.5 * ((x - 200) / 3.0) ** 2)
+        out = kernel.convolve(line)
+        shift = (np.sum(x * out) / np.sum(out) - 200) * velscale
+        self.assertLess(abs(shift - 150.0), 0.1 * velscale)
+
     def test_convolve_variable_gaussian_kernel_identity_limit(self):
         rng = np.random.default_rng(42)
         spec = rng.normal(size=(3, 128))
