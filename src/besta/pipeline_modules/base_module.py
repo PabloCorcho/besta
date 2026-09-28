@@ -676,20 +676,20 @@ class SpectraFitModule(BaseModule):
             _log(f"Assuming input flux units are in {self._default_flux_units}")
             flux_units = u.Unit(self._default_flux_units)
 
-        # Wavelength range to include in the fit
+        # Wavelength range to include in the fit (rest frame). The default
+        # (full coverage) is set after de-redshifting the wavelength array.
         if options.has_value("wlRange"):
             wl_range = (np.asarray(options["wlRange"]) << wl_units
             ).to("Angstrom").value
         else:
-            _log("No input wavelength range provided; using full wavelength coverage")
-            wl_range = wavelength[[0, -1]]
-        # Wavelength range to renormalize the spectra
+            wl_range = None
+        # Wavelength range to renormalize the spectra (rest frame)
         if options.has_value("wlNormRange"):
             logger.warning("Input option 'wlNormRange' is deprecated and will be removed in future versions. ")
             wl_norm_range = (np.asarray(options["wlNormRange"]) << wl_units
             ).to("Angstrom").value
         else:
-            wl_norm_range = wavelength[[0, -1]]
+            wl_norm_range = None
         # Input redshift (initial guess)
         if options.has_value("redshift"):
             redshift = options["redshift"]
@@ -741,7 +741,14 @@ class SpectraFitModule(BaseModule):
         _log(f"Setting wavelength array to restframe (redshift: {redshift})")
         wavelength /= 1.0 + redshift
 
-        _log("Constraining fit to wavelength range: ", wl_range)
+        # Defaults: full (rest-frame) wavelength coverage
+        if wl_range is None:
+            _log("No input wavelength range provided; using full wavelength coverage")
+            wl_range = wavelength[[0, -1]]
+        if wl_norm_range is None:
+            wl_norm_range = wavelength[[0, -1]]
+
+        _log("Constraining fit to rest-frame wavelength range: ", wl_range)
         good_idx = np.where(
             (wavelength >= wl_range[0]) & (wavelength <= wl_range[1]))[0]
         if len(good_idx) == 0:
