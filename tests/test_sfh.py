@@ -350,6 +350,84 @@ class TestFixedMassFracSFH(unittest.TestCase):
         self.assertGreaterEqual(prior_penalty, -1e20)
 
 
+class TestFixedMassFracTimeBounds(unittest.TestCase):
+    """Time-anchor bounds, start values and the transform range."""
+
+    FRACTIONS = np.array([0.3, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999])
+
+    def test_default_bounds_and_interior_start(self):
+        model = sfh.FixedMassFracSFH(self.FRACTIONS, ism_metallicity_today=0.02)
+        today = model.today.to_value("Gyr")
+        t_min, t_max = model.time_bounds
+        self.assertEqual(t_min, 1e-3)
+        self.assertAlmostEqual(today - t_max, 1e-4)
+        starts = []
+        for key in model.sfh_bin_keys:
+            low, start, high = model.free_params[key]
+            self.assertEqual((low, high), (t_min, t_max))
+            self.assertTrue(low < start < high)   # also for 0.999
+            starts.append(start)
+        self.assertTrue(np.all(np.diff(starts) > 0))
+        # The start values describe a valid SFH
+        params = dict(zip(model.sfh_bin_keys, starts))
+        params["alpha_powerlaw"] = 1.0
+        params["ism_metallicity_today"] = 0.02
+        status, _ = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: params}))
+        self.assertEqual(status, 1)
+
+    def test_custom_bounds(self):
+        model = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02, today=10.0 * u.Gyr,
+            min_last_interval=0.01, min_time=0.5)
+        self.assertEqual(model.time_bounds, (0.5, 9.99))
+
+    def test_invalid_bounds(self):
+        for kwargs in ({"min_last_interval": 0.0}, {"min_last_interval": -1.0},
+                       {"min_time": -1.0}, {"min_time": 9.0, "min_last_interval": 1.0}):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                sfh.FixedMassFracSFH(self.FRACTIONS, ism_metallicity_today=0.02,
+                                     today=10.0 * u.Gyr, **kwargs)
+
+    def test_transform_spans_the_same_range(self):
+        model = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02, use_transforms=True,
+            today=10.0 * u.Gyr, min_last_interval=0.01, min_time=0.5)
+        n = self.FRACTIONS.size
+        np.testing.assert_allclose(model.to_physical(np.zeros(n)), 0.5)
+        np.testing.assert_allclose(model.to_physical(np.ones(n))[0], 9.99)
+        latent = np.random.default_rng(1).uniform(size=(500, n))
+        times = model.to_physical_batch(latent)
+        self.assertTrue(np.all((times > 0.5) & (times < 9.99)))
+        np.testing.assert_allclose(model.to_latent_batch(times), latent,
+                                   rtol=1e-6, atol=1e-8)
+        with self.assertRaises(ValueError):
+            model.to_latent(np.linspace(0.6, 9.995, n))   # last anchor past t_max
+
+    def test_transform_prior_matches_the_box_prior(self):
+        # Uniform latents give uniform ordered times on [t_min, t_max]: the
+        # k-th of n ordered uniforms has mean t_min + k / (n + 1) * width.
+        model = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02, use_transforms=True,
+            today=10.0 * u.Gyr, min_last_interval=0.01, min_time=0.5)
+        n = self.FRACTIONS.size
+        times = model.to_physical_batch(
+            np.random.default_rng(2).uniform(size=(200000, n)))
+        expected = 0.5 + np.arange(1, n + 1) / (n + 1) * (9.99 - 0.5)
+        np.testing.assert_allclose(times.mean(axis=0), expected, atol=0.02)
+
+    def test_options_are_forwarded(self):
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "FixedMassFracSFH",
+            "SFHArgs": "[0.5, 0.9]",
+            "min_last_interval": "0.002",
+            "min_time": "0.1",
+        })
+        today = model.today.to_value("Gyr")
+        self.assertAlmostEqual(model.time_bounds[0], 0.1)
+        self.assertAlmostEqual(today - model.time_bounds[1], 0.002)
+
+
 class TestFixedMassFracSFH2D(unittest.TestCase):
 
     def setUp(self):
