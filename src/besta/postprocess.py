@@ -1939,6 +1939,11 @@ class SFHReconstruction:
             Passed to :func:`matplotlib.axes.Axes.fill_between`.
         """
         values = self.percentile_values(name)
+        if values.shape[1] == self.lookback_centres.size:
+            x = self.lookback_centres
+        else:
+            x = self.lookback_edges
+
         if values is None:
             raise ValueError(f"No values for '{name}' (e.g. no enrichment history).")
         if ax is None:
@@ -1946,9 +1951,15 @@ class SFHReconstruction:
         for i in range(len(self.percentiles) // 2):
             q_low = self.percentiles[i]
             q_high = self.percentiles[-(i + 1)]
-            ax.fill_between(self.lookback_centres, values[i], values[-(i + 1)],
+            ax.fill_between(x, values[i], values[-(i + 1)],
                             label=f"{int(100 * q_low)}-{int(100 * q_high)}%",
                             **kwargs)
+        # if percentiles is odd, plot the middle one as a line
+        if len(self.percentiles) % 2 == 1:
+            mid_index = len(self.percentiles) // 2
+            ax.plot(x, values[mid_index], color="black", lw=1.0,
+                    label=f"{int(100 * self.percentiles[mid_index])}%")
+
         ax.set_xlabel("Lookback time [Gyr]")
         ax.set_ylabel(name.replace("_", " ").title())
         ax.legend()
