@@ -2234,7 +2234,8 @@ def reconstruct_sfh(
     rows = np.arange(n_rows)
     if max_samples is not None and n_rows > max_samples:
         rng = np.random.default_rng(seed)
-        rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
+        rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False,
+                       p=weights_all / np.sum(weights_all)))
         logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
 
     arrays = {key: _as_float_array(table[col]) for key, col in columns.items()}
