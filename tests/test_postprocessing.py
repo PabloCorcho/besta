@@ -373,5 +373,138 @@ class TestPhysicalSFHPostprocessing(unittest.TestCase):
         np.testing.assert_allclose(physical[self.columns[1]], expected[:, 1])
 
 
+
+def _write_cosmosis_results(path, latent, extra, use_transforms=True):
+    """Minimal CosmoSIS text results file for a FixedMassFracSFH run."""
+    keys = ["t_at_frac_0.1000", "t_at_frac_0.5000", "t_at_frac_0.9000"]
+    columns = [f"stars.sfh--{k}" for k in keys] + ["extra--stellar_mass", "prior", "post"]
+    values = "0.0 0.5 1.0" if use_transforms else "0.001 5.0 13.0"
+    lines = ["#" + "\t".join(columns) + "\n",
+             "#sampler=emcee\n", "#n_varied=3\n",
+             "## START_OF_PARAMS_INI\n",
+             "## [runtime]\n", "## sampler = emcee\n", "## \n",
+             "## [output]\n", f"## filename = {path}\n", "## format = text\n", "## \n",
+             "## [pipeline]\n", "## modules = FullSpectralFit\n",
+             "## values = values.ini\n", "## \n",
+             "## [FullSpectralFit]\n", "## file = full_spectral_fit.py\n",
+             "## redshift = 0.0\n", "## sfhmodel = FixedMassFracSFH\n",
+             "## sfhargs = (0.1, 0.5, 0.9)\n",
+             f"## use_transforms = {'T' if use_transforms else 'F'}\n", "## \n",
+             "## END_OF_PARAMS_INI\n",
+             "## START_OF_VALUES_INI\n", "## [stars.sfh]\n"]
+    lines += [f"## {k} = {values}\n" for k in keys]
+    lines += ["## alpha_powerlaw = 1.0\n", "## \n", "## END_OF_VALUES_INI\n",
+              "## START_OF_PRIORS_INI\n", "## END_OF_PRIORS_INI\n"]
+    data = np.column_stack([latent, extra])
+    with open(path, "w") as file:
+        file.writelines(lines)
+        np.savetxt(file, data, delimiter="\t", fmt="%.17g")
+        file.write("#evaluations=100\n#complete=1\n")
+    return columns
+
+
+class TestPhysicalResultsFile(unittest.TestCase):
+    """CosmoSIS text results written in physical SFH space."""
+
+    def setUp(self):
+        from besta import sfh
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "results.txt")
+        rng = np.random.default_rng(11)
+        self.latent = rng.uniform(size=(200, 3))
+        self.extra = np.column_stack([rng.normal(10, 0.1, 200),
+                                      np.zeros(200), rng.normal(-50, 1, 200)])
+        self.columns = _write_cosmosis_results(self.path, self.latent, self.extra)
+        self.model = sfh.FixedMassFracSFH(
+            np.array([0.1, 0.5, 0.9]), ism_metallicity_today=0.02,
+            use_transforms=True, redshift=0.0)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def _values_block(path):
+        with open(path) as file:
+            lines = file.readlines()
+        start = next(i for i, l in enumerate(lines) if "START_OF_VALUES_INI" in l)
+        end = next(i for i, l in enumerate(lines) if "END_OF_VALUES_INI" in l)
+        block = {}
+        for line in lines[start + 1:end]:
+            body = line[2:].strip()
+            if "=" in body:
+                key, value = body.split("=", 1)
+                block[key.strip()] = value.strip()
+        return block
+
+    def test_convert_results_file(self):
+        from besta.postprocess import (
+            build_sfh_model, convert_results_file, physical_results_path)
+        output = convert_results_file(self.path)
+        self.assertEqual(output, physical_results_path(self.path))
+        self.assertTrue(output.endswith("results_physical.txt"))
+
+        table = io.read_results_file(output)
+        original = io.read_results_file(self.path)
+        self.assertEqual(table.colnames, original.colnames)
+        expected = self.model.to_physical_batch(self.latent)
+        for index, col in enumerate(self.columns[:3]):
+            np.testing.assert_allclose(table[col], expected[:, index], rtol=1e-15)
+        for col in self.columns[3:]:
+            np.testing.assert_array_equal(table[col], original[col])
+        self.assertEqual(table.meta["besta_sfh_space"], "physical")
+        self.assertEqual(table.meta["complete"], 1)
+
+        # The embedded configuration describes the physical table
+        ini = io.Reader.read_ini_file_from_results(output)
+        self.assertFalse(ini["FullSpectralFit"]["use_transforms"])
+        self.assertEqual(ini["output"]["filename"], output)
+        self.assertFalse(build_sfh_model(ini).use_transforms)
+        values = self._values_block(output)
+        t_min, t_max = self.model.time_bounds
+        for key in self.model.sfh_bin_keys:
+            low, start, high = map(float, values[key].split())
+            self.assertEqual((low, high), (t_min, t_max))
+            self.assertTrue(low < start < high)
+        self.assertEqual(values["alpha_powerlaw"], "1.0")
+
+        # A physical table is not converted again
+        self.assertIsNone(convert_results_file(output, output + ".again"))
+
+    def test_nothing_to_convert_without_transforms(self):
+        from besta.postprocess import convert_results_file
+        path = os.path.join(self.tmp.name, "plain.txt")
+        _write_cosmosis_results(path, self.latent * 10, self.extra,
+                                use_transforms=False)
+        self.assertIsNone(convert_results_file(path))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "plain_physical.txt")))
+
+    def test_output_checks(self):
+        from besta.postprocess import convert_results_file
+        with self.assertRaises(ValueError):
+            convert_results_file(self.path, self.path)
+        output = convert_results_file(self.path)
+        with self.assertRaises(FileExistsError):
+            convert_results_file(self.path, output, overwrite=False)
+
+    def test_load_and_summarize_in_physical_space_by_default(self):
+        from besta.postprocess import load_physical_results, summarize_results_file
+        table = load_physical_results(self.path)
+        expected = self.model.to_physical_batch(self.latent)
+        np.testing.assert_allclose(table[self.columns[2]], expected[:, 2])
+        self.assertEqual(table.meta["besta_sfh_space"], "physical")
+
+        summary = summarize_results_file(self.path, compute_1d=False)
+        self.assertEqual(summary.extra_info["sfhspace"], "physical")
+        latent = summarize_results_file(self.path, physical=False, compute_1d=False)
+        self.assertNotIn("sfhspace", latent.extra_info)
+
+    def test_command_line(self):
+        from besta.cli.besta_to_physical import main
+        output = os.path.join(self.tmp.name, "converted.txt")
+        self.assertEqual(main([self.path, "-o", output, "--quiet"]), 0)
+        self.assertTrue(os.path.exists(output))
+        self.assertEqual(main([self.path, "-o", output, "--no-overwrite", "--quiet"]), 1)
+        self.assertEqual(main([self.path, self.path, "-o", output]), 2)
+
 if __name__ == "__main__":
     unittest.main()

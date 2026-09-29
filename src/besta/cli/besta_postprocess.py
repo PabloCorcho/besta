@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 from besta.io import Reader
-from besta.postprocess import summarize_results
+from besta.postprocess import summarize_results, to_physical_table
 
 def parser_setup():
     parser = argparse.ArgumentParser(
@@ -61,7 +61,10 @@ def make_chain_plots(file, from_ini=False):
 
 def make_summary_statistics(file, from_ini=False, output=None):
     reader = load_reader(file, from_ini)
-    results = summarize_results(reader.results_table)
+    # Latent SFH parameters (use_transforms = T) are always summarised in
+    # physical space.
+    table = to_physical_table(reader)
+    results = summarize_results(table)
     results.write_fits(output, overwrite=True)
 
 def interactive():

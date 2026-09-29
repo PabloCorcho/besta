@@ -129,3 +129,29 @@ if __name__ == "__main__":
     from besta.logging import setup_logging
     setup_logging()
     pytest.main([__file__])
+
+def test_pipeline_writes_physical_results(tmp_path):
+    import numpy as np
+    from test_postprocessing import _write_cosmosis_results
+
+    path = str(tmp_path / "results.txt")
+    rng = np.random.default_rng(0)
+    _write_cosmosis_results(path, rng.uniform(size=(20, 3)),
+                            rng.normal(size=(20, 3)))
+
+    class _Reader:
+        ini = io.Reader.read_ini_file_from_results(path)
+
+    pipe = MainPipeline([{"pipeline": {"modules": "FullSpectralFit"},
+                          "FullSpectralFit": {}}])
+    output = pipe.write_physical_results(_Reader())
+    assert output == str(tmp_path / "results_physical.txt")
+    assert io.read_results_file(output).meta["besta_sfh_space"] == "physical"
+
+
+def test_pipeline_physical_results_failure_is_logged(tmp_path, caplog):
+    class _Reader:
+        ini = {"output": {"filename": str(tmp_path / "missing.txt")}}
+
+    pipe = MainPipeline([{"pipeline": {"modules": "Dummy"}, "Dummy": {}}])
+    assert pipe.write_physical_results(_Reader()) is None

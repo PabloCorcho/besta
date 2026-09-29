@@ -137,6 +137,32 @@ class MainPipeline(object):
             logger.error("Unsuccessful run, return code: %s", return_code)
             return None
 
+    def write_physical_results(self, reader):
+        """Write the physical-space copy of a run's results, if needed.
+
+        Runs whose SFH is sampled in latent space (``use_transforms = T``) get
+        a second CosmoSIS text file (``<results>_physical.txt``) with the SFH
+        parameters converted to physical values and ``use_transforms = F`` in
+        its embedded configuration. The original results (used to seed the
+        next sub-pipeline) are not modified. Failures are logged and do not
+        stop the pipeline.
+
+        Returns
+        -------
+        str or None
+            Path of the physical-space results file, if one was written.
+        """
+        from besta import postprocess
+
+        try:
+            path = postprocess.write_physical_results(reader.ini)
+        except Exception:
+            logger.exception("Could not write the physical-space results table.")
+            return None
+        if path is not None:
+            logger.info("Physical-space results table: %s", path)
+        return path
+
     def execute_all(self, plot_result=False):
         """Execute all sub-pipelines."""
         logger.info("Executing all pipelines")
@@ -176,6 +202,7 @@ class MainPipeline(object):
             logger.info("Extracting results from the run")
             reader = io.Reader(ini_file=ini_filename)
             reader.load_results()
+            self.write_physical_results(reader)
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
             logger.info("MAP solution: %s", solution)

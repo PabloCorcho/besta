@@ -1501,7 +1501,8 @@ def to_physical_table(reader, *, module_name: Optional[str] = None, **kwargs) ->
     reader : :class:`besta.io.Reader`
         Reader of the run. Its results are loaded if needed.
     module_name : str, optional
-        Module defining the SFH (see :func:`build_sfh_model`).
+        Only convert the SFH of this module (default: every module defining an
+        ``SFHModel`` that uses latent transforms).
     **kwargs
         Passed to :func:`latent_to_physical_table`.
 
@@ -1518,8 +1519,276 @@ def to_physical_table(reader, *, module_name: Optional[str] = None, **kwargs) ->
     if table is None:
         reader.load_results()
         table = reader.results_table
-    sfh_model = build_sfh_model(reader.ini, module_name)
-    return latent_to_physical_table(table, sfh_model, **kwargs)
+    return _table_to_physical(table, reader.ini, module_name, **kwargs)
+
+
+def _table_to_physical(table: Table, ini: Mapping[str, Any],
+                       module_name: Optional[str] = None, **kwargs) -> Table:
+    """Convert the latent SFH columns of every SFH module in ``ini``."""
+    if table.meta.get(_SFH_SPACE_META_KEY) == "physical":
+        return table
+    for module, model in _unique_sfh_models(ini, module_name).items():
+        if model.use_transforms:
+            logger.info("Converting the latent SFH parameters of module '%s' "
+                        "to physical space.", module)
+            table = latent_to_physical_table(table, model, **kwargs)
+            table.meta.pop(_SFH_SPACE_META_KEY, None)
+    table = table.copy(copy_data=False)
+    table.meta[_SFH_SPACE_META_KEY] = "physical"
+    return table
+
+
+# CosmoSIS text results in physical SFH space
+#
+# A converted results file keeps the CosmoSIS text layout (column header,
+# run metadata, embedded ini blocks, samples and trailer), so it can be read
+# with :class:`besta.io.Reader` and :func:`besta.io.read_results_file` like
+# the original. The embedded configuration is edited so that it describes
+# the physical table:
+#
+# - ``use_transforms = F`` in every module defining an SFH, so the model
+#   rebuilt from the file expects physical parameters;
+# - physical prior ranges for the SFH parameters in the values block;
+# - ``[output] filename`` pointing to the converted file.
+#
+# Trailer lines ``#besta_sfh_space=physical`` (read into ``table.meta``)
+# prevent converting the same table twice.
+
+PHYSICAL_RESULTS_SUFFIX = "_physical"
+
+_PARAMS_INI_BLOCK = ("## START_OF_PARAMS_INI", "## END_OF_PARAMS_INI")
+_VALUES_INI_BLOCK = ("## START_OF_VALUES_INI", "## END_OF_VALUES_INI")
+
+
+def physical_results_path(path: str) -> str:
+    """Default path of the physical-space copy of a results file.
+
+    ``results.txt`` -> ``results_physical.txt`` (``.txt`` is appended if the
+    path has no extension, as CosmoSIS does).
+    """
+    root, ext = os.path.splitext(path)
+    return f"{root}{PHYSICAL_RESULTS_SUFFIX}{ext or '.txt'}"
+
+
+def _results_file_path(ini: Mapping[str, Any]) -> str:
+    """Results file written by CosmoSIS for a run (same rule as ``Reader``)."""
+    path = str(ini["output"]["filename"])
+    return path if ".txt" in path else path + ".txt"
+
+
+def _split_results_text(lines: Sequence[str]):
+    """Split a CosmoSIS text results file into header / data / trailer lines."""
+    if not lines or not lines[0].startswith("#"):
+        raise ValueError("Expected a CosmoSIS text results file (first line '#...').")
+    start = 1
+    while start < len(lines) and lines[start].startswith("#"):
+        start += 1
+    end = len(lines)
+    while end > start and lines[end - 1].startswith("#"):
+        end -= 1
+    return list(lines[:start]), list(lines[end:])
+
+
+def _format_ini_value(value) -> str:
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return " ".join(repr(float(v)) if isinstance(v, (float, np.floating))
+                        else str(v) for v in value)
+    return str(value)
+
+
+def _set_ini_block_options(lines, block, updates):
+    """Set options inside an embedded ``## [section]`` ini block.
+
+    ``updates`` maps ``(section, key)`` to the new value (as text). Existing
+    options are replaced (keys are matched case-insensitively); missing ones
+    are added at the end of their section. Sections are matched exactly.
+    """
+    begin_tag, end_tag = block
+    try:
+        begin = next(i for i, line in enumerate(lines) if line.startswith(begin_tag))
+        end = next(i for i, line in enumerate(lines) if line.startswith(end_tag))
+    except StopIteration as exc:
+        raise ValueError(f"Block {begin_tag} not found in the results file.") from exc
+
+    pending = {(sect, key.lower()): value for (sect, key), value in updates.items()}
+    out = list(lines[:begin + 1])
+    section = None
+
+    def flush(section_name):
+        # Add the options of the section that were not present in the file.
+        for (sect, key), value in list(pending.items()):
+            if sect == section_name:
+                out.append(f"## {key} = {value}\n")
+                del pending[(sect, key)]
+
+    for line in lines[begin + 1:end]:
+        body = line[2:].strip() if line.startswith("##") else line.strip()
+        if body.startswith("[") and body.endswith("]"):
+            flush(section)
+            section = body[1:-1]
+        elif "=" in body and section is not None:
+            key = body.split("=", 1)[0].strip().lower()
+            if (section, key) in pending:
+                line = f"## {key} = {pending.pop((section, key))}\n"
+        elif not body:
+            # A blank "## " line closes the section in CosmoSIS output.
+            flush(section)
+        out.append(line)
+    flush(section)
+    for (sect, key), value in pending.items():
+        out.extend([f"## [{sect}]\n", f"## {key} = {value}\n", "## \n"])
+    out.extend(lines[end:])
+    return out
+
+
+def _unique_sfh_models(ini: Mapping[str, Any], module_name: Optional[str] = None):
+    """``{module: sfh_model}`` for the SFH modules to convert (one per section)."""
+    modules = [module_name] if module_name is not None else find_sfh_modules(ini)
+    models, sections = {}, {}
+    for module in modules:
+        model = build_sfh_model(ini, module)
+        if model.sect_name in sections:
+            logger.warning(
+                "Modules '%s' and '%s' share the SFH section '%s'; "
+                "converting it once with the SFH of '%s'.",
+                sections[model.sect_name], module, model.sect_name,
+                sections[model.sect_name])
+            continue
+        sections[model.sect_name] = module
+        models[module] = model
+    return models
+
+
+def convert_results_file(
+    results_path: str,
+    output_path: Optional[str] = None,
+    *,
+    module_name: Optional[str] = None,
+    overwrite: bool = True,
+) -> Optional[str]:
+    """Write a copy of a CosmoSIS text results file in physical SFH space.
+
+    Parameters
+    ----------
+    results_path : str
+        CosmoSIS text results file (with the embedded ini blocks).
+    output_path : str, optional
+        Output file. Defaults to :func:`physical_results_path`.
+    module_name : str, optional
+        Only convert the SFH of this module (default: all modules defining an
+        ``SFHModel``).
+    overwrite : bool
+        Overwrite ``output_path`` if it exists.
+
+    Returns
+    -------
+    str or None
+        Path of the file written, or ``None`` if there was nothing to convert
+        (no SFH module using ``use_transforms``, or a table that is already
+        in physical space).
+    """
+    results_path = os.path.expandvars(results_path)
+    output_path = os.path.expandvars(
+        output_path or physical_results_path(results_path))
+    if os.path.abspath(output_path) == os.path.abspath(results_path):
+        raise ValueError("The output file must differ from the input file.")
+    if os.path.exists(output_path) and not overwrite:
+        raise FileExistsError(f"{output_path} already exists.")
+
+    table = io.read_results_file(results_path)
+    if table.meta.get(_SFH_SPACE_META_KEY) == "physical":
+        logger.info("%s is already in physical SFH space; nothing to convert.",
+                    results_path)
+        return None
+
+    ini = io.Reader.read_ini_file_from_results(results_path)
+    models = {module: model for module, model in
+              _unique_sfh_models(ini, module_name).items() if model.use_transforms}
+    if not models:
+        logger.info("No SFH model with use_transforms in %s; nothing to convert.",
+                    results_path)
+        return None
+
+    converted = table
+    for module, model in models.items():
+        logger.info("Converting the latent '%s' parameters of module '%s' (%s) "
+                    "to physical space.", model.sect_name, module,
+                    type(model).__name__)
+        converted = latent_to_physical_table(converted, model)
+        converted.meta.pop(_SFH_SPACE_META_KEY, None)   # next model: convert too
+
+    # Physical versions of the models, for the edited configuration.
+    from besta.sfh import build_sfh_from_options
+
+    physical_models = {}
+    for module, model in models.items():
+        options = dict(ini[module])
+        options["use_transforms"] = False
+        physical_models[module] = build_sfh_from_options(options)
+        if physical_models[module].use_transforms:
+            raise ValueError(
+                f"Could not disable use_transforms for module '{module}' "
+                "(is it set in SFHArgs?).")
+
+    with open(results_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+    header, trailer = _split_results_text(lines)
+
+    params_updates = {("output", "filename"): output_path}
+    values_updates = {}
+    for module, model in physical_models.items():
+        params_updates[(module, "use_transforms")] = "F"
+        for key in model.sfh_bin_keys:
+            values_updates[(model.sect_name, key)] = _format_ini_value(
+                model.free_params[key])
+    header = _set_ini_block_options(header, _PARAMS_INI_BLOCK, params_updates)
+    if any(line.startswith(_VALUES_INI_BLOCK[0]) for line in header):
+        header = _set_ini_block_options(header, _VALUES_INI_BLOCK, values_updates)
+
+    trailer = trailer + [
+        f"#{_SFH_SPACE_META_KEY}=physical\n",
+        "#besta_sfh_model=" + ",".join(
+            type(m).__name__ for m in models.values()) + "\n",
+        f"#besta_converted_from={results_path}\n",
+    ]
+
+    data = np.column_stack([_as_float_array(converted[name])
+                            for name in table.colnames])
+    directory = os.path.dirname(output_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as file:
+        file.writelines(header)
+        np.savetxt(file, data, delimiter="\t", fmt="%.17g")
+        file.writelines(trailer)
+    logger.info("Physical-space results written to %s", output_path)
+    return output_path
+
+
+def write_physical_results(ini: Mapping[str, Any], **kwargs) -> Optional[str]:
+    """Convert the results file of a run described by ``ini`` (see
+    :func:`convert_results_file`). Returns the output path or ``None``."""
+    output = ini.get("output", {})
+    fmt = str(_get_option(output, "format", "text")).lower()
+    if fmt != "text":
+        logger.info("Output format '%s' is not 'text'; no physical-space table "
+                    "is written.", fmt)
+        return None
+    return convert_results_file(_results_file_path(ini), **kwargs)
+
+
+def load_physical_results(results_path: str, *, module_name: Optional[str] = None
+                          ) -> Table:
+    """Read a results file with the SFH parameters in physical space.
+
+    Latent SFH parameters are converted on the fly (and the conversion is
+    logged); tables that are already physical are returned as read.
+    """
+    table = io.read_results_file(results_path)
+    if table.meta.get(_SFH_SPACE_META_KEY) == "physical":
+        return table
+    ini = io.Reader.read_ini_file_from_results(results_path)
+    return _table_to_physical(table, ini, module_name)
 
 
 # -----------------------------------------------------------------------------
@@ -1803,10 +2072,18 @@ def summarize_results_file(
     output_fits: Optional[str] = None,
     output_json: Optional[str] = None,
     delimiter: str = "\t",
+    physical: bool = True,
     **kwargs,
 ) -> ResultsSummary:
-    """Read a results file and summarize it (passes kwargs to summarize_results)."""
-    tab = io.read_results_file(results_path, delimiter=delimiter)
+    """Read a results file and summarize it (passes kwargs to summarize_results).
+
+    Latent SFH parameters are converted to physical space first (see
+    :func:`load_physical_results`) unless ``physical=False``.
+    """
+    if physical:
+        tab = load_physical_results(results_path)
+    else:
+        tab = io.read_results_file(results_path, delimiter=delimiter)
     return summarize_results(
         tab, output_fits=output_fits, output_json=output_json, **kwargs)
 
