@@ -393,7 +393,8 @@ def _write_cosmosis_results(path, latent, extra, use_transforms=True):
              "## END_OF_PARAMS_INI\n",
              "## START_OF_VALUES_INI\n", "## [stars.sfh]\n"]
     lines += [f"## {k} = {values}\n" for k in keys]
-    lines += ["## alpha_powerlaw = 1.0\n", "## \n", "## END_OF_VALUES_INI\n",
+    lines += ["## alpha_powerlaw = 1.0\n", "## ism_metallicity_today = 0.02\n",
+              "## \n", "## END_OF_VALUES_INI\n",
               "## START_OF_PRIORS_INI\n", "## END_OF_PRIORS_INI\n"]
     data = np.column_stack([latent, extra])
     with open(path, "w") as file:
@@ -505,6 +506,111 @@ class TestPhysicalResultsFile(unittest.TestCase):
         self.assertTrue(os.path.exists(output))
         self.assertEqual(main([self.path, "-o", output, "--no-overwrite", "--quiet"]), 1)
         self.assertEqual(main([self.path, self.path, "-o", output]), 2)
+
+class TestSFHReconstruction(unittest.TestCase):
+    """Posterior SFHs on a lookback-time grid and their FITS export."""
+
+    def setUp(self):
+        from besta import sfh
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "results.txt")
+        rng = np.random.default_rng(5)
+        self.latent = rng.uniform(size=(60, 3))
+        extra = np.column_stack([rng.normal(10, 0.1, 60), np.zeros(60),
+                                 rng.normal(-50, 1, 60)])
+        _write_cosmosis_results(self.path, self.latent, extra)
+        self.model = sfh.FixedMassFracSFH(
+            np.array([0.1, 0.5, 0.9]), ism_metallicity_today=0.02,
+            use_transforms=True, redshift=0.0)
+        self.times = self.model.to_physical_batch(self.latent)
+        self.today = self.model.today.to_value("Gyr")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_reconstruction_from_file(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=20, taus=(0.1, 1.0))
+        self.assertEqual(rec.n_samples, 60)
+        self.assertEqual(rec.lookback_edges.size, 21)
+        self.assertEqual(rec.lookback_edges[0], 0.0)
+        self.assertAlmostEqual(rec.lookback_edges[-1], self.today)
+        np.testing.assert_allclose(rec.mass_fraction[:, 0], 1.0)
+        np.testing.assert_allclose(rec.mass_fraction[:, -1], 0.0, atol=1e-12)
+        self.assertTrue(np.all(np.diff(rec.mass_fraction, axis=1) <= 1e-12))
+        self.assertTrue(np.all(rec.ssfr >= -1e-20))
+        # All the mass is formed within the bins
+        widths = np.diff(rec.lookback_edges) * 1e9
+        np.testing.assert_allclose((rec.ssfr * widths).sum(axis=1), 1.0)
+        # Metallicity history of the ZPowerLaw model (alpha = 1, Z_today = 0.02)
+        np.testing.assert_allclose(rec.metallicity[:, 0], 0.02)
+        np.testing.assert_allclose(
+            rec.metallicity[:, 5], np.clip(0.02 * rec.mass_fraction[:, 5], 1e-6, None))
+        # Percentiles
+        pct = rec.percentile_values("ssfr")
+        self.assertEqual(pct.shape, (5, 20))
+        self.assertTrue(np.all(np.diff(pct, axis=0) >= -1e-30))
+        self.assertEqual(rec.meta["sfhmodel"], "FixedMassFracSFH")
+        self.assertEqual(rec.meta["weights"], "uniform")
+
+    def test_anchors_are_reproduced(self):
+        # Bin edges at the lookback times of the anchors of one sample
+        from besta.postprocess import reconstruct_sfh_from_file
+        times = self.times[0]
+        edges = np.concatenate(([0.0], (self.today - times)[::-1], [self.today]))
+        rec = reconstruct_sfh_from_file(self.path, lookback_edges=edges,
+                                        taus=(edges[1], edges[2]))
+        np.testing.assert_allclose(rec.mass_fraction[0], [1.0, 0.9, 0.5, 0.1, 0.0],
+                                   atol=1e-10)
+        # sSFR over tau = (1 - M(t_obs - tau) / M(t_obs)) / tau
+        np.testing.assert_allclose(rec.ssfr_tau[0] * np.array(edges[1:3]) * 1e9,
+                                   [0.1, 0.5], rtol=1e-10)
+
+    def test_subset_and_invalid_grids(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, max_samples=10, n_bins=5)
+        self.assertEqual(rec.n_samples, 10)
+        for edges in ([0.1, 1.0], [0.0, 2.0, 1.0], [0.0, 1.0, self.today + 1]):
+            with self.assertRaises(ValueError):
+                reconstruct_sfh_from_file(self.path, lookback_edges=edges)
+        with self.assertRaises(ValueError):
+            reconstruct_sfh_from_file(self.path, taus=(self.today + 1,))
+
+    def test_fits_round_trip(self):
+        from besta.postprocess import SFHReconstruction, reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=10)
+        light = os.path.join(self.tmp.name, "sfh.fits")
+        full = os.path.join(self.tmp.name, "sfh_samples.fits")
+        rec.write_fits(light)
+        rec.write_fits(full, include_samples=True)
+
+        back = SFHReconstruction.from_fits(light)
+        self.assertEqual(back.n_samples, 0)
+        np.testing.assert_allclose(back.lookback_edges, rec.lookback_edges)
+        for name in ("ssfr", "mass_fraction", "metallicity", "ssfr_tau"):
+            np.testing.assert_allclose(back.percentile_values(name),
+                                       rec.percentile_values(name))
+        back = SFHReconstruction.from_fits(full)
+        self.assertEqual(back.n_samples, rec.n_samples)
+        np.testing.assert_allclose(back.ssfr, rec.ssfr)
+        np.testing.assert_allclose(back.ssfr_tau, rec.ssfr_tau)
+        np.testing.assert_allclose(back.percentile_values("ssfr"),
+                                   rec.percentile_values("ssfr"))
+        self.assertIn("stars.sfh--t_at_frac_0.5000", back.sample_table.colnames)
+
+    def test_command_line(self):
+        from besta.cli.besta_postprocess import main
+        output = os.path.join(self.tmp.name, "cli_sfh.fits")
+        main([self.path, "--make_sfh", "--sfh_samples", "--sfh_output", output,
+              "--sfh_n_bins", "8", "--sfh_taus", "0.1,1"])
+        from besta.postprocess import SFHReconstruction
+        rec = SFHReconstruction.from_fits(output)
+        self.assertEqual(rec.lookback_edges.size, 9)
+        np.testing.assert_allclose(rec.taus, [0.1, 1.0])
+        # Default output name
+        main([self.path, "--make_sfh"])
+        self.assertTrue(os.path.exists(os.path.join(self.tmp.name, "results_sfh.fits")))
+
 
 if __name__ == "__main__":
     unittest.main()

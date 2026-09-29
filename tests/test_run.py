@@ -74,6 +74,13 @@ class TestPipelineManagerFit(unittest.TestCase):
             os.remove("./full_fit_exponential_sfh.maxlike.txt")
         if os.path.exists("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png"):
             os.remove("./full_fit_exponential_sfh_FullSpectralFit_best_fit_spectra.png")
+        if os.path.exists("./full_fit_exponential_sfh_FullSpectralFit_best_fit_solution.png"):
+            os.remove("./full_fit_exponential_sfh_FullSpectralFit_best_fit_solution.png")
+        # remove the SFH artifcats
+        if os.path.exists("./full_fit_exponential_sfh_sfh.fits"):
+            os.remove("./full_fit_exponential_sfh_sfh.fits")
+        if os.path.exists("./full_fit_exponential_sfh_sfh.png"):
+            os.remove("./full_fit_exponential_sfh_sfh.png")
 
     def test_fit(self):
         configuration = {
@@ -131,7 +138,7 @@ class TestPipelineManagerFit(unittest.TestCase):
 
         t0 = time()
         main_pipe = MainPipeline([configuration], n_cores_list=[1])
-        main_pipe.execute_all(plot_result=True)
+        main_pipe.execute_all(plot_result=True, sfh_reconstruction=True)
         tend = time()
         print("TOTAL ELAPSED TIME (min): ", (tend - t0) / 60)
 
