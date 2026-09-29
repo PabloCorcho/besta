@@ -603,7 +603,7 @@ class BaseModule(ClassModule):
         tau = float(tau)
         ssfr = sfh_model.model.average_ssfr_over_tau(
             t_obs=sfh_model.today, tau=tau << u.Gyr).to_value("1/yr")
-        ssfr = np.atleast_1d(ssfr)[0].clip(min=1e-20, max=1e-5)
+        ssfr = np.atleast_1d(ssfr)[0].clip(min=1e-15, max=1e-5)
         # TODO: match naming convention with SFH module
         datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = np.log10(ssfr)
         return datablock
