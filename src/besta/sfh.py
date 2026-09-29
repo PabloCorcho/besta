@@ -973,17 +973,34 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     Description
     -----------
-    The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to the time at which a given fraction of the total stellar mass was
-    formed.
+    The free parameters are the cosmic times at which given fractions of the
+    stellar mass observed today had formed. PST interpolates the cumulative
+    mass history through these anchors (plus ``M = 0`` at ``t = 0`` and
+    ``M = 1`` today), and the SFR is its derivative.
+
+    All time anchors share the range ``[min_time, today - min_last_interval]``,
+    both with and without ``use_transforms``: the stick-breaking transform maps
+    the unit hypercube onto the same range, so both parametrisations have the
+    same (uniform, ordered) prior on the times.
+
+    Parameters
+    ----------
+    mass_fraction : array-like
+        Cumulative mass fractions of the time anchors.
+    min_last_interval : float, optional
+        Minimum time, in Gyr, between the last anchor and the observation.
+        It caps the average sSFR over that interval at
+        ``(1 - mass_fraction[-1]) / min_last_interval``. Default 1e-4 Gyr
+        (0.1 Myr).
+    min_time : float, optional
+        Earliest cosmic time allowed for the anchors, in Gyr. Default 1e-3.
 
     Attributes
     ----------
-    mass_fractions : np.ndarray
+    mass_fraction : np.ndarray
         SFH mass fractions.
-    lookback_time : astropy.units.Quantity
-        Lookback time bin edges.
-
+    time_bounds : tuple of float
+        ``(min_time, today - min_last_interval)`` in Gyr.
     """
 
     cem_model_class = cem.TabularMassFracCEM
@@ -993,18 +1010,31 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         super().__init__(*args, **kwargs)
         logger.info("Initialising FixedMassFracSFH model")
 
-        mass_fraction = np.sort(mass_fraction)
+        mass_fraction = np.sort(np.asarray(mass_fraction, dtype=float))
         self.mass_fraction = mass_fraction.copy()
+        self.time_bounds = self._time_bounds(
+            kwargs.get("min_time", 1e-3),           # Gyr
+            kwargs.get("min_last_interval", 1e-4),  # Gyr
+        )
+        t_min, t_max = self.time_bounds
+        logger.info(
+            "Time anchors within [%.4g, %.6g] Gyr; the average sSFR over the "
+            "last interval is capped at %.3g / yr",
+            t_min, t_max,
+            (1.0 - mass_fraction[-1])
+            / ((self.today.to_value("Gyr") - t_max) * 1e9),
+        )
 
         self.sfh_bin_keys = []
         for frc in mass_fraction:
             k = f"t_at_frac_{frc:.4f}"
             self.sfh_bin_keys.append(k)
             if not self.use_transforms:
+                # Start from a constant SFR, mapped strictly inside the bounds.
                 self.free_params[k] = [
-                    1e-3,
-                    frc * self.today.to_value("Gyr"),
-                    self.today.to_value("Gyr") * 0.999,
+                    t_min,
+                    t_min + frc * (t_max - t_min),
+                    t_max,
                 ]
             else:
                 self.free_params[k] = [0.0, 0.5, 1.0]
@@ -1024,6 +1054,23 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
         )
+
+    def _time_bounds(self, min_time, min_last_interval):
+        """Validate and return ``(min_time, today - min_last_interval)`` in Gyr."""
+        today = self.today.to_value("Gyr")
+        min_time = float(min_time)
+        min_last_interval = float(min_last_interval)
+        if not np.isfinite(min_time) or min_time < 0:
+            raise ValueError("min_time must be finite and non-negative.")
+        if not np.isfinite(min_last_interval) or min_last_interval <= 0:
+            raise ValueError("min_last_interval must be finite and positive.")
+        t_max = today - min_last_interval
+        if t_max <= min_time:
+            raise ValueError(
+                f"min_time ({min_time} Gyr) + min_last_interval "
+                f"({min_last_interval} Gyr) must be smaller than today "
+                f"({today:.4f} Gyr).")
+        return min_time, t_max
 
     def get_prior_representation(self, times):
         """Return disjoint bin masses and time edges for the prior."""
@@ -1119,7 +1166,8 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                 ([1.0], np.cumprod(1.0 - breaks)[:-1])
             )
             time_frac = np.cumsum(remaining * breaks)
-            return time_frac * self.today.to_value("Gyr")
+            t_min, t_max = self.time_bounds
+            return t_min + time_frac * (t_max - t_min)
         return latent
 
     def to_latent(self, physical):
@@ -1127,13 +1175,14 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         if self.use_transforms:
             times = np.asarray(physical, dtype=float)
             _validate_monotonic(times, strict=True, name="times")
-            today = self.today.to_value("Gyr")
-            if np.any(~np.isfinite(times)) or np.any(times <= 0.0) or np.any(
-                times >= today
+            t_min, t_max = self.time_bounds
+            if np.any(~np.isfinite(times)) or np.any(times <= t_min) or np.any(
+                times >= t_max
             ):
-                raise ValueError("Times must lie strictly between zero and today.")
+                raise ValueError(
+                    f"Times must lie strictly between {t_min} and {t_max} Gyr.")
 
-            time_frac = times / today
+            time_frac = (times - t_min) / (t_max - t_min)
             previous = np.concatenate(([0.0], time_frac[:-1]))
             breaks = (time_frac - previous) / (1.0 - previous)
             powers = np.arange(times.size, 0, -1, dtype=float)
@@ -1159,7 +1208,8 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
              np.cumprod(1.0 - breaks, axis=1)[:, :-1]),
             axis=1)
         time_frac = np.cumsum(remaining * breaks, axis=1)
-        physical[valid] = time_frac * self.today.to_value("Gyr")
+        t_min, t_max = self.time_bounds
+        physical[valid] = t_min + time_frac * (t_max - t_min)
         return physical
 
     def to_latent_batch(self, physical):
@@ -1168,16 +1218,16 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         if not self.use_transforms:
             return physical.copy()
         latent = np.full(physical.shape, np.nan)
-        today = self.today.to_value("Gyr")
+        t_min, t_max = self.time_bounds
         with np.errstate(invalid="ignore"):
             valid = np.all(
-                np.isfinite(physical) & (physical > 0.0) & (physical < today),
+                np.isfinite(physical) & (physical > t_min) & (physical < t_max),
                 axis=1)
             valid &= np.all(np.diff(physical, axis=1) > 0, axis=1)
         if not np.any(valid):
             return latent
 
-        time_frac = physical[valid] / today
+        time_frac = (physical[valid] - t_min) / (t_max - t_min)
         previous = np.concatenate(
             (np.zeros((time_frac.shape[0], 1)), time_frac[:, :-1]), axis=1)
         breaks = (time_frac - previous) / (1.0 - previous)
@@ -1572,6 +1622,12 @@ _SFH_SMOOTHNESS_OPTIONS = (
     ("sfh_smoothness_min_sfr", float),
 )
 
+# Model options forwarded to the SFH constructor when present (name, type).
+_SFH_MODEL_OPTIONS = (
+    ("min_last_interval", float),
+    ("min_time", float),
+)
+
 
 class _OptionReader:
     """Uniform access to CosmoSIS ``SectionOptions`` or plain (ini) dicts.
@@ -1646,6 +1702,8 @@ def build_sfh_from_options(options, *, redshift=None, today=None):
         - ``SFHArgs``: positional/keyword arguments of the model.
         - ``use_transforms``: sample latent variables (default ``False``).
         - ``use_sfh_smoothness_prior`` and ``sfh_smoothness_*`` settings.
+        - ``min_last_interval`` and ``min_time`` (Gyr): time-anchor bounds of
+          :class:`FixedMassFracSFH`.
         - ``redshift``: used when the ``redshift`` argument is ``None``.
     redshift : float, optional
         Redshift of the source (sets the age of the Universe at observation).
@@ -1688,7 +1746,7 @@ def build_sfh_from_options(options, *, redshift=None, today=None):
     }
     if today is not None:
         settings["today"] = today
-    for name, cast in _SFH_SMOOTHNESS_OPTIONS:
+    for name, cast in _SFH_SMOOTHNESS_OPTIONS + _SFH_MODEL_OPTIONS:
         if opts.has(name):
             settings[name] = cast(opts.get(name))
 
