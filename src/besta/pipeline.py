@@ -163,7 +163,7 @@ class MainPipeline(object):
             logger.info("Physical-space results table: %s", path)
         return path
 
-    def execute_all(self, plot_result=False):
+    def execute_all(self, plot_result=False, **kwargs):
         """Execute all sub-pipelines."""
         logger.info("Executing all pipelines")
         prev_solution = None
@@ -231,6 +231,24 @@ class MainPipeline(object):
                             par_module,
                             figname,
                         )
+            # Extract SFH reconstruction and write to FITS
+            if kwargs.get("sfh_reconstruction", False):
+                from besta.postprocess import reconstruct_sfh_from_reader
+                reconstruction = reconstruct_sfh_from_reader(reader, **kwargs)
+                output = kwargs.get("sfh_output", None)
+                if output is None:
+                    output = os.path.splitext(subpipe_config["output"]["filename"])[0] + "_sfh.fits"
+                reconstruction.write_fits(output, include_samples=kwargs.get("sfh_samples", False))
+                logger.info("SFH reconstruction written to %s", output)
+                # make plot if requested
+                if kwargs.get("sfh_plot", False):
+                    plot_output = kwargs.get("sfh_plot_output", None)
+                    if plot_output is None:
+                        plot_output = os.path.splitext(subpipe_config["output"]["filename"])[0] + "_sfh.png"
+                    fig, axs = reconstruction.make_figure()
+                    fig.savefig(plot_output)
+                    logger.info("SFH percentile plot written to %s", plot_output)
+                    plt.close(fig)
             # Check for section postprocess
             #TODO
         return 0
