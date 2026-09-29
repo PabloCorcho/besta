@@ -28,6 +28,7 @@ dependencies = {file = ["requirements.txt"]}
 [project.scripts]
 besta-postprocess = "besta.cli.besta_postprocess:main"
 besta-run = "besta.cli.besta_run:main"
+besta-to-physical = "besta.cli.besta_to_physical:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
