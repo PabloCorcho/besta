@@ -350,7 +350,7 @@ class BatchPipeline(object):
             )
         return pipelines
 
-    def _build_jobs(self, plot_result=False):
+    def _build_jobs(self, plot_result=False, **kwargs):
         jobs = []
         for index, (pipeline_config, n_cores, ini_file, ini_values_file) in enumerate(
             zip(
@@ -368,23 +368,24 @@ class BatchPipeline(object):
                     "ini_files": ini_file,
                     "ini_values_files": ini_values_file,
                     "plot_result": plot_result,
+                    **kwargs,
                 }
             )
         return jobs
 
-    def run_single_pipeline(self, index, plot_result=False):
+    def run_single_pipeline(self, index, plot_result=False, **kwargs):
         """Run one independent pipeline by index."""
-        jobs = self._build_jobs(plot_result=plot_result)
+        jobs = self._build_jobs(plot_result=plot_result, **kwargs)
         if index < 0 or index >= len(jobs):
             raise IndexError(f"Pipeline index {index} out of range")
         return _run_main_pipeline_job(jobs[index])["status"]
 
-    def run_all_pipelines(self, plot_result=False):
+    def run_all_pipelines(self, plot_result=False, **kwargs):
         """Run all configured MainPipeline instances in parallel."""
         from multiprocessing import get_context
 
         self.cpu_info()
-        jobs = self._build_jobs(plot_result=plot_result)
+        jobs = self._build_jobs(plot_result=plot_result, **kwargs)
         if not jobs:
             logger.info("No pipelines to run")
             return []
