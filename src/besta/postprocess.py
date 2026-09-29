@@ -1965,7 +1965,7 @@ class SFHReconstruction:
         ax.legend()
         return ax
 
-    def make_figure(self, figsize=(6, 4), **kwargs):
+    def make_figure(self, figsize=(6, 6), **kwargs):
         """Make a figure with the percentiles of all quantities.
 
         Parameters
@@ -1977,10 +1977,31 @@ class SFHReconstruction:
         """
         n_rows = 3 if self.metallicity is not None else 2
         fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
-        self._plot_percentiles("mass_fraction", ax=axes[0], **kwargs)
-        self._plot_percentiles("ssfr", ax=axes[1], **kwargs)
+        ax = axes[0]
+        ax.set_xlabel("Lookback time [Gyr]")
+        ax.set_ylabel("Mass fraction")
+        ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
+        self._plot_percentiles("mass_fraction", ax=ax, **kwargs)
+        
+        ax = axes[1]
+        self._plot_percentiles("ssfr", ax=ax, **kwargs)
+        ax.set_yscale("log")
+        ylim = ax.get_ylim()
+        ylim[0] = max(ylim[0], 1e-15)
+        ylim[1] = min(ylim[1], 1e-7)
+        ax.set_ylim(*ylim)
+        ax.set_ylabel("sSFR [1/yr]")
+
         if self.metallicity is not None:
-            self._plot_percentiles("metallicity", ax=axes[2], **kwargs)
+            ax = axes[2]
+            self._plot_percentiles("metallicity", ax=ax, **kwargs)
+            ax.set_yscale("log")
+            ylims = ax.get_ylim()
+            ylims[0] = max(ylims[0], 1e-4)
+            ylims[1] = min(ylims[1], 1e-1)
+            ax.set_ylim(*ylims)
+            ax.set_ylabel("Metallicity [Z]")
+
         axes[-1].set_xlabel("Lookback time [Gyr]")
         fig.tight_layout()
         return fig, axes
