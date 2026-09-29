@@ -1986,7 +1986,7 @@ class SFHReconstruction:
         ax = axes[1]
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
         ax.set_yscale("log")
-        ylim = ax.get_ylim()
+        ylim = list(ax.get_ylim())
         ylim[0] = max(ylim[0], 1e-15)
         ylim[1] = min(ylim[1], 1e-7)
         ax.set_ylim(*ylim)
@@ -1996,7 +1996,7 @@ class SFHReconstruction:
             ax = axes[2]
             self._plot_percentiles("metallicity", ax=ax, **kwargs)
             ax.set_yscale("log")
-            ylims = ax.get_ylim()
+            ylims = list(ax.get_ylim())
             ylims[0] = max(ylims[0], 1e-4)
             ylims[1] = min(ylims[1], 1e-1)
             ax.set_ylim(*ylims)
