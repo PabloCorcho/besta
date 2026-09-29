@@ -2147,6 +2147,7 @@ def reconstruct_sfh(
     max_samples: Optional[int] = None,
     seed: Optional[int] = 0,
     parameter_prefix: str = "--",
+    **kwargs
 ) -> SFHReconstruction:
     """Evaluate the posterior SFHs of a run on a grid of lookback times.
 
