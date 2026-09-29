@@ -1659,6 +1659,20 @@ def _unique_sfh_models(ini: Mapping[str, Any], module_name: Optional[str] = None
     return models
 
 
+def _physical_sfh_model(ini: Mapping[str, Any], module: str):
+    """SFH model of ``module`` built with ``use_transforms = False``."""
+    from besta.sfh import build_sfh_from_options
+
+    options = dict(ini[module])
+    options["use_transforms"] = False
+    model = build_sfh_from_options(options)
+    if model.use_transforms:
+        raise ValueError(
+            f"Could not disable use_transforms for module '{module}' "
+            "(is it set in SFHArgs?).")
+    return model
+
+
 def convert_results_file(
     results_path: str,
     output_path: Optional[str] = None,
@@ -1718,17 +1732,7 @@ def convert_results_file(
         converted.meta.pop(_SFH_SPACE_META_KEY, None)   # next model: convert too
 
     # Physical versions of the models, for the edited configuration.
-    from besta.sfh import build_sfh_from_options
-
-    physical_models = {}
-    for module, model in models.items():
-        options = dict(ini[module])
-        options["use_transforms"] = False
-        physical_models[module] = build_sfh_from_options(options)
-        if physical_models[module].use_transforms:
-            raise ValueError(
-                f"Could not disable use_transforms for module '{module}' "
-                "(is it set in SFHArgs?).")
+    physical_models = {module: _physical_sfh_model(ini, module) for module in models}
 
     with open(results_path, "r", encoding="utf-8") as file:
         lines = file.readlines()
@@ -1789,6 +1793,503 @@ def load_physical_results(results_path: str, *, module_name: Optional[str] = Non
         return table
     ini = io.Reader.read_ini_file_from_results(results_path)
     return _table_to_physical(table, ini, module_name)
+
+
+# -----------------------------------------------------------------------------
+# Utilities for SFH reconstruction
+# -----------------------------------------------------------------------------
+#
+# Each posterior sample is loaded into the SFH model of the run (built with
+# ``use_transforms = F``, as the samples are converted to physical space
+# first) and PST evaluates the cumulative mass formed on a grid of lookback
+# times in the same fashion as in the fit.
+#
+# Quantities (relative to the stellar mass formed up to the observation):
+# - ``mass_fraction``: M(t_obs - lookback) / M(t_obs) at the bin edges;
+# - ``ssfr``: mass formed in each lookback bin / (M(t_obs) * bin width) [1/yr];
+# - ``metallicity``: ISM metallicity at the bin edges (models with an
+#   enrichment history only);
+# - ``ssfr_tau``: sSFR averaged over the last ``tau`` [1/yr].
+
+
+def _percentile_label(q: float) -> str:
+    """0.16 -> 'p16', 0.025 -> 'p2_5'."""
+    return "p" + f"{round(100 * q, 3):g}".replace(".", "_")
+
+
+def default_lookback_edges(today_gyr: float, n_bins: int = 40,
+                           min_lookback: float = 1e-3) -> np.ndarray:
+    """Lookback-time bin edges in Gyr, starting in 0, then log-spaced between
+    ``min_lookback`` and ``today``."""
+    if n_bins < 1:
+        raise ValueError("n_bins must be at least 1.")
+    if not 0 < min_lookback < today_gyr:
+        raise ValueError("min_lookback must lie between 0 and the age of the "
+                         f"Universe at the source ({today_gyr:.4g} Gyr).")
+    return np.concatenate(([0.0], np.geomspace(min_lookback, today_gyr, n_bins)))
+
+
+def _read_embedded_values(results_path: str) -> Dict[str, Dict[str, Any]]:
+    """Parameter values block (priors) stored in a CosmoSIS results file."""
+    with open(results_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()
+    try:
+        begin = next(i for i, line in enumerate(lines)
+                     if line.startswith(_VALUES_INI_BLOCK[0]))
+        end = next(i for i, line in enumerate(lines)
+                   if line.startswith(_VALUES_INI_BLOCK[1]))
+    except StopIteration:
+        return {}
+    content = "".join(line[3:] if line.startswith("## ") else line.lstrip("#")
+                      for line in lines[begin + 1:end])
+    return io._ini_string_to_dict(content)
+
+
+def _is_fixed_value(value) -> bool:
+    return np.ndim(value) == 0 and isinstance(value, (int, float, np.number, bool))
+
+
+@dataclass
+class SFHReconstruction:
+    """Posterior SFHs evaluated on a grid of lookback times.
+
+    Attributes
+    ----------
+    lookback_edges : ndarray, shape (n_bins + 1,)
+        Lookback-time bin edges [Gyr].
+    percentiles : tuple of float
+        Quantiles (in [0, 1]) stored in the ``*_percentiles`` arrays.
+    mass_fraction, ssfr, metallicity, ssfr_tau : ndarray
+        Per-sample values, shapes (n_samples, n_bins + 1), (n_samples, n_bins),
+        (n_samples, n_bins + 1) and (n_samples, n_tau). ``metallicity`` is
+        ``None`` for models without an enrichment history.
+    taus : ndarray
+        Timescales [Gyr] of ``ssfr_tau``.
+    weights : ndarray, shape (n_samples,)
+        Sample weights used for the percentiles.
+    sample_table : astropy.table.Table
+        Per-sample input values (SFH parameters, ``post``, weights, ...).
+    meta : dict
+        Model name, redshift, age of the Universe, source, ...
+    """
+
+    lookback_edges: np.ndarray
+    percentiles: Tuple[float, ...]
+    mass_fraction: np.ndarray
+    ssfr: np.ndarray
+    ssfr_tau: np.ndarray
+    taus: np.ndarray
+    weights: np.ndarray
+    metallicity: Optional[np.ndarray] = None
+    sample_table: Optional[Table] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+    _percentile_cache: Dict[str, np.ndarray] = field(default_factory=dict, repr=False)
+
+    # --- Derived grids --------------------------------------------------------
+    @property
+    def lookback_low(self) -> np.ndarray:
+        return self.lookback_edges[:-1]
+
+    @property
+    def lookback_high(self) -> np.ndarray:
+        return self.lookback_edges[1:]
+
+    @property
+    def lookback_centres(self) -> np.ndarray:
+        return 0.5 * (self.lookback_edges[:-1] + self.lookback_edges[1:])
+
+    @property
+    def n_samples(self) -> int:
+        return int(self.weights.size)
+
+    # --- Percentiles ----------------------------------------------------------
+    def quantity(self, name: str) -> Optional[np.ndarray]:
+        """Per-sample array of ``mass_fraction``, ``ssfr``, ``metallicity`` or ``ssfr_tau``."""
+        if name not in ("mass_fraction", "ssfr", "metallicity", "ssfr_tau"):
+            raise KeyError(f"Unknown SFH quantity '{name}'.")
+        return getattr(self, name)
+
+    def percentile_values(self, name: str) -> Optional[np.ndarray]:
+        """Weighted percentiles of a quantity, shape (n_percentiles, n_points)."""
+        if name in self._percentile_cache:
+            return self._percentile_cache[name]
+        values = self.quantity(name)
+        if values is None:
+            return None
+        if values.shape[0] == 0:
+            result = np.full((len(self.percentiles), values.shape[1]), np.nan)
+        else:
+            result = np.column_stack([
+                weighted_quantile(values[:, j], self.weights, self.percentiles)
+                for j in range(values.shape[1])])
+        self._percentile_cache[name] = result
+        return result
+
+    def _plot_percentiles(self, name: str, ax=None, **kwargs):
+        """Plot the percentiles of a quantity vs lookback time.
+
+        Parameters
+        ----------
+        name : str
+            One of ``"mass_fraction"``, ``"ssfr"``, ``"metallicity"``,
+            ``"ssfr_tau"``.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If ``None``, a new figure and axes are created.
+        **kwargs
+            Passed to :func:`matplotlib.axes.Axes.fill_between`.
+        """
+        values = self.percentile_values(name)
+        if values is None:
+            raise ValueError(f"No values for '{name}' (e.g. no enrichment history).")
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 4))
+        for i in range(len(self.percentiles) // 2):
+            q_low = self.percentiles[i]
+            q_high = self.percentiles[-(i + 1)]
+            ax.fill_between(self.lookback_centres, values[i], values[-(i + 1)],
+                            label=f"{int(100 * q_low)}-{int(100 * q_high)}%",
+                            **kwargs)
+        ax.set_xlabel("Lookback time [Gyr]")
+        ax.set_ylabel(name.replace("_", " ").title())
+        ax.legend()
+        return ax
+
+    def make_figure(self, figsize=(6, 4), **kwargs):
+        """Make a figure with the percentiles of all quantities.
+
+        Parameters
+        ----------
+        figsize : tuple of float
+            Figure size in inches.
+        **kwargs
+            Passed to :meth:`_plot_percentiles`.
+        """
+        n_rows = 3 if self.metallicity is not None else 2
+        fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
+        self._plot_percentiles("mass_fraction", ax=axes[0], **kwargs)
+        self._plot_percentiles("ssfr", ax=axes[1], **kwargs)
+        if self.metallicity is not None:
+            self._plot_percentiles("metallicity", ax=axes[2], **kwargs)
+        axes[-1].set_xlabel("Lookback time [Gyr]")
+        fig.tight_layout()
+        return fig, axes
+
+    # --- I/O -----------------------------------------------------------------
+    def _percentile_table(self, name: str, prefix: str) -> Dict[str, np.ndarray]:
+        values = self.percentile_values(name)
+        if values is None:
+            return {}
+        return {f"{prefix}_{_percentile_label(q)}": values[i]
+                for i, q in enumerate(self.percentiles)}
+
+    def to_fits(self, include_samples: bool = False) -> fits.HDUList:
+        """FITS representation.
+
+        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR percentiles per
+        lookback bin), ``SFH_EDGES`` (mass fraction and metallicity
+        percentiles at the bin edges), ``SSFR_TAU`` (sSFR averaged over the
+        last ``tau``). With ``include_samples``: ``SAMPLES`` (per-sample
+        table) and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC`` and
+        ``SAMPLES_Z`` (rows = samples).
+        """
+        primary = fits.PrimaryHDU()
+        header = primary.header
+        header["BESTASFH"] = (1, "BESTA SFH reconstruction format version")
+        header["NSAMPLES"] = (self.n_samples, "Posterior samples used")
+        header["ESS"] = (float(effective_sample_size(self.weights))
+                         if self.n_samples else 0.0, "Effective sample size")
+        header["PCTILES"] = (",".join(f"{q:g}" for q in self.percentiles),
+                             "Quantiles of the *_pNN columns")
+        header["TIMEUNIT"] = ("Gyr", "Unit of lookback times and tau")
+        header["SSFRUNIT"] = ("1/yr", "Unit of sSFR columns")
+        for key, value in self.meta.items():
+            if value is None:
+                continue
+            card = key.upper()[:8]
+            header[card] = value if isinstance(value, (int, float, bool)) else str(value)
+
+        bins = {"lookback_low": self.lookback_low,
+                "lookback_high": self.lookback_high,
+                "lookback_centre": self.lookback_centres}
+        bins.update(self._percentile_table("ssfr", "ssfr"))
+        edges = {"lookback": self.lookback_edges}
+        edges.update(self._percentile_table("mass_fraction", "mass_fraction"))
+        edges.update(self._percentile_table("metallicity", "metallicity"))
+        taus = {"tau": self.taus}
+        taus.update(self._percentile_table("ssfr_tau", "ssfr"))
+
+        hdus = [primary,
+                fits.BinTableHDU(Table(bins), name="SFH_BINS"),
+                fits.BinTableHDU(Table(edges), name="SFH_EDGES"),
+                fits.BinTableHDU(Table(taus), name="SSFR_TAU")]
+        if include_samples:
+            samples = Table() if self.sample_table is None else self.sample_table.copy()
+            samples["weight"] = self.weights
+            for j, tau in enumerate(self.taus):
+                samples[f"ssfr_tau_{tau:g}"] = self.ssfr_tau[:, j]
+            hdus.append(fits.BinTableHDU(samples, name="SAMPLES"))
+            hdus.append(fits.ImageHDU(self.ssfr, name="SAMPLES_SSFR"))
+            hdus.append(fits.ImageHDU(self.mass_fraction, name="SAMPLES_MFRAC"))
+            if self.metallicity is not None:
+                hdus.append(fits.ImageHDU(self.metallicity, name="SAMPLES_Z"))
+        return fits.HDUList(hdus)
+
+    def write_fits(self, path: str, *, include_samples: bool = False,
+                   overwrite: bool = True) -> str:
+        """Write :meth:`to_fits` to ``path`` and return the path."""
+        path = os.path.expandvars(path)
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        self.to_fits(include_samples=include_samples).writeto(path, overwrite=overwrite)
+        logger.info("SFH reconstruction written to %s", path)
+        return path
+
+    @classmethod
+    def from_fits(cls, path: str) -> "SFHReconstruction":
+        """Read a file written by :meth:`write_fits`.
+
+        Without the sample HDUs, only the percentiles are available (the
+        per-sample arrays are empty and :meth:`percentile_values` returns the
+        stored percentiles).
+        """
+        with fits.open(os.path.expandvars(path)) as hdul:
+            header = hdul[0].header
+            percentiles = tuple(float(q) for q in str(header["PCTILES"]).split(","))
+            bins = Table(hdul["SFH_BINS"].data)
+            edges = Table(hdul["SFH_EDGES"].data)
+            taus_tab = Table(hdul["SSFR_TAU"].data)
+            has_samples = "SAMPLES" in hdul
+            lookback_edges = np.asarray(edges["lookback"], dtype=float)
+            taus = np.asarray(taus_tab["tau"], dtype=float)
+            has_z = any(c.startswith("metallicity_") for c in edges.colnames)
+            if has_samples:
+                samples = Table(hdul["SAMPLES"].data)
+                weights = np.asarray(samples["weight"], dtype=float)
+                ssfr = np.asarray(hdul["SAMPLES_SSFR"].data, dtype=float)
+                mfrac = np.asarray(hdul["SAMPLES_MFRAC"].data, dtype=float)
+                z = (np.asarray(hdul["SAMPLES_Z"].data, dtype=float)
+                     if "SAMPLES_Z" in hdul else None)
+                ssfr_tau = np.column_stack(
+                    [np.asarray(samples[f"ssfr_tau_{tau:g}"], dtype=float) for tau in taus]
+                ) if taus.size else np.empty((weights.size, 0))
+            else:
+                samples, weights = None, np.empty(0)
+                ssfr = np.empty((0, lookback_edges.size - 1))
+                mfrac = np.empty((0, lookback_edges.size))
+                z = np.empty((0, lookback_edges.size)) if has_z else None
+                ssfr_tau = np.empty((0, taus.size))
+            meta = {key.lower(): header[key] for key in
+                    ("SFHMODEL", "MODULE", "REDSHIFT", "TODAY", "SOURCE", "SFHSPACE")
+                    if key in header}
+            rec = cls(lookback_edges=lookback_edges, percentiles=percentiles,
+                      mass_fraction=mfrac, ssfr=ssfr, ssfr_tau=ssfr_tau, taus=taus,
+                      weights=weights, metallicity=z, sample_table=samples, meta=meta)
+            if not has_samples:
+                def stored(table, prefix):
+                    return np.vstack([np.asarray(table[f"{prefix}_{_percentile_label(q)}"],
+                                                 dtype=float) for q in percentiles])
+                rec._percentile_cache["ssfr"] = stored(bins, "ssfr")
+                rec._percentile_cache["mass_fraction"] = stored(edges, "mass_fraction")
+                rec._percentile_cache["ssfr_tau"] = stored(taus_tab, "ssfr")
+                if has_z:
+                    rec._percentile_cache["metallicity"] = stored(edges, "metallicity")
+        return rec
+
+
+def reconstruct_sfh(
+    table: Table,
+    ini: Mapping[str, Any],
+    values: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    *,
+    module_name: Optional[str] = None,
+    lookback_edges: Optional[Sequence[float]] = None,
+    n_bins: int = 40,
+    min_lookback: float = 1e-3,
+    taus: Sequence[float] = (0.01, 0.1, 1.0),
+    percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
+    weight_key: str = "weight",
+    posterior_key: str = "post",
+    burn_in: int = 0,
+    nwalkers: int = 1,
+    max_samples: Optional[int] = None,
+    seed: Optional[int] = 0,
+    parameter_prefix: str = "--",
+) -> SFHReconstruction:
+    """Evaluate the posterior SFHs of a run on a grid of lookback times.
+
+    Parameters
+    ----------
+    table : astropy.table.Table
+        Results table. Latent SFH parameters are converted to physical space
+        first (logged).
+    ini : dict
+        Run configuration (e.g. :attr:`besta.io.Reader.ini`).
+    values : dict, optional
+        Parameter values (priors) of the run, used for the fixed SFH
+        parameters that are not columns of ``table`` (e.g.
+        :attr:`besta.io.Reader.ini_values`).
+    module_name : str, optional
+        Module defining the SFH (default: the first one).
+    lookback_edges : sequence of float, optional
+        Lookback-time bin edges in Gyr (increasing, starting at 0). Default:
+        :func:`default_lookback_edges` with ``n_bins`` and ``min_lookback``.
+    taus : sequence of float
+        Timescales [Gyr] for the sSFR averaged over the last ``tau``.
+    percentiles : sequence of float
+        Quantiles in [0, 1].
+    weight_key : str
+        Column with sample weights (nested samplers); uniform weights are used
+        if it is missing.
+    burn_in, nwalkers : int
+        Discard the first ``burn_in`` samples of each walker.
+    max_samples : int, optional
+        Use a random subset of at most this many samples (faster).
+    seed : int, optional
+        Seed of the random subset.
+
+    Returns
+    -------
+    SFHReconstruction
+    """
+    candidates = find_sfh_modules(ini)
+    if module_name is None:
+        if not candidates:
+            raise ValueError("No pipeline module with an 'SFHModel' option was found.")
+        module_name = candidates[0]
+    model = _physical_sfh_model(ini, module_name)
+    table = _table_to_physical(table, ini, module_name)
+    if burn_in > 0:
+        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
+
+    today = float(model.today.to_value("Gyr"))
+    if lookback_edges is None:
+        edges = default_lookback_edges(today, n_bins=n_bins, min_lookback=min_lookback)
+    else:
+        edges = np.asarray(lookback_edges, dtype=float)
+        if edges.ndim != 1 or edges.size < 2 or np.any(np.diff(edges) <= 0):
+            raise ValueError("lookback_edges must be a strictly increasing 1D array.")
+        if edges[0] != 0 or edges[-1] > today:
+            raise ValueError(f"lookback_edges must start at 0 and end before "
+                             f"{today:.4g} Gyr (age of the Universe at the source).")
+    taus = np.atleast_1d(np.asarray(taus, dtype=float))
+    if np.any((taus <= 0) | (taus > today)):
+        raise ValueError("taus must lie in (0, today].")
+
+    # Columns of the SFH section and fixed values from the priors
+    sect = model.sect_name
+    prefix = f"{sect}{parameter_prefix}".lower()
+    columns = {name[len(prefix):]: name for name in table.colnames
+               if name.lower().startswith(prefix)}
+    fixed = {}
+    for section, params in (values or {}).items():
+        if section.lower() != sect.lower():
+            continue
+        for key, value in params.items():
+            if key.lower() in columns:
+                continue
+            if not _is_fixed_value(value):
+                raise KeyError(f"Free parameter '{sect}--{key}' is not in the table.")
+            fixed[key.lower()] = value
+
+    n_rows = len(table)
+    if weight_key in table.colnames:
+        weights_all = _as_float_array(table[weight_key])
+        weight_source = weight_key
+    else:
+        weights_all = np.ones(n_rows)
+        weight_source = "uniform"
+    rows = np.arange(n_rows)
+    if max_samples is not None and n_rows > max_samples:
+        rng = np.random.default_rng(seed)
+        rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
+        logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
+
+    arrays = {key: _as_float_array(table[col]) for key, col in columns.items()}
+    times = today - edges[::-1]                      # increasing cosmic time
+    # One PST call per sample: bin edges followed by the tau limits
+    eval_times = np.concatenate((times, today - taus))
+    n_edges = edges.size
+    has_z = hasattr(model.model, "ism_metallicity")
+
+    def as_values(x):
+        return np.asarray(getattr(x, "value", x), dtype=float)
+
+    mfrac, ssfr, zhist, ssfr_tau, used = [], [], [], [], []
+    for row in rows:
+        params = dict(fixed)
+        params.update({key: float(values_[row]) for key, values_ in arrays.items()})
+        if not all(np.isfinite(v) for v in params.values() if isinstance(v, float)):
+            continue
+        status, _ = model.parse_free_params(params)
+        if not status:
+            continue
+        mass = as_values(model.model.stellar_mass_formed(eval_times))
+        mass_today = mass[n_edges - 1]
+        if not np.isfinite(mass_today) or mass_today <= 0:
+            continue
+        frac = mass[:n_edges][::-1] / mass_today       # at edges, lookback order
+        mfrac.append(frac)
+        ssfr.append((frac[:-1] - frac[1:]) / (np.diff(edges) * 1e9))
+        ssfr_tau.append((1.0 - mass[n_edges:] / mass_today) / (taus * 1e9))
+        if has_z:
+            zhist.append(as_values(model.model.ism_metallicity(times))[::-1])
+        used.append(row)
+
+    used = np.asarray(used, dtype=int)
+    if used.size < rows.size:
+        logger.warning("%d of %d samples could not be evaluated and were skipped.",
+                       rows.size - used.size, rows.size)
+    sample_table = Table()
+    for key, col in columns.items():
+        sample_table[col] = _as_float_array(table[col])[used]
+    for col in (posterior_key, "extra--stellar_mass"):
+        if col in table.colnames:
+            sample_table[col] = _as_float_array(table[col])[used]
+
+    meta = {"sfhmodel": type(model).__name__, "module": module_name,
+            "redshift": float(getattr(model, "redshift", 0.0) or 0.0),
+            "today": today, "weights": weight_source, "sfhspace": "physical"}
+    rec = SFHReconstruction(
+        lookback_edges=edges,
+        percentiles=tuple(float(q) for q in percentiles),
+        mass_fraction=np.array(mfrac).reshape(-1, n_edges),
+        ssfr=np.array(ssfr).reshape(-1, n_edges - 1),
+        ssfr_tau=np.array(ssfr_tau).reshape(-1, taus.size),
+        taus=taus,
+        weights=weights_all[used],
+        metallicity=np.array(zhist).reshape(-1, n_edges) if has_z else None,
+        sample_table=sample_table,
+        meta=meta,
+    )
+    logger.info("Reconstructed %d SFHs of model %s on %d lookback bins.",
+                rec.n_samples, meta["sfhmodel"], n_edges - 1)
+    return rec
+
+
+def reconstruct_sfh_from_reader(reader, **kwargs) -> SFHReconstruction:
+    """:func:`reconstruct_sfh` for a :class:`besta.io.Reader`."""
+    table = getattr(reader, "_results_table", None)
+    if table is None:
+        reader.load_results()
+        table = reader.results_table
+    kwargs.setdefault("values", getattr(reader, "ini_values", None))
+    rec = reconstruct_sfh(table, reader.ini, **kwargs)
+    rec.meta.setdefault("source", getattr(reader, "results_file", None))
+    return rec
+
+
+def reconstruct_sfh_from_file(results_path: str, **kwargs) -> SFHReconstruction:
+    """:func:`reconstruct_sfh` for a CosmoSIS text results file.
+
+    The configuration and the parameter values are read from the file itself.
+    """
+    table = io.read_results_file(results_path)
+    ini = io.Reader.read_ini_file_from_results(results_path)
+    kwargs.setdefault("values", _read_embedded_values(results_path))
+    rec = reconstruct_sfh(table, ini, **kwargs)
+    rec.meta["source"] = results_path
+    return rec
 
 
 # -----------------------------------------------------------------------------
