@@ -1925,44 +1925,59 @@ class SFHReconstruction:
         self._percentile_cache[name] = result
         return result
 
-    def _plot_percentiles(self, name: str, ax=None, **kwargs):
-        """Plot the percentiles of a quantity vs lookback time.
+    def _plot_percentiles(self, name: str, ax=None, *, color="C0", alpha=0.25,
+                          **kwargs):
+        """Plot the percentile bands of a quantity vs lookback time.
 
         Parameters
         ----------
         name : str
-            One of ``"mass_fraction"``, ``"ssfr"``, ``"metallicity"``,
-            ``"ssfr_tau"``.
+            ``"mass_fraction"`` or ``"metallicity"`` (values at the bin
+            edges, drawn as lines) or ``"ssfr"`` (bin averages, drawn as
+            steps).
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If ``None``, a new figure and axes are created.
+        color : str
+            Colour of the bands and the median.
+        alpha : float
+            Opacity of each band (nested bands add up).
         **kwargs
             Passed to :func:`matplotlib.axes.Axes.fill_between`.
         """
+        if name == "ssfr_tau":
+            raise ValueError("'ssfr_tau' is not a function of lookback time; "
+                             "use percentile_values('ssfr_tau') and taus.")
         values = self.percentile_values(name)
-        if values.shape[1] == self.lookback_centres.size:
-            x = self.lookback_centres
-        else:
-            x = self.lookback_edges
-
         if values is None:
             raise ValueError(f"No values for '{name}' (e.g. no enrichment history).")
         if ax is None:
-            fig, ax = plt.subplots(figsize=(6, 4))
-        for i in range(len(self.percentiles) // 2):
-            q_low = self.percentiles[i]
-            q_high = self.percentiles[-(i + 1)]
-            ax.fill_between(x, values[i], values[-(i + 1)],
-                            label=f"{int(100 * q_low)}-{int(100 * q_high)}%",
-                            **kwargs)
-        # if percentiles is odd, plot the middle one as a line
-        if len(self.percentiles) % 2 == 1:
-            mid_index = len(self.percentiles) // 2
-            ax.plot(x, values[mid_index], color="black", lw=1.0,
-                    label=f"{int(100 * self.percentiles[mid_index])}%")
+            _, ax = plt.subplots(figsize=(6, 4))
+
+        step = name == "ssfr"                 # bin averages -> steps over the edges
+        x = self.lookback_edges
+
+        def curve(v):
+            return np.append(v, v[-1]) if step else v
+
+        quantiles = np.asarray(self.percentiles, dtype=float)
+        order = np.argsort(quantiles)
+        n_q = order.size
+        for i in range(n_q // 2):
+            low, high = order[i], order[-(i + 1)]
+            ax.fill_between(
+                x, curve(values[low]), curve(values[high]),
+                step="post" if step else None, color=color, alpha=alpha, lw=0,
+                label=f"{100 * quantiles[low]:g}-{100 * quantiles[high]:g}%",
+                **kwargs)
+        if n_q % 2 == 1:
+            mid = order[n_q // 2]
+            ax.plot(x, curve(values[mid]), color=color, lw=1.2,
+                    drawstyle="steps-post" if step else "default",
+                    label=f"{100 * quantiles[mid]:g}%")
 
         ax.set_xlabel("Lookback time [Gyr]")
-        ax.set_ylabel(name.replace("_", " ").title())
-        ax.legend()
+        ax.set_ylabel(name.replace("_", " ").capitalize())
+        ax.legend(frameon=False, fontsize="small")
         return ax
 
     def make_figure(self, figsize=(6, 6), **kwargs):
@@ -1978,11 +1993,11 @@ class SFHReconstruction:
         n_rows = 3 if self.metallicity is not None else 2
         fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
         ax = axes[0]
-        ax.set_xlabel("Lookback time [Gyr]")
-        ax.set_ylabel("Mass fraction")
+        # symlog: the first bin starts at a lookback time of 0
         ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
         self._plot_percentiles("mass_fraction", ax=ax, **kwargs)
-        
+        ax.set_ylabel("Mass fraction")
+
         ax = axes[1]
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
         ax.set_yscale("log")
@@ -2002,6 +2017,13 @@ class SFHReconstruction:
             ax.set_ylim(*ylims)
             ax.set_ylabel("Metallicity [Z]")
 
+        # Shared x axis and bands: one x label and one legend
+        for ax in axes[:-1]:
+            ax.set_xlabel("")
+        for ax in axes[1:]:
+            legend = ax.get_legend()
+            if legend is not None:
+                legend.remove()
         axes[-1].set_xlabel("Lookback time [Gyr]")
         fig.tight_layout()
         return fig, axes
@@ -2147,7 +2169,6 @@ def reconstruct_sfh(
     max_samples: Optional[int] = None,
     seed: Optional[int] = 0,
     parameter_prefix: str = "--",
-    **kwargs
 ) -> SFHReconstruction:
     """Evaluate the posterior SFHs of a run on a grid of lookback times.
 
@@ -2177,7 +2198,9 @@ def reconstruct_sfh(
     burn_in, nwalkers : int
         Discard the first ``burn_in`` samples of each walker.
     max_samples : int, optional
-        Use a random subset of at most this many samples (faster).
+        Use a random subset of at most this many samples (faster). With a
+        weight column, the subset is drawn in proportion to the weights (with
+        replacement) and then equally weighted.
     seed : int, optional
         Seed of the random subset.
 
@@ -2235,9 +2258,22 @@ def reconstruct_sfh(
     rows = np.arange(n_rows)
     if max_samples is not None and n_rows > max_samples:
         rng = np.random.default_rng(seed)
-        rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False,
-                       p=weights_all / np.sum(weights_all)))
-        logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
+        if weight_source == "uniform":
+            rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
+            logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
+        else:
+            # Resample in proportion to the weights (with replacement) and
+            # treat the draws as equally weighted: re-using the weights would
+            # count them twice.
+            p = np.nan_to_num(weights_all, nan=0.0, posinf=0.0).clip(min=0.0)
+            if p.sum() <= 0:
+                raise ValueError(f"Column '{weight_key}' has no positive weights.")
+            rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=True,
+                                      p=p / p.sum()))
+            weights_all = np.ones(n_rows)
+            weight_source = f"resampled:{weight_key}"
+            logger.info("Resampled %d of %d samples in proportion to '%s'.",
+                        rows.size, n_rows, weight_key)
 
     arrays = {key: _as_float_array(table[col]) for key, col in columns.items()}
     times = today - edges[::-1]                      # increasing cosmic time
