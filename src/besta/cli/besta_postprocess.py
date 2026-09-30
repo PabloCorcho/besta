@@ -29,9 +29,9 @@ def parser_setup():
                      help="Reconstruct the SFH and write it to a FITS file")
     sfh.add_argument("--sfh_output", type=str, default=None,
                      help="Output FITS file (default: <results>_sfh.fits)")
-    sfh.add_argument("--sfh-plot", action="store_true",
+    sfh.add_argument("--sfh_plot", "--sfh-plot", action="store_true",
                      help="Generate SFH percentile plots")
-    sfh.add_argument("--sfh-plot-output", type=str, default=None,
+    sfh.add_argument("--sfh_plot_output", "--sfh-plot-output", type=str, default=None,
                      help="Output plot file (default: <results>_sfh.png)")
     sfh.add_argument("--sfh_samples", action="store_true",
                      help="Also store the per-sample SFHs (not only percentiles)")
@@ -132,8 +132,10 @@ def make_sfh(file, args):
     
     if args.sfh_plot:
         plot_output = args.sfh_plot_output or os.path.splitext(results)[0] + "_sfh.png"
-        fig, axs = reconstruction.make_figure()
-        fig.savefig(plot_output)
+        from matplotlib import pyplot as plt
+        fig, _ = reconstruction.make_figure()
+        fig.savefig(plot_output, bbox_inches="tight")
+        plt.close(fig)
         pprint(f"SFH percentile plot written to", plot_output)
     output = args.sfh_output or os.path.splitext(results)[0] + "_sfh.fits"
     reconstruction.write_fits(output, include_samples=args.sfh_samples)
