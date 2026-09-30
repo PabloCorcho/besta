@@ -61,6 +61,43 @@ def _logit(x):
         raise ValueError("Logit is only defined for values strictly within (0, 1).")
     return np.log(x) - np.log1p(-x)
 
+def _log_sfr_jumps_to_time_fractions(jumps, delta_frac):
+    r"""Map adjacent log-SFR jumps to ordered anchor positions in (0, 1).
+
+    Parameters
+    ----------
+    jumps : array-like, shape (..., n)
+        :math:`r_i = \log_{10}{\rm SFR}_i - \log_{10}{\rm SFR}_{i+1}`, where
+        bin :math:`i` is the interval between anchors :math:`i - 1` and
+        :math:`i` (bin 1 is the oldest). Positive values mean a declining SFH.
+    delta_frac : array-like, shape (n + 1,)
+        Mass fraction formed in each of the ``n + 1`` bins.
+
+    Returns
+    -------
+    np.ndarray, shape (..., n)
+        Cumulative time fractions of the ``n`` anchors. The bin widths are
+        :math:`\Delta t_i \propto \Delta f_i / {\rm SFR}_i`, normalised to 1.
+    """
+    jumps = np.asarray(jumps, dtype=float)
+    zeros = np.zeros(jumps.shape[:-1] + (1,))
+    log_sfr = np.concatenate((zeros, -np.cumsum(jumps, axis=-1)), axis=-1)
+    log_widths = np.log10(delta_frac) - log_sfr
+    log_widths -= np.max(log_widths, axis=-1, keepdims=True)
+    widths = 10.0 ** log_widths
+    widths /= np.sum(widths, axis=-1, keepdims=True)
+    return np.cumsum(widths[..., :-1], axis=-1)
+
+
+def _time_fractions_to_log_sfr_jumps(time_frac, delta_frac):
+    """Inverse of :func:`_log_sfr_jumps_to_time_fractions`."""
+    time_frac = np.asarray(time_frac, dtype=float)
+    zeros = np.zeros(time_frac.shape[:-1] + (1,))
+    edges = np.concatenate((zeros, time_frac, zeros + 1.0), axis=-1)
+    log_sfr = np.log10(delta_frac) - np.log10(np.diff(edges, axis=-1))
+    return -np.diff(log_sfr, axis=-1)
+
+
 def _validate_monotonic(array, *, strict=True, name="array"):
     """Validate that the input array is monotonic increasing."""
     arr = np.asarray(array)
@@ -349,6 +386,10 @@ class SFHSmoothnessPrior:
     The residuals follow a Student-t distribution. Its heavy tails retain
     regularisation around smooth solutions without effectively excluding
     genuine bursts or quenching transitions.
+
+    - In the case of `dof=1`, the prior is equivalent to a Laplace distribution on the residuals.
+    - In the case of `dof=2`, the prior is equivalent to a Cauchy distribution on the residuals.
+    - In the case of `dof=3`, the prior is equivalent to a Student-t distribution with 3 degrees of freedom on the residuals.
 
     Parameters
     ----------
@@ -969,7 +1010,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
 
 class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
-    """A SFH model with fixed mass fraction bins.
+    r"""A SFH model with fixed mass fraction bins.
 
     Description
     -----------
@@ -978,10 +1019,31 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     mass history through these anchors (plus ``M = 0`` at ``t = 0`` and
     ``M = 1`` today), and the SFR is its derivative.
 
-    All time anchors share the range ``[min_time, today - min_last_interval]``,
-    both with and without ``use_transforms``: the stick-breaking transform maps
-    the unit hypercube onto the same range, so both parametrisations have the
-    same (uniform, ordered) prior on the times.
+    All time anchors share the range ``[min_time, today - min_last_interval]``.
+
+    Latent spaces (``use_transforms = True``)
+    -----------------------------------------
+    The sampled coordinates set the base measure of the prior, since CosmoSIS
+    applies a uniform prior over the ``values`` ranges:
+
+    - ``latent_space = "stick_breaking"`` (default): unit-cube latents mapped
+      to uniformly distributed ordered times. The prior is the same as
+      sampling the times directly (``use_transforms = False``). With unequal
+      mass-fraction steps this favours declining SFHs, because every time gap
+      has the same expected length.
+    - ``latent_space = "log_sfr_jumps"``: the latents are the jumps in
+      log10 SFR across each anchor,
+      :math:`r_i = \log_{10}{\rm SFR}_i - \log_{10}{\rm SFR}_{i+1}`, with
+      uniform priors in ``[-max_dlogsfr, max_dlogsfr]``. The prior is flat in
+      log-SFR ratios and centred on a constant SFH (``r = 0``), so it does not
+      prefer declining or rising histories. Pair it with
+      ``use_sfh_smoothness_prior`` for regularisation.
+
+    Bin widths follow :math:`\Delta t_i \propto \Delta f_i / {\rm SFR}_i` and
+    are normalised to ``[min_time, today - min_last_interval]``. For
+    ``log_sfr_jumps`` the SFR ratios are therefore defined on that interval.
+    They differ from the physical ones only by ``min_time`` in the oldest bin
+    and ``min_last_interval`` in the youngest.
 
     Parameters
     ----------
@@ -994,6 +1056,12 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         (0.1 Myr).
     min_time : float, optional
         Earliest cosmic time allowed for the anchors, in Gyr. Default 1e-3.
+    latent_space : {"stick_breaking", "log_sfr_jumps"}, optional
+        Latent parametrisation used when ``use_transforms`` is ``True``.
+        Ignored otherwise. Default ``"stick_breaking"``.
+    max_dlogsfr : float, optional
+        Half-width, in dex, of the uniform prior on each log-SFR jump
+        (``latent_space = "log_sfr_jumps"`` only). Default 2.
 
     Attributes
     ----------
@@ -1001,7 +1069,11 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         SFH mass fractions.
     time_bounds : tuple of float
         ``(min_time, today - min_last_interval)`` in Gyr.
+    latent_space : str
+        Latent parametrisation (only relevant with ``use_transforms``).
     """
+
+    LATENT_SPACES = ("stick_breaking", "log_sfr_jumps")
 
     cem_model_class = cem.TabularMassFracCEM
     _defines_latent_free_params = True
@@ -1025,6 +1097,25 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             / ((self.today.to_value("Gyr") - t_max) * 1e9),
         )
 
+        # Mass fraction formed in each of the n + 1 bins
+        self._delta_frac = np.diff(
+            np.concatenate(([0.0], mass_fraction, [1.0])))
+
+        self.latent_space = str(
+            kwargs.get("latent_space", "stick_breaking")).strip().lower()
+        if self.latent_space not in self.LATENT_SPACES:
+            raise ValueError(
+                f"Unknown latent_space {self.latent_space!r}; expected one of "
+                f"{self.LATENT_SPACES}.")
+        self.max_dlogsfr = float(kwargs.get("max_dlogsfr", 2.0))
+        if self._uses_log_sfr_jumps:
+            if not np.isfinite(self.max_dlogsfr) or self.max_dlogsfr <= 0:
+                raise ValueError("max_dlogsfr must be finite and positive.")
+            if np.any(self._delta_frac <= 0):
+                raise ValueError(
+                    "latent_space='log_sfr_jumps' requires mass fractions "
+                    "strictly between 0 and 1 and strictly increasing.")
+
         self.sfh_bin_keys = []
         for frc in mass_fraction:
             k = f"t_at_frac_{frc:.4f}"
@@ -1036,10 +1127,18 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                     t_min + frc * (t_max - t_min),
                     t_max,
                 ]
+            elif self._uses_log_sfr_jumps:
+                # Jump across the anchor at this fraction; 0 = constant SFR.
+                self.free_params[k] = [
+                    -self.max_dlogsfr, 0.0, self.max_dlogsfr]
             else:
                 self.free_params[k] = [0.0, 0.5, 1.0]
 
-        if self.use_transforms:
+        if self._uses_log_sfr_jumps:
+            logger.info(
+                "Sampling the log10 SFR jumps across the anchors, uniform in "
+                "[-%s, %s] dex.", self.max_dlogsfr, self.max_dlogsfr)
+        elif self.use_transforms:
             logger.info(
                 "Using a stick-breaking transform to enforce monotonicity "
                 "and bounds on time bins."
@@ -1148,8 +1247,39 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         return 1, log_prior
 
+    @property
+    def _uses_log_sfr_jumps(self):
+        """Whether the sampled (latent) parameters are log-SFR jumps."""
+        return self.use_transforms and self.latent_space == "log_sfr_jumps"
+
+    def _valid_jumps(self, jumps, rtol=0.0):
+        """Row mask of jumps that are finite and within ``max_dlogsfr``.
+
+        ``rtol`` widens the range slightly, to absorb round-off when mapping
+        times back to jumps at the edge of the prior range.
+        """
+        limit = self.max_dlogsfr * (1.0 + rtol)
+        return np.all(np.isfinite(jumps) & (np.abs(jumps) <= limit), axis=-1)
+
+    def _jumps_to_times(self, jumps):
+        t_min, t_max = self.time_bounds
+        return t_min + _log_sfr_jumps_to_time_fractions(
+            jumps, self._delta_frac) * (t_max - t_min)
+
+    def _times_to_jumps(self, times):
+        t_min, t_max = self.time_bounds
+        return _time_fractions_to_log_sfr_jumps(
+            (times - t_min) / (t_max - t_min), self._delta_frac)
+
     def to_physical(self, latent):
-        """Map unit hypercube latents to strictly increasing times (Gyr)."""
+        """Map latent parameters to strictly increasing times (Gyr)."""
+        if self._uses_log_sfr_jumps:
+            jumps = np.asarray(latent, dtype=float)
+            if not self._valid_jumps(jumps):
+                raise ValueError(
+                    "log-SFR jumps must be finite and lie in "
+                    f"[-{self.max_dlogsfr}, {self.max_dlogsfr}].")
+            return self._jumps_to_times(jumps)
         if self.use_transforms:
             if np.any(~np.isfinite(latent)) or np.any(
                 (latent < 0.0) | (latent > 1.0)
@@ -1171,7 +1301,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return latent
 
     def to_latent(self, physical):
-        """Map strictly increasing times back to unit hypercube variables."""
+        """Map strictly increasing times back to the latent variables."""
         if self.use_transforms:
             times = np.asarray(physical, dtype=float)
             _validate_monotonic(times, strict=True, name="times")
@@ -1181,6 +1311,14 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             ):
                 raise ValueError(
                     f"Times must lie strictly between {t_min} and {t_max} Gyr.")
+
+            if self._uses_log_sfr_jumps:
+                jumps = self._times_to_jumps(times)
+                if not self._valid_jumps(jumps, rtol=1e-9):
+                    raise ValueError(
+                        "The times imply log-SFR jumps outside "
+                        f"[-{self.max_dlogsfr}, {self.max_dlogsfr}] dex.")
+                return np.clip(jumps, -self.max_dlogsfr, self.max_dlogsfr)
 
             time_frac = (times - t_min) / (t_max - t_min)
             previous = np.concatenate(([0.0], time_frac[:-1]))
@@ -1195,6 +1333,12 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         if not self.use_transforms:
             return latent.copy()
         physical = np.full(latent.shape, np.nan)
+        if self._uses_log_sfr_jumps:
+            valid = self._valid_jumps(latent)
+            if np.any(valid):
+                physical[valid] = self._jumps_to_times(latent[valid])
+            return physical
+
         valid = np.all(
             np.isfinite(latent) & (latent >= 0.0) & (latent <= 1.0), axis=1)
         if not np.any(valid):
@@ -1225,6 +1369,12 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                 axis=1)
             valid &= np.all(np.diff(physical, axis=1) > 0, axis=1)
         if not np.any(valid):
+            return latent
+
+        if self._uses_log_sfr_jumps:
+            jumps = self._times_to_jumps(physical[valid])
+            jumps[~self._valid_jumps(jumps, rtol=1e-9)] = np.nan
+            latent[valid] = np.clip(jumps, -self.max_dlogsfr, self.max_dlogsfr)
             return latent
 
         time_frac = (physical[valid] - t_min) / (t_max - t_min)
@@ -1626,6 +1776,8 @@ _SFH_SMOOTHNESS_OPTIONS = (
 _SFH_MODEL_OPTIONS = (
     ("min_last_interval", float),
     ("min_time", float),
+    ("latent_space", str),
+    ("max_dlogsfr", float),
 )
 
 
@@ -1704,6 +1856,8 @@ def build_sfh_from_options(options, *, redshift=None, today=None):
         - ``use_sfh_smoothness_prior`` and ``sfh_smoothness_*`` settings.
         - ``min_last_interval`` and ``min_time`` (Gyr): time-anchor bounds of
           :class:`FixedMassFracSFH`.
+        - ``latent_space`` and ``max_dlogsfr``: latent parametrisation of
+          :class:`FixedMassFracSFH` with ``use_transforms``.
         - ``redshift``: used when the ``redshift`` argument is ``None``.
     redshift : float, optional
         Redshift of the source (sets the age of the Universe at observation).
