@@ -97,7 +97,58 @@ def parser_setup():
         action="store_true",
         help="Generate best-fit plots for each module at the end of each run",
     )
+    sfh = parser.add_argument_group(
+        "SFH reconstruction",
+        "Reconstruct the posterior SFH after each run and write it to a FITS "
+        "file (<results>_sfh.fits).")
+    sfh.add_argument("--sfh", action="store_true",
+                     help="Enable the SFH reconstruction")
+    sfh.add_argument("--sfh-output", default=None,
+                     help="FITS file (default: <results>_sfh.fits)")
+    sfh.add_argument("--sfh-samples", action="store_true",
+                     help="Also store the per-sample SFHs")
+    sfh.add_argument("--sfh-plot", action="store_true",
+                     help="Also write a percentile figure")
+    sfh.add_argument("--sfh-plot-output", default=None,
+                     help="Figure file (default: <results>_sfh.png)")
+    sfh.add_argument("--sfh-n-bins", type=int, default=None,
+                     help="Number of log-spaced lookback bins (default: 40)")
+    sfh.add_argument("--sfh-min-lookback", type=float, default=None,
+                     help="Upper edge of the first lookback bin in Gyr (default: 1e-3)")
+    sfh.add_argument("--sfh-lookback-edges", default=None,
+                     help="Comma-separated lookback bin edges in Gyr, starting at 0")
+    sfh.add_argument("--sfh-taus", default=None,
+                     help="Comma-separated timescales in Gyr for the average sSFR")
+    sfh.add_argument("--sfh-max-samples", type=int, default=None,
+                     help="Use at most this many posterior samples")
+    sfh.add_argument("--sfh-burn-in", type=int, default=None,
+                     help="Samples to discard per walker")
     return parser
+
+
+def _sfh_settings(args):
+    """``sfh_reconstruction`` settings for MainPipeline.execute_all."""
+    if not getattr(args, "sfh", False):
+        return None
+
+    def floats(text):
+        return [float(item) for item in _split_csv(text)]
+
+    options = {
+        "n_bins": args.sfh_n_bins,
+        "min_lookback": args.sfh_min_lookback,
+        "lookback_edges": floats(args.sfh_lookback_edges) if args.sfh_lookback_edges else None,
+        "taus": floats(args.sfh_taus) if args.sfh_taus else None,
+        "max_samples": args.sfh_max_samples,
+        "burn_in": args.sfh_burn_in,
+    }
+    return {
+        "output": args.sfh_output,
+        "samples": args.sfh_samples,
+        "plot": args.sfh_plot,
+        "plot_output": args.sfh_plot_output,
+        "options": {key: value for key, value in options.items() if value is not None},
+    }
 
 
 def run_fit(args):
@@ -140,7 +191,8 @@ def run_fit(args):
         ini_files=ini_files,
         ini_values_files=ini_values_files,
     )
-    status = pipeline.execute_all(plot_result=args.plot_result)
+    status = pipeline.execute_all(plot_result=args.plot_result,
+                                  sfh_reconstruction=_sfh_settings(args))
 
     if int(status) == 0:
         _print("Pipeline execution completed successfully")
