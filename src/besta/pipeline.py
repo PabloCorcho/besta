@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 _SFH_SETTINGS_DEFAULTS = {
     "output": None,        # FITS file; default <results>_sfh.fits
     "samples": False,      # also store the per-sample SFHs
-    "plot": False,         # also write a percentile figure
+    "plot": True,         # also write a percentile figure
     "plot_output": None,   # figure file; default <results>_sfh.png
     "options": None,       # keyword arguments of postprocess.reconstruct_sfh
 }
