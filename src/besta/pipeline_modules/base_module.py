@@ -596,7 +596,8 @@ class BaseModule(ClassModule):
         _log("Configuration done")
 
     def get_t_frac_at(self, datablock, sfh_model, frac: float):
-        time = sfh_model.model.time_at_stellar_mass_frac(frac).to_value("Gyr"
+        time = sfh_model.model.time_at_stellar_mass_frac(
+            frac, time_res=10 << u.Myr).to_value("Gyr"
         )[0]
         datablock["extra", f"t_frac_at_{frac:.4f}"] = time
         return datablock
