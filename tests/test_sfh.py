@@ -428,6 +428,180 @@ class TestFixedMassFracTimeBounds(unittest.TestCase):
         self.assertAlmostEqual(today - model.time_bounds[1], 0.002)
 
 
+class TestFixedMassFracLogSFRJumps(unittest.TestCase):
+    """``latent_space = "log_sfr_jumps"``: uniform prior on log-SFR jumps."""
+
+    FRACTIONS = np.array([0.3, 0.5, 0.75, 0.9, 0.95, 0.99])
+
+    def make_model(self, **kwargs):
+        options = dict(ism_metallicity_today=0.02, use_transforms=True,
+                       latent_space="log_sfr_jumps")
+        options.update(kwargs)
+        return sfh.FixedMassFracSFH(self.FRACTIONS, **options)
+
+    def sfr_per_bin(self, model, times):
+        """Mean SFR of each bin on the normalised [t_min, t_max] interval."""
+        t_min, t_max = model.time_bounds
+        edges = np.concatenate(([t_min], times, [t_max]))
+        return np.diff(np.concatenate(([0.0], self.FRACTIONS, [1.0]))) / np.diff(edges)
+
+    def test_free_params_and_ini(self):
+        import os
+        import tempfile
+
+        model = self.make_model(max_dlogsfr=1.5)
+        for key in model.sfh_bin_keys:
+            self.assertEqual(model.free_params[key], [-1.5, 0.0, 1.5])
+        with tempfile.NamedTemporaryFile(suffix=".ini", delete=False) as file:
+            path = file.name
+        try:
+            model.make_ini(path, mode="w")
+            with open(path, encoding="utf-8") as file:
+                content = file.read()
+            for key in model.sfh_bin_keys:
+                self.assertIn(f"{key} = -1.5 0.0 1.5", content)
+        finally:
+            os.unlink(path)
+
+    def test_zero_jumps_give_a_constant_sfr(self):
+        model = self.make_model()
+        times = model.to_physical(np.zeros(self.FRACTIONS.size))
+        t_min, t_max = model.time_bounds
+        np.testing.assert_allclose(
+            times, t_min + self.FRACTIONS * (t_max - t_min), rtol=1e-12)
+        sfr = self.sfr_per_bin(model, times)
+        np.testing.assert_allclose(sfr, sfr[0], rtol=1e-10)
+
+    def test_jumps_are_log_sfr_ratios(self):
+        model = self.make_model()
+        jumps = np.array([0.5, -0.3, 1.2, 0.0, -1.9, 0.7])
+        times = model.to_physical(jumps)
+        self.assertTrue(np.all(np.diff(times) > 0))
+        log_sfr = np.log10(self.sfr_per_bin(model, times))
+        np.testing.assert_allclose(-np.diff(log_sfr), jumps, atol=1e-10)
+
+    def test_roundtrip_and_batch_match_single(self):
+        model = self.make_model()
+        n = self.FRACTIONS.size
+        rng = np.random.default_rng(5)
+        latent = rng.uniform(-2.0, 2.0, size=(300, n))
+        latent[0] = 2.0
+        latent[1] = -2.0
+        latent[2, 0] = 2.5         # outside the prior range
+        latent[3, -1] = np.nan     # non-finite
+        times = model.to_physical_batch(latent)
+        self.assertTrue(np.all(np.isnan(times[2:4])))
+        valid = np.ones(len(latent), bool)
+        valid[2:4] = False
+        self.assertTrue(np.all(np.isfinite(times[valid])))
+        t_min, t_max = model.time_bounds
+        self.assertTrue(np.all((times[valid] > t_min) & (times[valid] < t_max)))
+        for index in (0, 1, 4, 50, 299):
+            np.testing.assert_allclose(
+                times[index], model.to_physical(latent[index]), rtol=1e-12)
+        # Round trip on random rows. (Rows 0 and 1 are the extreme corners,
+        # 12 dex of monotonic change, where the youngest or oldest anchors
+        # are less than a year apart and cannot be inverted to 1e-8 dex.)
+        for index in (4, 50, 299):
+            np.testing.assert_allclose(
+                model.to_latent(times[index]), latent[index], atol=1e-6)
+        np.testing.assert_allclose(
+            model.to_latent_batch(times[4:]), latent[4:], atol=1e-6)
+        with self.assertRaises(ValueError):
+            model.to_physical(latent[2])
+
+    def test_times_outside_the_prior_map_to_nan(self):
+        model = self.make_model(max_dlogsfr=0.5)
+        steep = model.to_physical(np.full(self.FRACTIONS.size, 0.45))
+        model_wide = self.make_model(max_dlogsfr=2.0)
+        too_steep = model_wide.to_physical(np.full(self.FRACTIONS.size, 1.0))
+        np.testing.assert_allclose(
+            model.to_latent(steep), 0.45, atol=1e-8)
+        self.assertTrue(np.all(np.isnan(model.to_latent_batch(too_steep))))
+        with self.assertRaises(ValueError):
+            model.to_latent(too_steep)
+
+    def test_parse_datablock_with_smoothness_prior(self):
+        model = self.make_model(use_sfh_smoothness_prior=True)
+        params = dict(zip(model.sfh_bin_keys, np.zeros(self.FRACTIONS.size)))
+        params["alpha_powerlaw"] = 1.0
+        params["ism_metallicity_today"] = 0.02
+        status, log_prior = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: params}))
+        self.assertEqual(status, 1)
+        self.assertTrue(np.isfinite(log_prior))
+        np.testing.assert_allclose(
+            model.model.times.to_value("Gyr")[1:-1],
+            model.to_physical(np.zeros(6)))
+
+        # A constant SFH has zero curvature: it maximises the smoothness prior
+        params.update(dict(zip(model.sfh_bin_keys, [0.4, -0.4] * 3)))
+        _, log_prior_wiggly = model.parse_datablock(
+            DataBlock.from_dict({model.sect_name: params}))
+        self.assertGreater(log_prior, log_prior_wiggly)
+
+    def test_prior_does_not_prefer_declining_histories(self):
+        # Uniform jumps: log SFR(youngest bin) - log SFR(oldest bin) is
+        # symmetric around 0 (constant SFH). Stick-breaking (uniform ordered
+        # times) instead puts most prior mass on declining histories.
+        rng = np.random.default_rng(7)
+        jumps = self.make_model()
+        stick = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02, use_transforms=True)
+        n = self.FRACTIONS.size
+        medians = {}
+        for name, model, latent in (
+                ("jumps", jumps, rng.uniform(-2, 2, size=(50000, n))),
+                ("stick", stick, rng.uniform(size=(50000, n)))):
+            times = model.to_physical_batch(latent)
+            t_min, t_max = model.time_bounds
+            edges = np.column_stack(
+                (np.full(len(times), t_min), times, np.full(len(times), t_max)))
+            width = np.diff(edges, axis=1)
+            # SFR_i = delta_f_i / width_i: youngest (0.01) vs oldest (0.3) bin
+            log_ratio = (np.log10(0.01 / width[:, -1])
+                         - np.log10(0.3 / width[:, 0]))
+            medians[name] = np.median(log_ratio)
+        self.assertLess(abs(medians["jumps"]), 0.1)
+        self.assertLess(medians["stick"], -1.0)
+
+    def test_other_transforms_are_unchanged(self):
+        default = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02, use_transforms=True)
+        self.assertEqual(default.latent_space, "stick_breaking")
+        self.assertEqual(default.free_params[default.sfh_bin_keys[0]], [0.0, 0.5, 1.0])
+        # Without transforms the option is ignored: times are sampled directly
+        direct = sfh.FixedMassFracSFH(
+            self.FRACTIONS, ism_metallicity_today=0.02,
+            latent_space="log_sfr_jumps")
+        low, _, high = direct.free_params[direct.sfh_bin_keys[0]]
+        self.assertEqual((low, high), direct.time_bounds)
+        times = np.linspace(1.0, 13.0, 6)
+        np.testing.assert_array_equal(direct.to_physical(times), times)
+
+    def test_invalid_options(self):
+        with self.assertRaises(ValueError):
+            self.make_model(latent_space="softmax")
+        for value in (0.0, -1.0, np.inf):
+            with self.subTest(max_dlogsfr=value), self.assertRaises(ValueError):
+                self.make_model(max_dlogsfr=value)
+        with self.assertRaises(ValueError):
+            sfh.FixedMassFracSFH([0.5, 1.0], ism_metallicity_today=0.02,
+                                 use_transforms=True, latent_space="log_sfr_jumps")
+
+    def test_options_are_forwarded(self):
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "FixedMassFracSFH2D",
+            "SFHArgs": "[0.5, 0.9]",
+            "use_transforms": "T",
+            "latent_space": "log_sfr_jumps",
+            "max_dlogsfr": "1.0",
+        })
+        self.assertEqual(model.latent_space, "log_sfr_jumps")
+        self.assertEqual(model.max_dlogsfr, 1.0)
+        self.assertEqual(model.free_params["t_at_frac_0.5000"], [-1.0, 0.0, 1.0])
+
+
 class TestFixedMassFracSFH2D(unittest.TestCase):
 
     def setUp(self):
