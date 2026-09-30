@@ -81,3 +81,43 @@ if __name__ == "__main__":
     from besta.logging import setup_logging
     setup_logging()
     pytest.main([__file__])
+
+@pytest.mark.parametrize("text", [
+    "(0.3, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999), min_last_interval=0.0001, use_transforms=T",
+    "(1, 2), [3.5, 4], name='two words'",
+    "PADOVA00, imf=KROUPA_UNIVERSAL",
+    "(0.5), 7",
+])
+def test_ini_value_to_string_round_trip(text):
+    parsed = io._parse_value(text)
+    again = io._parse_value(io.ini_value_to_string(parsed))
+    assert type(again) is type(parsed)
+    if isinstance(parsed, list):
+        assert len(again) == len(parsed)
+        for a, b in zip(again, parsed):
+            if isinstance(b, np.ndarray):
+                np.testing.assert_array_equal(a, b)
+            else:
+                assert a == b
+
+
+def test_datablock_safe_options_for_ragged_values():
+    # SFHArgs with keyword arguments parses to [array, str, str], which a
+    # DataBlock cannot store (regression: besta-postprocess --make_best_fit)
+    config = {"FullSpectralFit": {
+        "sfhargs": io._parse_value("(0.3, 0.5, 0.999), min_last_interval=0.0001"),
+        "wlrange": io._parse_value("3850 8900"),
+        "redshift": 0.02,
+        "sspmodelargs": io._parse_value("PADOVA00, imf=KROUPA_UNIVERSAL"),
+    }}
+    safe = io.datablock_safe_options(config)
+    block = DataBlock.from_dict(safe)
+    text = block["FullSpectralFit", "sfhargs"]
+    assert isinstance(text, str)
+    args, kwargs = io.string_to_func_args(text)
+    np.testing.assert_allclose(np.ravel(args[0]), [0.3, 0.5, 0.999])
+    assert float(kwargs["min_last_interval"]) == 1e-4
+    np.testing.assert_array_equal(block["FullSpectralFit", "wlrange"], [3850, 8900])
+    assert block["FullSpectralFit", "redshift"] == 0.02
+    # The input configuration is not modified
+    assert isinstance(config["FullSpectralFit"]["sfhargs"], list)
