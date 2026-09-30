@@ -339,7 +339,9 @@ class BaseModule(ClassModule):
         if isinstance(options, dict):
             logger.debug("Parsing input options from dict")
             logger.debug("Input options: %s", options)
-            options = DataBlock.from_dict(options)
+            # Parsed ini values may mix groups and scalars, which a DataBlock
+            # cannot store: pass those as ini text, as CosmoSIS does.
+            options = DataBlock.from_dict(io.datablock_safe_options(options))
             if options.has_section(option_section):
                 options._delete_section(option_section)
             keys = options.keys(self.alias)
