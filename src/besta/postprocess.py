@@ -1818,7 +1818,7 @@ def _percentile_label(q: float) -> str:
 
 
 def default_lookback_edges(today_gyr: float, n_bins: int = 40,
-                           min_lookback: float = 1e-3) -> np.ndarray:
+                           min_lookback: float = 1e-2) -> np.ndarray:
     """Lookback-time bin edges in Gyr, starting in 0, then log-spaced between
     ``min_lookback`` and ``today``."""
     if n_bins < 1:
@@ -2159,7 +2159,7 @@ def reconstruct_sfh(
     module_name: Optional[str] = None,
     lookback_edges: Optional[Sequence[float]] = None,
     n_bins: int = 40,
-    min_lookback: float = 1e-3,
+    min_lookback: float = 1e-2,
     taus: Sequence[float] = (0.01, 0.1, 1.0),
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
     weight_key: str = "weight",

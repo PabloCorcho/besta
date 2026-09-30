@@ -37,8 +37,8 @@ def parser_setup():
                      help="Also store the per-sample SFHs (not only percentiles)")
     sfh.add_argument("--sfh_n_bins", type=int, default=40,
                      help="Number of log-spaced lookback-time bins (default: 40)")
-    sfh.add_argument("--sfh_min_lookback", type=float, default=1e-3,
-                     help="Upper edge of the first lookback bin in Gyr (default: 1e-3)")
+    sfh.add_argument("--sfh_min_lookback", type=float, default=1e-2,
+                     help="Upper edge of the first lookback bin in Gyr (default: 1e-2)")
     sfh.add_argument("--sfh_lookback_edges", type=str, default=None,
                      help="Comma-separated lookback bin edges in Gyr, starting at 0 "
                           "(overrides --sfh_n_bins/--sfh_min_lookback)")
