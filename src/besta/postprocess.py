@@ -1320,11 +1320,14 @@ class ResultsSummary:
 # -----------------------------------------------------------------------------
 #
 # Non-parametric SFH models sampled with ``use_transforms = T`` store latent
-# (unit-cube) variables in the results. The transforms used by BESTA map the
-# uniform latent prior onto a uniform prior over the physical ordered region,
-# so their Jacobian is constant: transformed samples are physical posterior
-# samples with unchanged weights, and the ``post`` column remains a valid
-# (unnormalised) physical log-posterior.
+# variables in the results. The transforms are bijections, so transformed
+# samples are physical posterior samples with unchanged weights. Most of them
+# (the unit-cube transforms) map the uniform latent prior onto a uniform prior
+# over the physical ordered region; their Jacobian is constant and the
+# ``post`` column remains a valid (unnormalised) physical log-posterior. The
+# ``log_sfr_jumps`` latent space of ``FixedMassFracSFH`` does not: its prior
+# is uniform in the jumps, and ``post`` is the log-posterior density in the
+# latent space.
 
 _SFH_SPACE_META_KEY = "besta_sfh_space"
 
@@ -1455,8 +1458,10 @@ def latent_to_physical_table(
 
     Notes
     -----
-    The weights and the ``post`` column are unchanged: the SFH transforms
-    have a constant Jacobian (see the section comment above).
+    The weights and the ``post`` column are unchanged. For transforms with a
+    constant Jacobian ``post`` is also the physical log-posterior; for
+    ``latent_space = "log_sfr_jumps"`` it stays the latent-space density (see
+    the section comment above).
     """
     out = table.copy()
     if table.meta.get(_SFH_SPACE_META_KEY) == "physical":
