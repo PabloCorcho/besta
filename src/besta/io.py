@@ -216,6 +216,67 @@ def _parse_value(value: str):
     parsed = [_parse_token(token) for token in tokens]
     return _sequence_to_numpy(parsed)
 
+_INI_SEPARATORS = set(" \t,()[]'\"")
+
+
+def _format_ini_token(value) -> str:
+    """Text of one parsed ini token (inverse of :func:`_parse_token`)."""
+    if isinstance(value, (bool, np.bool_)):
+        return "T" if value else "F"
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        return repr(float(value))
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return "(" + ", ".join(_format_ini_token(v) for v in value) + ")"
+    text = str(value)
+    if not text or _INI_SEPARATORS & set(text):
+        quote = '"' if '"' not in text else "'"
+        return f"{quote}{text}{quote}"
+    return text
+
+
+def ini_value_to_string(value) -> str:
+    """Write a value parsed by :func:`_parse_value` back as ini text.
+
+    ``_parse_value(ini_value_to_string(v))`` reproduces ``v`` (numbers,
+    booleans, strings and nested groups such as ``(0.3, 0.5), key=value``).
+    """
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_ini_token(v) for v in value)
+    if isinstance(value, np.ndarray):
+        return ", ".join(_format_ini_token(v) for v in value.ravel())
+    if isinstance(value, str):
+        return value
+    return _format_ini_token(value)
+
+
+def _needs_ini_string(value) -> bool:
+    """Parsed values that a CosmoSIS DataBlock cannot store."""
+    return isinstance(value, (list, tuple)) and any(
+        isinstance(v, (list, tuple, np.ndarray, dict)) for v in value)
+
+
+def datablock_safe_options(options: Mapping[str, Any]) -> Dict[str, Any]:
+    """Copy of parsed ini options that :meth:`DataBlock.from_dict` accepts.
+
+    Values mixing groups and scalars (e.g. ``SFHArgs = (0.3, 0.5),
+    min_last_interval=1e-4``) are written back as ini text, which is what the
+    modules receive from CosmoSIS at runtime. Other values are unchanged.
+    ``options`` may be a section (``{key: value}``) or a whole configuration
+    (``{section: {key: value}}``).
+    """
+    out = {}
+    for key, value in options.items():
+        if isinstance(value, Mapping):
+            out[key] = datablock_safe_options(value)
+        elif _needs_ini_string(value):
+            out[key] = ini_value_to_string(value)
+        else:
+            out[key] = value
+    return out
+
+
 def string_to_func_args(text: str):
     """Parse a string of the form 'arg1, arg2, key=value' into separate args and kwargs.
     
