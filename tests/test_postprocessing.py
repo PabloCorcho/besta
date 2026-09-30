@@ -598,6 +598,28 @@ class TestSFHReconstruction(unittest.TestCase):
                                    rec.percentile_values("ssfr"))
         self.assertIn("stars.sfh--t_at_frac_0.5000", back.sample_table.colnames)
 
+    def test_unknown_option_is_rejected(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        with self.assertRaises(TypeError):
+            reconstruct_sfh_from_file(self.path, nbins=5)
+
+    def test_figure(self):
+        from matplotlib import pyplot as plt
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=6)
+        fig, axes = rec.make_figure()
+        self.assertEqual(len(axes), 3)
+        plt.close(fig)
+        with self.assertRaises(ValueError):
+            rec._plot_percentiles("ssfr_tau")
+        rec.metallicity = None
+        rec._percentile_cache.pop("metallicity", None)
+        with self.assertRaises(ValueError):
+            rec._plot_percentiles("metallicity")
+        fig, axes = rec.make_figure()
+        self.assertEqual(len(axes), 2)
+        plt.close(fig)
+
     def test_command_line(self):
         from besta.cli.besta_postprocess import main
         output = os.path.join(self.tmp.name, "cli_sfh.fits")
