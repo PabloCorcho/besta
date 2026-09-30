@@ -19,6 +19,66 @@ from besta.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
+# Keys of the ``sfh_reconstruction`` settings of :meth:`MainPipeline.execute_all`
+_SFH_SETTINGS_DEFAULTS = {
+    "output": None,        # FITS file; default <results>_sfh.fits
+    "samples": False,      # also store the per-sample SFHs
+    "plot": False,         # also write a percentile figure
+    "plot_output": None,   # figure file; default <results>_sfh.png
+    "options": None,       # keyword arguments of postprocess.reconstruct_sfh
+}
+
+
+def normalize_sfh_reconstruction_settings(settings):
+    """Validate the ``sfh_reconstruction`` settings of the pipeline managers.
+
+    Parameters
+    ----------
+    settings : None, bool or dict
+        ``None``/``False`` disables the reconstruction, ``True`` enables it
+        with the defaults. A dict may contain ``output``, ``samples``,
+        ``plot``, ``plot_output`` and ``options`` (keyword arguments of
+        :func:`besta.postprocess.reconstruct_sfh`, e.g. ``n_bins``,
+        ``lookback_edges``, ``taus``, ``max_samples``, ``burn_in``).
+
+    Returns
+    -------
+    dict or None
+        Complete settings, or ``None`` if the reconstruction is disabled.
+
+    Raises
+    ------
+    ValueError
+        For unknown settings or reconstruction options, so that mistakes are
+        caught before any fit is run.
+    """
+    if settings is None or settings is False:
+        return None
+    if settings is True:
+        settings = {}
+    if not isinstance(settings, dict):
+        raise TypeError("sfh_reconstruction must be None, a bool or a dict.")
+    unknown = set(settings) - set(_SFH_SETTINGS_DEFAULTS)
+    if unknown:
+        raise ValueError(
+            f"Unknown sfh_reconstruction settings: {sorted(unknown)}; "
+            f"expected {sorted(_SFH_SETTINGS_DEFAULTS)}.")
+    out = dict(_SFH_SETTINGS_DEFAULTS)
+    out.update(settings)
+    out["options"] = dict(out["options"] or {})
+
+    import inspect
+    from besta.postprocess import reconstruct_sfh
+
+    accepted = set(inspect.signature(reconstruct_sfh).parameters) - {"table", "ini"}
+    unknown = set(out["options"]) - accepted
+    if unknown:
+        raise ValueError(
+            f"Unknown SFH reconstruction options: {sorted(unknown)}; "
+            f"expected a subset of {sorted(accepted)}.")
+    return out
+
+
 class MainPipeline(object):
     """BESTA Pipeline manager.
 
@@ -163,16 +223,97 @@ class MainPipeline(object):
             logger.info("Physical-space results table: %s", path)
         return path
 
-    def execute_all(self, plot_result=False, **kwargs):
-        """Execute all sub-pipelines."""
+    def write_sfh_reconstruction(self, reader, settings, step=None):
+        """Reconstruct the posterior SFH of a finished run and save it.
+
+        Parameters
+        ----------
+        reader : :class:`besta.io.Reader`
+            Reader of the run (results loaded).
+        settings : dict
+            Output of :func:`normalize_sfh_reconstruction_settings`.
+        step : int, optional
+            Index of the sub-pipeline. An explicit ``output``/``plot_output``
+            gets the suffix ``_step<step>`` when the pipeline has several
+            sub-pipelines, so that they do not overwrite each other.
+
+        Returns
+        -------
+        str or None
+            Path of the FITS file, or ``None`` if nothing was written (no SFH
+            model in the run, or an error, which is logged and does not stop
+            the pipeline).
+        """
+        from besta import postprocess
+
+        if not postprocess.find_sfh_modules(reader.ini):
+            logger.info("No SFH model in this run; skipping the SFH reconstruction.")
+            return None
+
+        results = str(reader.ini["output"]["filename"])
+        root = os.path.splitext(results)[0]
+        multi_step = step is not None and len(self.pipelines_config) > 1
+
+        def output_path(explicit, suffix):
+            if explicit is None:
+                return root + suffix
+            if multi_step:
+                base, ext = os.path.splitext(explicit)
+                return f"{base}_step{step}{ext}"
+            return explicit
+
+        options = dict(settings["options"])
+        if options.get("burn_in", 0) and "nwalkers" not in options:
+            try:
+                options["nwalkers"] = int(reader.walkers or 1)
+            except (KeyError, TypeError, ValueError):
+                options["nwalkers"] = 1
+            logger.info("Burn-in of %d samples per walker (%d walkers).",
+                        options["burn_in"], options["nwalkers"])
+
+        try:
+            reconstruction = postprocess.reconstruct_sfh_from_reader(reader, **options)
+            output = output_path(settings["output"], "_sfh.fits")
+            reconstruction.write_fits(output, include_samples=settings["samples"])
+        except Exception:
+            logger.exception("SFH reconstruction failed for %s.", results)
+            return None
+        logger.info("SFH reconstruction written to %s", output)
+
+        if settings["plot"]:
+            plot_output = output_path(settings["plot_output"], "_sfh.png")
+            fig = None
+            try:
+                fig, _ = reconstruction.make_figure()
+                fig.savefig(plot_output, bbox_inches="tight")
+                logger.info("SFH percentile plot written to %s", plot_output)
+            except Exception:
+                logger.exception("SFH plot failed for %s.", results)
+            finally:
+                if fig is not None:
+                    plt.close(fig)
+        return output
+
+    def execute_all(self, plot_result=False, sfh_reconstruction=None):
+        """Execute all sub-pipelines.
+
+        Parameters
+        ----------
+        plot_result : bool, optional
+            Plot the best-fit solution of each module after each run.
+        sfh_reconstruction : None, bool or dict, optional
+            Reconstruct the posterior SFH after each run and write it to a
+            FITS file (see :func:`normalize_sfh_reconstruction_settings`).
+        """
+        sfh_settings = normalize_sfh_reconstruction_settings(sfh_reconstruction)
         logger.info("Executing all pipelines")
         prev_solution = None
-        for subpipe_config, n_cores, ini_filename, ini_values_filename in zip(
+        for step, (subpipe_config, n_cores, ini_filename, ini_values_filename) in enumerate(zip(
             self.pipelines_config,
             self.n_cores_list,
             self.ini_files,
             self.ini_values_files,
-        ):
+        )):
             if prev_solution is not None:
                 logger.info("Updating configuration file with previous run results")
                 module_name = subpipe_config["pipeline"]["modules"].replace(",", " ").split()[0]
@@ -231,24 +372,9 @@ class MainPipeline(object):
                             par_module,
                             figname,
                         )
-            # Extract SFH reconstruction and write to FITS
-            if kwargs.get("sfh_reconstruction", False):
-                from besta.postprocess import reconstruct_sfh_from_reader
-                reconstruction = reconstruct_sfh_from_reader(reader, **kwargs)
-                output = kwargs.get("sfh_output", None)
-                if output is None:
-                    output = os.path.splitext(subpipe_config["output"]["filename"])[0] + "_sfh.fits"
-                reconstruction.write_fits(output, include_samples=kwargs.get("sfh_samples", False))
-                logger.info("SFH reconstruction written to %s", output)
-                # make plot if requested
-                if kwargs.get("sfh_plot", False):
-                    plot_output = kwargs.get("sfh_plot_output", None)
-                    if plot_output is None:
-                        plot_output = os.path.splitext(subpipe_config["output"]["filename"])[0] + "_sfh.png"
-                    fig, axs = reconstruction.make_figure()
-                    fig.savefig(plot_output)
-                    logger.info("SFH percentile plot written to %s", plot_output)
-                    plt.close(fig)
+            # Posterior SFH on a lookback-time grid (FITS, optional figure)
+            if sfh_settings is not None:
+                self.write_sfh_reconstruction(reader, sfh_settings, step=step)
             # Check for section postprocess
             #TODO
         return 0
@@ -263,7 +389,8 @@ def _run_main_pipeline_job(job):
         ini_files=job["ini_files"],
         ini_values_files=job["ini_values_files"],
     )
-    status = pipeline.execute_all(plot_result=job["plot_result"])
+    status = pipeline.execute_all(plot_result=job["plot_result"],
+                                  sfh_reconstruction=job.get("sfh_reconstruction"))
     return {"index": job["index"], "status": status}
 
 
@@ -350,7 +477,9 @@ class BatchPipeline(object):
             )
         return pipelines
 
-    def _build_jobs(self, plot_result=False, **kwargs):
+    def _build_jobs(self, plot_result=False, sfh_reconstruction=None):
+        # Validate once, before any process is started
+        sfh_reconstruction = normalize_sfh_reconstruction_settings(sfh_reconstruction)
         jobs = []
         for index, (pipeline_config, n_cores, ini_file, ini_values_file) in enumerate(
             zip(
@@ -368,24 +497,29 @@ class BatchPipeline(object):
                     "ini_files": ini_file,
                     "ini_values_files": ini_values_file,
                     "plot_result": plot_result,
-                    **kwargs,
+                    "sfh_reconstruction": sfh_reconstruction,
                 }
             )
         return jobs
 
-    def run_single_pipeline(self, index, plot_result=False, **kwargs):
-        """Run one independent pipeline by index."""
-        jobs = self._build_jobs(plot_result=plot_result, **kwargs)
+    def run_single_pipeline(self, index, plot_result=False, sfh_reconstruction=None):
+        """Run one independent pipeline by index.
+
+        See :meth:`MainPipeline.execute_all` for ``sfh_reconstruction``.
+        """
+        jobs = self._build_jobs(plot_result=plot_result,
+                                sfh_reconstruction=sfh_reconstruction)
         if index < 0 or index >= len(jobs):
             raise IndexError(f"Pipeline index {index} out of range")
         return _run_main_pipeline_job(jobs[index])["status"]
 
-    def run_all_pipelines(self, plot_result=False, **kwargs):
+    def run_all_pipelines(self, plot_result=False, sfh_reconstruction=None):
         """Run all configured MainPipeline instances in parallel."""
         from multiprocessing import get_context
 
         self.cpu_info()
-        jobs = self._build_jobs(plot_result=plot_result, **kwargs)
+        jobs = self._build_jobs(plot_result=plot_result,
+                                sfh_reconstruction=sfh_reconstruction)
         if not jobs:
             logger.info("No pipelines to run")
             return []
