@@ -270,9 +270,8 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             sfh_model.parse_datablock(block)
         
         # Here we compute the luminosity by we call it flux and rescale later
-        flux_model = sfh_model.model.compute_SED(
-            self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False
-        ).to_value(self._default_luminosity_units)
+        flux_model = self.luminosity_values(sfh_model.model.compute_SED(
+            self.config["ssp_model"], t_obs=sfh_model.today, allow_negative=False))
 
         # Apply dust extinction
         dust_model = self.config["extinction_law"]

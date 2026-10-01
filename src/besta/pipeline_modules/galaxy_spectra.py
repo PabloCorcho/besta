@@ -41,8 +41,8 @@ class GalaxySpectraModule(SpectraFitModule):
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False)
         # Synthesis
-        flux_model = galaxy.emission_spectrum(
-            to_obs_frame=False).to_value(self._default_luminosity_units) / self.config["dl_sq"]
+        flux_model = self.luminosity_values(galaxy.emission_spectrum(
+            to_obs_frame=False)) / self.config["dl_sq"]
 
         # Kinematics: convolve and trim to the observed grid
         self._losvd_kernel.parse_parameters(block)
@@ -61,13 +61,8 @@ class GalaxySpectraModule(SpectraFitModule):
             block["extra", "stellar_mass"] = np.log10(
                 sfh_model.model.stellar_mass_formed(
                     sfh_model.today).to_value("Msun"))
-        # Save SFH mass-fraction times
-        if self.config.get("save_t_frac_at", False):
-            for frac in self.config.get("t_frac_at", []):
-                self.get_t_frac_at(block, self.config["sfh_model"], frac)
-        if self.config.get("save_ssfr_over_tau", False):
-            for tau in self.config.get("ssfr_tau", []):
-                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
+        # Save SFH mass-fraction times and sSFRs (one mass-history evaluation)
+        self.save_sfh_extras(block, self.config["sfh_model"])
 
         return flux_model, weights
 

@@ -53,9 +53,8 @@ class FullSpectralFitModule(SpectraFitModule):
         )
 
         mass_scale = 1e10 if sfh_model.use_mass_normalization else 1.0
-        flux_model = mass_scale * luminosity_model.to_value(
-            self._default_luminosity_units
-        ) / self.config["dl_sq"]
+        flux_model = mass_scale * self.luminosity_values(
+            luminosity_model) / self.config["dl_sq"]
 
         # Apply dust extinction in the rest frame, before LOSVD convolution.
         dust_model = self.config["extinction_law"]
@@ -86,13 +85,8 @@ class FullSpectralFitModule(SpectraFitModule):
                 ).to_value("Msun")
             )
 
-        # Save SFH mass-fraction times
-        if self.config.get("save_t_frac_at", False):
-            for frac in self.config.get("t_frac_at", []):
-                self.get_t_frac_at(block, self.config["sfh_model"], frac)
-        if self.config.get("save_ssfr_over_tau", False):
-            for tau in self.config.get("ssfr_tau", []):
-                self.get_ssfr_over_tau(block, self.config["sfh_model"], tau)
+        # Save SFH mass-fraction times and sSFRs (one mass-history evaluation)
+        self.save_sfh_extras(block, self.config["sfh_model"])
 
         return flux_model, weights
 
