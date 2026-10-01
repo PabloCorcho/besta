@@ -501,6 +501,10 @@ def test_full_spectral_fit_make_observable(tmp_path):
     np.testing.assert_allclose(mod.config["ssfr_tau"], [0.1, 1.0])
     assert np.isfinite(block["extra", "ssfr_over_tau_0.1000"])
     assert np.isfinite(block["extra", "ssfr_over_tau_1.0000"])
+    # SSP grid stored as C-contiguous float64 (single BLAS product in compute_SED)
+    sed = mod.config["ssp_model"].L_lambda
+    assert sed.dtype == np.float64
+    assert sed.value.flags.c_contiguous
 
 
 def test_full_spectral_fit_fixed_time_uses_absolute_mass(tmp_path):
