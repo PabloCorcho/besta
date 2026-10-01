@@ -87,6 +87,25 @@ def ml_amplitude(data, model, inv_var):
 _FWHM_TO_SIGMA = 2.355
 
 
+def _ensure_float64_sed(ssp):
+    """Store the SSP SEDs as a C-contiguous float64 array (exact upcast).
+
+    Keeps the LSF convolution in double precision and lets
+    ``pst.cem.ChemicalEvolutionModel.compute_SED`` use a single BLAS
+    matrix-vector product instead of a mixed-precision ``einsum``. Only SSP
+    classes using the base ``L_lambda`` property are converted (in models with
+    nebular emission the getter and setter refer to different arrays).
+    """
+    if type(ssp).L_lambda is not SSP.SSPBase.L_lambda:
+        return
+    sed = ssp.L_lambda
+    values = getattr(sed, "value", sed)
+    if values.dtype == np.float64 and values.flags.c_contiguous:
+        return
+    values = np.ascontiguousarray(values, dtype=np.float64)
+    ssp.L_lambda = values << sed.unit if hasattr(sed, "unit") else values
+
+
 def rest_frame_instrumental_fwhm(rest_wavelength, spectrum_rest_wavelength,
                                  lsf_fwhm_obs, redshift):
     """Instrumental LSF FWHM expressed in rest-frame wavelength units.
@@ -389,6 +408,7 @@ class BaseModule(ClassModule):
             # Load the SSP model
             ssp = SSP.SSPBase.from_pickle(
                 os.path.expandvars(options["SSPModelFromPickle"]))
+            _ensure_float64_sed(ssp)
 
             self.config["ssp_model"] = ssp
             self.config["ssp_sed"] = ssp.L_lambda.value.reshape(
@@ -471,6 +491,7 @@ class BaseModule(ClassModule):
 
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
+        _ensure_float64_sed(ssp)
         _log("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
         # Convolve with instrumental LSF
         if "lsf" in self.config:
@@ -528,6 +549,7 @@ class BaseModule(ClassModule):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda[ith], lsf_sigma_pixels)
 
+        _ensure_float64_sed(ssp)
         self.config["ssp_model"] = ssp
         self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
         # Grid parameters
@@ -589,11 +611,99 @@ class BaseModule(ClassModule):
 
         if options.has_value("save_ssfr_over_tau"):
             self.config["save_ssfr_over_tau"] = True
-            self.config["ssfr_tau"] = np.array(
-                options["save_ssfr_over_tau"], dtype=float)
+            self.config["ssfr_tau"] = np.atleast_1d(np.array(
+                options["save_ssfr_over_tau"], dtype=float))
             _log("Will save the SSFR over tau at times = ",
                  self.config["ssfr_tau"])
+        self._prepare_sfh_extras()
         _log("Configuration done")
+
+    # Time resolution of the mass-history grid used for ``t_frac_at_*``
+    T_FRAC_TIME_RESOLUTION = 10 << u.Myr
+
+    def _prepare_sfh_extras(self, sfh_model=None):
+        """Precompute the times at which the saved SFH summaries are evaluated.
+
+        ``t_frac_at_*`` uses a regular cosmic-time grid from 0 to today
+        (resolution :attr:`T_FRAC_TIME_RESOLUTION`, as in
+        :meth:`pst.cem.ChemicalEvolutionModel.time_at_stellar_mass_frac`) and
+        ``ssfr_over_tau_*`` needs ``today - tau`` and today. All these times are
+        concatenated so that :meth:`save_sfh_extras` evaluates the mass history
+        with a single ``stellar_mass_formed`` call.
+        """
+        save_frac = bool(self.config.get("save_t_frac_at", False))
+        save_ssfr = bool(self.config.get("save_ssfr_over_tau", False))
+        self.config["sfh_extras"] = None
+        if not (save_frac or save_ssfr):
+            return
+
+        if sfh_model is None:
+            sfh_model = self.config["sfh_model"]
+        today = float(sfh_model.today.to_value(u.Gyr))
+        fractions = (np.atleast_1d(np.asarray(self.config["t_frac_at"], dtype=float))
+                     if save_frac else np.empty(0))
+        taus = (np.atleast_1d(np.asarray(self.config["ssfr_tau"], dtype=float))
+                if save_ssfr else np.empty(0))
+        if np.any(taus <= 0):
+            raise ValueError("save_ssfr_over_tau: tau must be positive.")
+        if np.any(taus > today):
+            raise ValueError(
+                f"save_ssfr_over_tau: tau cannot exceed the age of the Universe "
+                f"at the source ({today:.4f} Gyr).")
+
+        if save_frac:
+            time_res = self.T_FRAC_TIME_RESOLUTION.to_value(u.Gyr)
+            frac_grid = np.linspace(0, today, int(np.ceil(today / time_res)) + 1)
+        else:
+            frac_grid = np.empty(0)
+        times = np.concatenate((frac_grid, today - taus, [today])) << u.Gyr
+        times.flags.writeable = False
+        self.config["sfh_extras"] = {
+            "today": today, "times": times, "frac_grid": frac_grid,
+            "fractions": fractions, "taus": taus,
+        }
+
+    def save_sfh_extras(self, datablock, sfh_model):
+        """Save ``t_frac_at_*`` and ``ssfr_over_tau_*`` in the ``extra`` section.
+
+        Equivalent to :meth:`get_t_frac_at` and :meth:`get_ssfr_over_tau` for
+        every requested fraction and timescale, but evaluates the mass history
+        once (plain floats, no unit conversions per value).
+        """
+        extras = self.config.get("sfh_extras")
+        if extras is None:
+            return datablock
+        if sfh_model.today.to_value(u.Gyr) != extras["today"]:
+            # The observing time changed (e.g. a new redshift): rebuild the times
+            self._prepare_sfh_extras(sfh_model)
+            extras = self.config["sfh_extras"]
+        mass = sfh_model.model.stellar_mass_formed(extras["times"])
+        mass = np.asarray(getattr(mass, "value", mass), dtype=float)
+        mass_today = mass[-1]
+
+        grid = extras["frac_grid"]
+        if grid.size:
+            # Same interpolation as pst ChemicalEvolutionModel.time_at_stellar_mass_frac
+            frac_history = mass[:grid.size] / mass[grid.size - 1]
+            for frac in extras["fractions"]:
+                idx = int(np.clip(np.searchsorted(frac_history, frac),
+                                  1, grid.size - 1))
+                w = ((frac - frac_history[idx - 1])
+                     / (frac_history[idx] - frac_history[idx - 1]))
+                datablock["extra", f"t_frac_at_{frac:.4f}"] = float(
+                    grid[idx - 1] * (1 - w) + grid[idx] * w)
+
+        taus = extras["taus"]
+        if taus.size:
+            # Same as pst ChemicalEvolutionModel.average_ssfr_over_tau
+            mass_tau = mass[grid.size:grid.size + taus.size]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ssfr = (mass_today - mass_tau) / mass_today / (taus * 1e9)
+                log_ssfr = np.log10(np.clip(ssfr, 1e-15, 1e-5))
+            for tau, value in zip(taus, log_ssfr):
+                # TODO: match naming convention with SFH module
+                datablock["extra", f"ssfr_over_tau_{tau:.4f}"] = float(value)
+        return datablock
 
     def get_t_frac_at(self, datablock, sfh_model, frac: float):
         time = sfh_model.model.time_at_stellar_mass_frac(
@@ -946,6 +1056,22 @@ class SpectraFitModule(BaseModule):
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
+
+    def luminosity_values(self, luminosity):
+        """Values of ``luminosity`` in ``_default_luminosity_units``.
+
+        Same as ``luminosity.to_value(self._default_luminosity_units)``, but
+        the conversion factor is computed once per input unit. Otherwise
+        astropy re-parses the unit string and decomposes both units on every
+        call (about 0.5 ms per posterior evaluation).
+        """
+        key = (luminosity.unit, self._default_luminosity_units)
+        cache = self.__dict__.setdefault("_luminosity_factor_cache", {})
+        factor = cache.get(key)
+        if factor is None:
+            factor = float(luminosity.unit.to(self._default_luminosity_units))
+            cache[key] = factor
+        return luminosity.value * factor
 
     def convolve_losvd_and_trim(self, flux_model):
         """Convolve the rest-frame model with the LOSVD and trim the buffer.
