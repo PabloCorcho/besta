@@ -1854,9 +1854,35 @@ def _is_fixed_value(value) -> bool:
     return np.ndim(value) == 0 and isinstance(value, (int, float, np.number, bool))
 
 
+def _weighted_mean_samples(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Weighted mean over the samples (axis 0), point by point.
+
+    Non-finite values are ignored (with their weights), as in
+    :func:`weighted_quantile`. Returns NaN where no finite value remains.
+    """
+    values = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float).reshape((-1,) + (1,) * (values.ndim - 1))
+    valid = np.isfinite(values) & np.isfinite(w)
+    w = np.where(valid, w, 0.0)
+    norm = w.sum(axis=0)
+    total = (w * np.where(valid, values, 0.0)).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(norm > 0, total / np.where(norm > 0, norm, 1.0), np.nan)
+
+
+_SFH_QUANTITIES = ("mass_fraction", "ssfr", "metallicity", "ssfr_tau",
+                   "log_stellar_mass")
+
+
 @dataclass
 class SFHReconstruction:
     """Posterior SFHs evaluated on a grid of lookback times.
+
+    Every quantity is summarised by its weighted percentiles
+    (:meth:`percentile_values`) and its weighted posterior mean
+    (:meth:`mean_values`). The mean is the estimator to use when combining
+    several reconstructions (e.g. averaging or stacking runs), since it is
+    linear in the samples while the percentiles are not.
 
     Attributes
     ----------
@@ -1867,11 +1893,18 @@ class SFHReconstruction:
     mass_fraction, ssfr, metallicity, ssfr_tau : ndarray
         Per-sample values, shapes (n_samples, n_bins + 1), (n_samples, n_bins),
         (n_samples, n_bins + 1) and (n_samples, n_tau). ``metallicity`` is
-        ``None`` for models without an enrichment history.
+        ``None`` for models without an enrichment history. ``mass_fraction``
+        and the sSFRs are relative to the total mass formed at the time of
+        observation.
     taus : ndarray
         Timescales [Gyr] of ``ssfr_tau``.
     weights : ndarray, shape (n_samples,)
-        Sample weights used for the percentiles.
+        Sample weights used for the percentiles and the means.
+    log_stellar_mass : ndarray, shape (n_samples,), optional
+        ``log10(M / Msun)`` of each sample (the ``extra--stellar_mass``
+        column of the run), i.e. the mass that ``mass_fraction`` and the sSFRs
+        are normalised to. ``None`` if the run did not store it. Non-finite
+        values (e.g. a failed normalisation) are ignored in the statistics.
     sample_table : astropy.table.Table
         Per-sample input values (SFH parameters, ``post``, weights, ...).
     meta : dict
@@ -1886,9 +1919,13 @@ class SFHReconstruction:
     taus: np.ndarray
     weights: np.ndarray
     metallicity: Optional[np.ndarray] = None
+    log_stellar_mass: Optional[np.ndarray] = None
     sample_table: Optional[Table] = None
     meta: Dict[str, Any] = field(default_factory=dict)
-    _percentile_cache: Dict[str, np.ndarray] = field(default_factory=dict, repr=False)
+    _percentile_cache: Dict[str, np.ndarray] = field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    _mean_cache: Dict[str, np.ndarray] = field(
+        default_factory=dict, init=False, repr=False, compare=False)
 
     # --- Derived grids --------------------------------------------------------
     @property
@@ -1907,31 +1944,72 @@ class SFHReconstruction:
     def n_samples(self) -> int:
         return int(self.weights.size)
 
-    # --- Percentiles ----------------------------------------------------------
+    # --- Summary statistics ---------------------------------------------------
     def quantity(self, name: str) -> Optional[np.ndarray]:
-        """Per-sample array of ``mass_fraction``, ``ssfr``, ``metallicity`` or ``ssfr_tau``."""
-        if name not in ("mass_fraction", "ssfr", "metallicity", "ssfr_tau"):
+        """Per-sample array of ``mass_fraction``, ``ssfr``, ``metallicity``,
+        ``ssfr_tau`` or ``log_stellar_mass``."""
+        if name not in _SFH_QUANTITIES:
             raise KeyError(f"Unknown SFH quantity '{name}'.")
         return getattr(self, name)
 
     def percentile_values(self, name: str) -> Optional[np.ndarray]:
-        """Weighted percentiles of a quantity, shape (n_percentiles, n_points)."""
+        """Weighted percentiles of a quantity.
+
+        Shape (n_percentiles, n_points), or (n_percentiles,) for
+        ``log_stellar_mass``. ``None`` if the quantity is not available.
+        """
         if name in self._percentile_cache:
             return self._percentile_cache[name]
         values = self.quantity(name)
         if values is None:
             return None
-        if values.shape[0] == 0:
-            result = np.full((len(self.percentiles), values.shape[1]), np.nan)
+        n_points = int(np.prod(values.shape[1:]))
+        flat = values.reshape(values.shape[0], n_points)
+        if flat.shape[0] == 0:
+            result = np.full((len(self.percentiles), n_points), np.nan)
         else:
             result = np.column_stack([
-                weighted_quantile(values[:, j], self.weights, self.percentiles)
-                for j in range(values.shape[1])])
+                weighted_quantile(flat[:, j], self.weights, self.percentiles)
+                for j in range(n_points)])
+        result = result.reshape((len(self.percentiles),) + values.shape[1:])
         self._percentile_cache[name] = result
         return result
 
+    def mean_values(self, name: str) -> Optional[np.ndarray]:
+        """Weighted posterior mean of a quantity.
+
+        Shape (n_points,), or () for ``log_stellar_mass``. ``None`` if the
+        quantity is not available. Unlike the percentiles, means can be
+        averaged across reconstructions (e.g. to combine several runs).
+        """
+        if name in self._mean_cache:
+            return self._mean_cache[name]
+        values = self.quantity(name)
+        if values is None:
+            return None
+        result = _weighted_mean_samples(values, self.weights)
+        self._mean_cache[name] = result
+        return result
+
+    @property
+    def stellar_mass_mean(self) -> Optional[float]:
+        """Weighted mean of the linear stellar mass [Msun].
+
+        ``log10(stellar_mass_mean)`` differs from ``mean_values(
+        "log_stellar_mass")`` (mean of the logarithm); use the linear mean to
+        add up or average masses across reconstructions.
+        """
+        if "stellar_mass" not in self._mean_cache:
+            if self.log_stellar_mass is None:
+                return None
+            with np.errstate(over="ignore"):
+                linear = 10.0 ** np.asarray(self.log_stellar_mass, dtype=float)
+            self._mean_cache["stellar_mass"] = _weighted_mean_samples(
+                linear, self.weights)
+        return float(self._mean_cache["stellar_mass"])
+
     def _plot_percentiles(self, name: str, ax=None, *, color="C0", alpha=0.25,
-                          **kwargs):
+                          show_mean: bool = True, **kwargs):
         """Plot the percentile bands of a quantity vs lookback time.
 
         Parameters
@@ -1943,15 +2021,18 @@ class SFHReconstruction:
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If ``None``, a new figure and axes are created.
         color : str
-            Colour of the bands and the median.
+            Colour of the bands, the median and the mean.
         alpha : float
             Opacity of each band (nested bands add up).
+        show_mean : bool
+            Also draw the posterior mean (dashed).
         **kwargs
             Passed to :func:`matplotlib.axes.Axes.fill_between`.
         """
-        if name == "ssfr_tau":
-            raise ValueError("'ssfr_tau' is not a function of lookback time; "
-                             "use percentile_values('ssfr_tau') and taus.")
+        if name in ("ssfr_tau", "log_stellar_mass"):
+            raise ValueError(f"'{name}' is not a function of lookback time; "
+                             f"use percentile_values('{name}') and "
+                             f"mean_values('{name}').")
         values = self.percentile_values(name)
         if values is None:
             raise ValueError(f"No values for '{name}' (e.g. no enrichment history).")
@@ -1979,11 +2060,34 @@ class SFHReconstruction:
             ax.plot(x, curve(values[mid]), color=color, lw=1.2,
                     drawstyle="steps-post" if step else "default",
                     label=f"{100 * quantiles[mid]:g}%")
+        if show_mean:
+            mean = self.mean_values(name)
+            if mean is not None and np.any(np.isfinite(mean)):
+                ax.plot(x, curve(mean), color=color, lw=1.2, ls="--",
+                        drawstyle="steps-post" if step else "default",
+                        label="Mean")
 
         ax.set_xlabel("Lookback time [Gyr]")
         ax.set_ylabel(name.replace("_", " ").capitalize())
         ax.legend(frameon=False, fontsize="small")
         return ax
+
+    def _stellar_mass_label(self) -> Optional[str]:
+        """``log M = mean [low, high]`` with the innermost percentile band."""
+        mean = self.mean_values("log_stellar_mass")
+        if mean is None or not np.isfinite(mean):
+            return None
+        label = rf"$\log_{{10}}(M_\star/M_\odot)$: mean {float(mean):.2f}"
+        quantiles = np.asarray(self.percentiles, dtype=float)
+        if quantiles.size >= 2:
+            values = self.percentile_values("log_stellar_mass")
+            order = np.argsort(quantiles)
+            n_pairs = quantiles.size // 2
+            low, high = order[n_pairs - 1], order[-n_pairs]
+            if np.isfinite(values[low]) and np.isfinite(values[high]):
+                label += (f" [{values[low]:.2f}, {values[high]:.2f}] "
+                          f"({100 * quantiles[low]:g}-{100 * quantiles[high]:g}%)")
+        return label
 
     def make_figure(self, figsize=(6, 6), **kwargs):
         """Make a figure with the percentiles of all quantities.
@@ -2002,6 +2106,10 @@ class SFHReconstruction:
         ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
         self._plot_percentiles("mass_fraction", ax=ax, **kwargs)
         ax.set_ylabel("Mass fraction")
+        mass_label = self._stellar_mass_label()
+        if mass_label:
+            ax.text(0.97, 0.95, mass_label, transform=ax.transAxes,
+                    ha="right", va="top", fontsize="small")
 
         ax = axes[1]
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
@@ -2034,26 +2142,32 @@ class SFHReconstruction:
         return fig, axes
 
     # --- I/O -----------------------------------------------------------------
-    def _percentile_table(self, name: str, prefix: str) -> Dict[str, np.ndarray]:
+    def _summary_table(self, name: str, prefix: str) -> Dict[str, np.ndarray]:
+        """``{prefix}_mean`` and ``{prefix}_pNN`` columns of a quantity."""
         values = self.percentile_values(name)
         if values is None:
             return {}
-        return {f"{prefix}_{_percentile_label(q)}": values[i]
-                for i, q in enumerate(self.percentiles)}
+        columns = {f"{prefix}_mean": np.atleast_1d(self.mean_values(name))}
+        columns.update({f"{prefix}_{_percentile_label(q)}": np.atleast_1d(values[i])
+                        for i, q in enumerate(self.percentiles)})
+        return columns
 
     def to_fits(self, include_samples: bool = False) -> fits.HDUList:
         """FITS representation.
 
-        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR percentiles per
-        lookback bin), ``SFH_EDGES`` (mass fraction and metallicity
-        percentiles at the bin edges), ``SSFR_TAU`` (sSFR averaged over the
-        last ``tau``). With ``include_samples``: ``SAMPLES`` (per-sample
+        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR per lookback bin),
+        ``SFH_EDGES`` (mass fraction and metallicity at the bin edges),
+        ``SSFR_TAU`` (sSFR averaged over the last ``tau``) and, if available,
+        ``STELLAR_MASS`` (one row: ``log_stellar_mass`` in log10(Msun) and
+        ``stellar_mass_mean`` in Msun). Every quantity has a ``*_mean`` column
+        (weighted posterior mean) and ``*_pNN`` columns (weighted
+        percentiles). With ``include_samples``: ``SAMPLES`` (per-sample
         table) and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC`` and
         ``SAMPLES_Z`` (rows = samples).
         """
         primary = fits.PrimaryHDU()
         header = primary.header
-        header["BESTASFH"] = (1, "BESTA SFH reconstruction format version")
+        header["BESTASFH"] = (2, "BESTA SFH reconstruction format version")
         header["NSAMPLES"] = (self.n_samples, "Posterior samples used")
         header["ESS"] = (float(effective_sample_size(self.weights))
                          if self.n_samples else 0.0, "Effective sample size")
@@ -2070,20 +2184,29 @@ class SFHReconstruction:
         bins = {"lookback_low": self.lookback_low,
                 "lookback_high": self.lookback_high,
                 "lookback_centre": self.lookback_centres}
-        bins.update(self._percentile_table("ssfr", "ssfr"))
+        bins.update(self._summary_table("ssfr", "ssfr"))
         edges = {"lookback": self.lookback_edges}
-        edges.update(self._percentile_table("mass_fraction", "mass_fraction"))
-        edges.update(self._percentile_table("metallicity", "metallicity"))
+        edges.update(self._summary_table("mass_fraction", "mass_fraction"))
+        edges.update(self._summary_table("metallicity", "metallicity"))
         taus = {"tau": self.taus}
-        taus.update(self._percentile_table("ssfr_tau", "ssfr"))
+        taus.update(self._summary_table("ssfr_tau", "ssfr"))
 
         hdus = [primary,
                 fits.BinTableHDU(Table(bins), name="SFH_BINS"),
                 fits.BinTableHDU(Table(edges), name="SFH_EDGES"),
                 fits.BinTableHDU(Table(taus), name="SSFR_TAU")]
+        if self.log_stellar_mass is not None:
+            mass = self._summary_table("log_stellar_mass", "log_stellar_mass")
+            mass["stellar_mass_mean"] = np.atleast_1d(self.stellar_mass_mean)
+            mass_hdu = fits.BinTableHDU(Table(mass), name="STELLAR_MASS")
+            mass_hdu.header["COMMENT"] = ("log_stellar_mass_* in log10(Msun); "
+                                          "stellar_mass_mean in Msun")
+            hdus.append(mass_hdu)
         if include_samples:
             samples = Table() if self.sample_table is None else self.sample_table.copy()
             samples["weight"] = self.weights
+            if self.log_stellar_mass is not None:
+                samples["log_stellar_mass"] = self.log_stellar_mass
             for j, tau in enumerate(self.taus):
                 samples[f"ssfr_tau_{tau:g}"] = self.ssfr_tau[:, j]
             hdus.append(fits.BinTableHDU(samples, name="SAMPLES"))
@@ -2108,9 +2231,11 @@ class SFHReconstruction:
     def from_fits(cls, path: str) -> "SFHReconstruction":
         """Read a file written by :meth:`write_fits`.
 
-        Without the sample HDUs, only the percentiles are available (the
-        per-sample arrays are empty and :meth:`percentile_values` returns the
-        stored percentiles).
+        Without the sample HDUs, only the summary statistics are available
+        (the per-sample arrays are empty and :meth:`percentile_values`,
+        :meth:`mean_values` and :attr:`stellar_mass_mean` return the stored
+        values). Files written before the means were added (format version 1)
+        have no stored means; :meth:`mean_values` then returns NaN.
         """
         with fits.open(os.path.expandvars(path)) as hdul:
             header = hdul[0].header
@@ -2118,6 +2243,8 @@ class SFHReconstruction:
             bins = Table(hdul["SFH_BINS"].data)
             edges = Table(hdul["SFH_EDGES"].data)
             taus_tab = Table(hdul["SSFR_TAU"].data)
+            mass_tab = (Table(hdul["STELLAR_MASS"].data)
+                        if "STELLAR_MASS" in hdul else None)
             has_samples = "SAMPLES" in hdul
             lookback_edges = np.asarray(edges["lookback"], dtype=float)
             taus = np.asarray(taus_tab["tau"], dtype=float)
@@ -2132,27 +2259,50 @@ class SFHReconstruction:
                 ssfr_tau = np.column_stack(
                     [np.asarray(samples[f"ssfr_tau_{tau:g}"], dtype=float) for tau in taus]
                 ) if taus.size else np.empty((weights.size, 0))
+                log_mass = (np.asarray(samples["log_stellar_mass"], dtype=float)
+                            if "log_stellar_mass" in samples.colnames else None)
             else:
                 samples, weights = None, np.empty(0)
                 ssfr = np.empty((0, lookback_edges.size - 1))
                 mfrac = np.empty((0, lookback_edges.size))
                 z = np.empty((0, lookback_edges.size)) if has_z else None
                 ssfr_tau = np.empty((0, taus.size))
+                log_mass = np.empty(0) if mass_tab is not None else None
             meta = {key.lower(): header[key] for key in
-                    ("SFHMODEL", "MODULE", "REDSHIFT", "TODAY", "SOURCE", "SFHSPACE")
+                    ("SFHMODEL", "MODULE", "REDSHIFT", "TODAY", "SOURCE",
+                     "SFHSPACE", "WEIGHTS")
                     if key in header}
             rec = cls(lookback_edges=lookback_edges, percentiles=percentiles,
                       mass_fraction=mfrac, ssfr=ssfr, ssfr_tau=ssfr_tau, taus=taus,
-                      weights=weights, metallicity=z, sample_table=samples, meta=meta)
+                      weights=weights, metallicity=z, log_stellar_mass=log_mass,
+                      sample_table=samples, meta=meta)
             if not has_samples:
                 def stored(table, prefix):
                     return np.vstack([np.asarray(table[f"{prefix}_{_percentile_label(q)}"],
                                                  dtype=float) for q in percentiles])
-                rec._percentile_cache["ssfr"] = stored(bins, "ssfr")
-                rec._percentile_cache["mass_fraction"] = stored(edges, "mass_fraction")
-                rec._percentile_cache["ssfr_tau"] = stored(taus_tab, "ssfr")
+
+                def stored_mean(table, prefix):
+                    col = f"{prefix}_mean"
+                    if col not in table.colnames:      # format version 1
+                        return None
+                    return np.asarray(table[col], dtype=float)
+
+                stored_tables = [("ssfr", bins, "ssfr"),
+                                 ("mass_fraction", edges, "mass_fraction"),
+                                 ("ssfr_tau", taus_tab, "ssfr")]
                 if has_z:
-                    rec._percentile_cache["metallicity"] = stored(edges, "metallicity")
+                    stored_tables.append(("metallicity", edges, "metallicity"))
+                for name, table, prefix in stored_tables:
+                    rec._percentile_cache[name] = stored(table, prefix)
+                    mean = stored_mean(table, prefix)
+                    if mean is not None:
+                        rec._mean_cache[name] = mean
+                if mass_tab is not None:
+                    prefix = "log_stellar_mass"
+                    rec._percentile_cache[prefix] = stored(mass_tab, prefix)[:, 0]
+                    rec._mean_cache[prefix] = np.asarray(stored_mean(mass_tab, prefix)[0])
+                    rec._mean_cache["stellar_mass"] = np.asarray(
+                        mass_tab["stellar_mass_mean"][0], dtype=float)
         return rec
 
 
@@ -2169,6 +2319,7 @@ def reconstruct_sfh(
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
     weight_key: str = "weight",
     posterior_key: str = "post",
+    stellar_mass_key: str = "extra--stellar_mass",
     burn_in: int = 0,
     nwalkers: int = 1,
     max_samples: Optional[int] = None,
@@ -2200,6 +2351,9 @@ def reconstruct_sfh(
     weight_key : str
         Column with sample weights (nested samplers); uniform weights are used
         if it is missing.
+    stellar_mass_key : str
+        Column with ``log10(M / Msun)`` of each sample, stored as
+        :attr:`SFHReconstruction.log_stellar_mass` (``None`` if missing).
     burn_in, nwalkers : int
         Discard the first ``burn_in`` samples of each walker.
     max_samples : int, optional
@@ -2318,9 +2472,15 @@ def reconstruct_sfh(
     sample_table = Table()
     for key, col in columns.items():
         sample_table[col] = _as_float_array(table[col])[used]
-    for col in (posterior_key, "extra--stellar_mass"):
+    for col in (posterior_key, stellar_mass_key):
         if col in table.colnames:
             sample_table[col] = _as_float_array(table[col])[used]
+    if stellar_mass_key in table.colnames:
+        log_stellar_mass = _as_float_array(table[stellar_mass_key])[used]
+    else:
+        log_stellar_mass = None
+        logger.info("No '%s' column: the stellar mass is not reconstructed.",
+                    stellar_mass_key)
 
     meta = {"sfhmodel": type(model).__name__, "module": module_name,
             "redshift": float(getattr(model, "redshift", 0.0) or 0.0),
@@ -2334,6 +2494,7 @@ def reconstruct_sfh(
         taus=taus,
         weights=weights_all[used],
         metallicity=np.array(zhist).reshape(-1, n_edges) if has_z else None,
+        log_stellar_mass=log_stellar_mass,
         sample_table=sample_table,
         meta=meta,
     )
