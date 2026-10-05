@@ -15,6 +15,9 @@ BASE_LOGGER = logging.getLogger("besta")
 stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(logging.Formatter(DEFAULT_FORMAT, DATE_FORMAT))
 BASE_LOGGER.addHandler(stream_handler)
+# Without a level, the logger inherits the root level (WARNING) and every
+# INFO message is dropped until setup_logging() is called.
+BASE_LOGGER.setLevel(logging.INFO)
 
 def setup_logging(
     level: str = "INFO",
