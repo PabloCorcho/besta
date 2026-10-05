@@ -186,6 +186,22 @@ class BaseModule(ClassModule):
     _default_flux_units = "1e-16 erg / (s cm2 Angstrom)"
     _default_luminosity_units = "1e-16 erg / (s Angstrom)"
 
+    def luminosity_values(self, luminosity):
+        """Values of ``luminosity`` in ``_default_luminosity_units``.
+
+        Same as ``luminosity.to_value(self._default_luminosity_units)``, but
+        the conversion factor is computed once per input unit. Otherwise
+        astropy re-parses the unit string and decomposes both units on every
+        call (about 0.5 ms per posterior evaluation).
+        """
+        key = (luminosity.unit, self._default_luminosity_units)
+        cache = self.__dict__.setdefault("_luminosity_factor_cache", {})
+        factor = cache.get(key)
+        if factor is None:
+            factor = float(luminosity.unit.to(self._default_luminosity_units))
+            cache[key] = factor
+        return luminosity.value * factor
+
     def __init__(self, options, *, alias=None, likelihood_kind=None, likelihood_method=None):
         """
         Set up the CosmoSIS module.
@@ -1056,22 +1072,6 @@ class SpectraFitModule(BaseModule):
         self.config["galaxy-params"] = params
         self.config["galaxy-sections"] = sections
         self.config["galaxy"] = galaxy
-
-    def luminosity_values(self, luminosity):
-        """Values of ``luminosity`` in ``_default_luminosity_units``.
-
-        Same as ``luminosity.to_value(self._default_luminosity_units)``, but
-        the conversion factor is computed once per input unit. Otherwise
-        astropy re-parses the unit string and decomposes both units on every
-        call (about 0.5 ms per posterior evaluation).
-        """
-        key = (luminosity.unit, self._default_luminosity_units)
-        cache = self.__dict__.setdefault("_luminosity_factor_cache", {})
-        factor = cache.get(key)
-        if factor is None:
-            factor = float(luminosity.unit.to(self._default_luminosity_units))
-            cache[key] = factor
-        return luminosity.value * factor
 
     def convolve_losvd_and_trim(self, flux_model):
         """Convolve the rest-frame model with the LOSVD and trim the buffer.
