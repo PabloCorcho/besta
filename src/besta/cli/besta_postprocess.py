@@ -16,6 +16,8 @@ def parser_setup():
                         help="Indicate that the input file is an ini file")
     parser.add_argument("--make_best_fit", action="store_true",
                         help="Generate best fit plots for each module")
+    parser.add_argument("--save_best_fit_data", action="store_true",
+                        help="Save best fit data to a FITS file")
     parser.add_argument("--make_corner_plot", action="store_true",
                         help="Generate corner plot for the results")
     parser.add_argument("--make_summary_statistics", action="store_true",
@@ -93,7 +95,7 @@ def load_reader(file, from_ini=False):
     reader.load_results()
     return reader
 
-def make_best_fit(file, from_ini=False):
+def make_best_fit(file, from_ini=False, save_data=False):
     reader = load_reader(file, from_ini)
     pprint("Loading maximum a posteriori (MAP) solution")
     solution = reader.get_maxlike_solution()
@@ -108,9 +110,20 @@ def make_best_fit(file, from_ini=False):
                     reader.ini["output"]["filename"].replace(".txt", "")
                     + f"_{par_module}_best_fit_solution.png",
                     )
-        pipeline_module.plot_solution(solution_datablock,
-                                      figname=figname)
+        fig, solution_data = pipeline_module.plot_solution(solution_datablock,
+                                                           figname=figname)
         pprint("  Plot generated successfully at", figname)
+        if save_data:
+            solution_data_file = figname.replace(".png", "_best_fit_data.fits")
+            from astropy.table import Table
+            try:
+                for k, v in solution_data.items():
+                    print(k, v.shape, v.dtype)
+                Table(data=solution_data).write(solution_data_file, overwrite=True)
+            except Exception as e:
+                pprint("  Warning: failed to save solution data to", solution_data_file)
+                pprint("  Error:", e)
+            pprint("  Solution data saved to", solution_data_file)
 
 def make_corner_plot(file, from_ini=False):
     reader = load_reader(file, from_ini)
@@ -174,7 +187,7 @@ def main(argv=None):
     from_ini = args.from_ini
     if args.make_best_fit:
         pprint("Creating best-fit model plot")
-        make_best_fit(file, from_ini)
+        make_best_fit(file, from_ini, args.save_best_fit_data)
     if args.make_corner_plot:
         pprint("Creating corner plot")
         make_corner_plot(file, from_ini)

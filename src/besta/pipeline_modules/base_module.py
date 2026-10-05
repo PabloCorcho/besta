@@ -1556,8 +1556,19 @@ class SpectraFitModule(BaseModule):
                     dpi=300)
             _log(f"Fit plot saved at: {figname}")
 
+        # store the solution data
+        solution_data = {
+            "wavelength": self.config["wavelength"].value,
+            "flux": self.config["flux"],
+            "flux_model": flux_model,
+            "weights": weights,
+        }
+        if continuum_model is not None:
+            solution_data["continuum_model"] = continuum_model
+            if continuum_model_err is not None:
+                solution_data["continuum_model_err"] = continuum_model_err
         plt.close()
-        return fig
+        return fig, solution_data
 
 
 class PhotometryFitModule(BaseModule):
@@ -1835,19 +1846,16 @@ class PhotometryFitModule(BaseModule):
             fig.savefig(figname, bbox_inches="tight",
                     dpi=300)
             _log(f"Fit plot saved at: {figname}")
+
+        solution_data = {
+            "wavelength": self.config["galaxy"].target_wavelength.value,
+            "bands": self.config["filter_list"].names,
+            "flux": self.config["photometry_flux"],
+            "flux_model": flux_model,
+            "chi2": chi2,
+        }
         plt.close()
-        return fig
-
-class EquivalentWidthFitModule(BaseModule):
-    """Base class for equivalent width fit modules in BESTA."""
-    pass
-
-    def plot_solution(self, solution: DataBlock, figname=None):
-        """Plot an equivalent-width fit solution.
-
-        This placeholder is implemented by concrete equivalent-width modules.
-        """
-        pass
+        return fig, solution_data
 
 # class GridFitMixin:
 #     """Mixin class for grid-based fitting modules in BESTA."""
