@@ -53,7 +53,7 @@ def parser_setup():
                           "(default: 0.01,0.1,1.0)")
     sfh.add_argument("--sfh_percentiles", type=str, default="0.05,0.16,0.5,0.84,0.95",
                      help="Comma-separated quantiles in [0, 1]")
-    sfh.add_argument("--sfh_max_samples", type=int, default=300,
+    sfh.add_argument("--sfh_max_samples", type=int, default=5000,
                      help="Use a random subset of at most this many samples")
     sfh.add_argument("--sfh_module", type=str, default=None,
                      help="Pipeline module defining the SFH (default: the first one)")
