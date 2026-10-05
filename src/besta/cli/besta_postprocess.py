@@ -142,6 +142,9 @@ def make_sfh(file, args):
         burn_in=args.burn_in,
         nwalkers=args.nwalkers,
     )
+
+    pprint("Reconstructing the SFH with parameters:", kwargs)
+
     if args.from_ini:
         reader = load_reader(file, from_ini=True)
         results = reader.ini["output"]["filename"]
@@ -163,10 +166,6 @@ def make_sfh(file, args):
     pprint(f"SFH of {reconstruction.n_samples} samples written to", output)
     return output
 
-def interactive():
-    # GUI to visalize the input data and (optionally) the models from the chains
-    pass
-
 def main(argv=None):
     parser = parser_setup()
     args = parser.parse_args(argv)
@@ -174,17 +173,17 @@ def main(argv=None):
     file = args.file
     from_ini = args.from_ini
     if args.make_best_fit:
-        print("Creating best-fit model plot")
+        pprint("Creating best-fit model plot")
         make_best_fit(file, from_ini)
     if args.make_corner_plot:
-        print("Creating corner plot")
+        pprint("Creating corner plot")
         make_corner_plot(file, from_ini)
     if args.make_summary_statistics:
-        print("Creating summary statistics FITS")
+        pprint("Creating summary statistics FITS")
         output = args.output
         make_summary_statistics(file, from_ini, output)
     if args.make_sfh:
-        print("Reconstructing the star formation history")
+        pprint("Reconstructing the star formation history")
         make_sfh(file, args)
 
 if __name__ == "__main__":
