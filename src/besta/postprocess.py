@@ -2317,7 +2317,7 @@ def reconstruct_sfh(
     min_lookback: float = 1e-2,
     taus: Sequence[float] = (0.01, 0.1, 1.0),
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
-    weight_key: str = "weight",
+    weight_key: str = "log_weight",
     posterior_key: str = "post",
     stellar_mass_key: str = "extra--stellar_mass",
     burn_in: int = 0,
@@ -2409,34 +2409,39 @@ def reconstruct_sfh(
 
     n_rows = len(table)
     if weight_key in table.colnames:
+        logger.info("Using column '%s' as sample weights.", weight_key)
         weights_all = _as_float_array(table[weight_key])
+        if "log" in weight_key.lower():
+            weights_all = np.exp(weights_all - np.nanmax(weights_all))
         weight_source = weight_key
     else:
+        logger.info("No '%s' column: using uniform weights.", weight_key)
         weights_all = np.ones(n_rows)
         weight_source = "uniform"
     rows = np.arange(n_rows)
+
+    # Use a random subset of samples
     if max_samples is not None and n_rows > max_samples:
         rng = np.random.default_rng(seed)
         if weight_source == "uniform":
             rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
             logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
         else:
-            # Resample in proportion to the weights (with replacement) and
-            # treat the draws as equally weighted: re-using the weights would
-            # count them twice.
+            # Resample in proportion to the weights (with replacement)
             p = np.nan_to_num(weights_all, nan=0.0, posinf=0.0).clip(min=0.0)
             if p.sum() <= 0:
                 raise ValueError(f"Column '{weight_key}' has no positive weights.")
             rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=True,
                                       p=p / p.sum()))
+            # From here on, treat the draws as equally weighted.
             weights_all = np.ones(n_rows)
             weight_source = f"resampled:{weight_key}"
             logger.info("Resampled %d of %d samples in proportion to '%s'.",
                         rows.size, n_rows, weight_key)
 
     arrays = {key: _as_float_array(table[col]) for key, col in columns.items()}
-    times = today - edges[::-1]                      # increasing cosmic time
-    # One PST call per sample: bin edges followed by the tau limits
+    times = today - edges[::-1]
+    # Combine all times to one PST call per sample
     eval_times = np.concatenate((times, today - taus))
     n_edges = edges.size
     has_z = hasattr(model.model, "ism_metallicity")
@@ -2446,6 +2451,7 @@ def reconstruct_sfh(
 
     mfrac, ssfr, zhist, ssfr_tau, used = [], [], [], [], []
     for row in rows:
+        # prepare the model parameters
         params = dict(fixed)
         params.update({key: float(values_[row]) for key, values_ in arrays.items()})
         if not all(np.isfinite(v) for v in params.values() if isinstance(v, float)):
@@ -2485,6 +2491,7 @@ def reconstruct_sfh(
     meta = {"sfhmodel": type(model).__name__, "module": module_name,
             "redshift": float(getattr(model, "redshift", 0.0) or 0.0),
             "today": today, "weights": weight_source, "sfhspace": "physical"}
+
     rec = SFHReconstruction(
         lookback_edges=edges,
         percentiles=tuple(float(q) for q in percentiles),
