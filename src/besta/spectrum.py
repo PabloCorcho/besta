@@ -111,7 +111,7 @@ def get_legendre_polynomial_array(
         polynomial will comprise the range that is sensitive to scales smaller
         the input value (i.e. lower order polynomials are not included).
     clip_first_zero : bool, optional
-        If ``True``, the values of each polynomial below the first and las zero
+        If ``True``, the values of each polynomial below the first and last zero
         of the Legendre polynomial are set to 0. This prevents the edges to reach
         extremelly large values when the order of the polynomial is high.
 
