@@ -6,6 +6,7 @@ from cosmosis import DataBlock
 
 from besta import kinematics, sfh
 from besta.pipeline_modules.base_module import (
+    BaseModule,
     SpectraFitModule,
     effective_lsf_sigma,
     ml_amplitude,
@@ -212,6 +213,10 @@ def test_feature_weights_fall_back_to_ones_without_continuum_scatter(tmp_path):
 
 
 class _FakeQuantity:
+    # luminosity_values() converts with ``.unit``: use the default luminosity
+    # units so that the conversion factor is 1.
+    unit = u.Unit(BaseModule._default_luminosity_units)
+
     def __init__(self, value):
         self.value = np.asarray(value, dtype=float)
 

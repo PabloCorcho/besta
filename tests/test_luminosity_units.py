@@ -36,10 +36,13 @@ class TestLuminosityValues(unittest.TestCase):
 
     def test_factor_is_cached_per_unit(self):
         module = make_module()
+        # astropy cancels Msun: this is the same unit as Lsun / AA
         unit = u.Msun * (u.Lsun / u.AA / u.Msun)
         module.luminosity_values(np.ones(3) << unit)
         module.luminosity_values(np.ones(3) << unit)
         module.luminosity_values(np.ones(3) << u.Lsun / u.AA)
+        self.assertEqual(len(module._luminosity_factor_cache), 1)
+        module.luminosity_values(np.ones(3) << u.erg / u.s / u.AA)
         self.assertEqual(len(module._luminosity_factor_cache), 2)
 
     def test_incompatible_unit_raises(self):
