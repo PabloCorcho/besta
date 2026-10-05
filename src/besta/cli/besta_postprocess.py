@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 from besta.io import Reader
+from besta.logging import setup_logging
 from besta.postprocess import (
     summarize_results, to_physical_table,
     reconstruct_sfh_from_file, reconstruct_sfh_from_reader)
@@ -21,6 +22,11 @@ def parser_setup():
                         help="Generate summary statistics from the results")
     parser.add_argument("--output", type=str, default=None,
                         help="Output file for summary statistics (FITS format)")
+    parser.add_argument("--log_level", "--log-level", type=str.upper, default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Console logging level (default: INFO)")
+    parser.add_argument("--quiet", action="store_true",
+                        help="Only log warnings and errors (same as --log_level WARNING)")
     sfh = parser.add_argument_group(
         "SFH reconstruction",
         "Posterior SFHs on a grid of lookback times, saved as FITS. Latent SFH "
@@ -61,16 +67,29 @@ def parser_setup():
 def _floats(text):
     return [float(item) for item in text.split(",") if item.strip()]
 
+_LOG_LEVEL = "INFO"
+
+
+def configure_logging(level=None):
+    """Console logging for the CLI (re-applied after anything that resets it)."""
+    global _LOG_LEVEL
+    if level is not None:
+        _LOG_LEVEL = level
+    setup_logging(level=_LOG_LEVEL, console=True)
+
+
 def pprint(*mssgs):
     print("[BESTA]", *mssgs)
 
 def load_reader(file, from_ini=False):
+    # verbose=False: keep the logging set up by main() instead of the run's
+    # logging_* options (which disable the console unless logging_console = T)
     if from_ini:
         pprint("Loading INI config file", file)
-        reader = Reader(ini_file=file)
+        reader = Reader(ini_file=file, verbose=False)
     else:
         pprint("Loading results file", file)
-        reader= Reader.from_results_file(file)
+        reader = Reader.from_results_file(file, verbose=False)
     reader.load_results()
     return reader
 
@@ -82,6 +101,8 @@ def make_best_fit(file, from_ini=False):
     for par_module in reader.modules:
         pprint("Generating plot for module", par_module)
         pipeline_module = reader.get_module(par_module)
+        # Module setup applies the run's logging_* options: restore the CLI's
+        configure_logging()
         figname = reader.ini["output"].get(
                     "figurename",
                     reader.ini["output"]["filename"].replace(".txt", "")
@@ -149,6 +170,7 @@ def interactive():
 def main(argv=None):
     parser = parser_setup()
     args = parser.parse_args(argv)
+    configure_logging("WARNING" if args.quiet else args.log_level)
     file = args.file
     from_ini = args.from_ini
     if args.make_best_fit:
