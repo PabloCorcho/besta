@@ -1311,7 +1311,7 @@ class SpectraFitModule(BaseModule):
         # weights &= self.config.get("sky_line_mask", np.ones_like(flux, dtype=bool))
 
         line_table, line_segm_map = spectrum.find_emission_lines(
-            wavelength, flux, flux_error, flux_model,
+            wavelength, flux, flux_error, weights=weights,
             continuum=flux_model, continuum_error=flux_model / 100,
             **kwargs)
 
