@@ -1580,7 +1580,8 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
         self.free_params["quenching_time"] = kwargs.get(
-            "quenching_time", [0, self.today / 2, self.today]
+            "quenching_time", [0, self.today.to_value("Gyr") / 2,
+                           self.today.to_value("Gyr")]
         )
 
         self.model = cem.ExponentialDelayedQuenchedCEM(
