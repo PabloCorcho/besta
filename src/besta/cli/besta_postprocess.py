@@ -139,7 +139,12 @@ def make_summary_statistics(file, from_ini=False, output=None):
     # physical space.
     table = to_physical_table(reader)
     results = summarize_results(table)
+    if output is None:
+        # Same default naming as the SFH reconstruction
+        results_path = (reader.ini["output"]["filename"] if from_ini else file)
+        output = os.path.splitext(str(results_path))[0] + "_summary.fits"
     results.write_fits(output, overwrite=True)
+    pprint("Summary statistics written to", output)
 
 def make_sfh(file, args):
     """Reconstruct the posterior SFHs of a run and write them to FITS."""
