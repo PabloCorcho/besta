@@ -209,7 +209,7 @@ def weighted_hdi(
         starts = np.where(np.diff(np.r_[0, avail]) == 1)[0]
         ends = np.where(np.diff(np.r_[avail, 0]) == -1)[0]
         for s, e in zip(starts, ends):
-            sub_ws = ws[s:e]
+            sub_ws = ws[s:e + 1]
             if sub_ws.size == 0:
                 continue
             sub_cdf = np.cumsum(sub_ws)
