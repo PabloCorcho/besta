@@ -57,13 +57,14 @@ class LOSVDPixelKernel:
             norm = np.sum(value)
 
             if norm > 0:
-                # Check if all the weight is on a single pixel (delta kernel)
-                if np.isclose(norm, value.max(), atol=DELTA_KERNEL_ATOL):
-                    self.skip_convolution = True
-                else:
-                    self.skip_convolution = False
+                normalized = value / norm
+                self.skip_convolution = bool(
+                    value.size % 2 == 1
+                    and np.argmax(normalized) == value.size // 2
+                    and normalized.max() >= 1.0 - DELTA_KERNEL_ATOL
+                )
 
-                self._kernel_weight = value / norm
+                self._kernel_weight = normalized
 
             else:
                 logger.warning("Kernel weights sum to zero; using unnormalized values.")
@@ -255,7 +256,7 @@ class GaussianPixelKernel(LOSVDPixelKernel):
     def make_ini(cls, ini_file: str) -> str:
         """Return default INI values for this kernel."""
         with open(ini_file, "a", encoding="utf-8") as file:
-            file.write(f"; Default prior file for LOSVD kernel: {str(self.__class__)}\n")
+            file.write(f"; Default prior file for LOSVD kernel: {cls.__name__}\n")
             file.write(f"[kinematics]\n")
             file.write(f"los_vel = -500 0 500\n")
             file.write(f"los_sigma = 50 100 500\n")
@@ -321,7 +322,7 @@ class SplitGaussianPixelKernel(LOSVDPixelKernel):
     def make_ini(cls, ini_file: str) -> str:
         """Return default INI values for this kernel."""
         with open(ini_file, "a", encoding="utf-8") as file:
-            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"; Default prior file for LOSVD kernel: {cls.__name__}\n")
             file.write(f"[kinematics]\n")
             file.write(f"los_vel = -500 0 500\n")
             file.write(f"los_sigma_blue = 50 100 500\n")
@@ -410,7 +411,7 @@ class GaussHermitePixelKernel(LOSVDPixelKernel):
     def make_ini(cls, ini_file: str) -> str:
         """Return default INI values for this kernel."""
         with open(ini_file, "a", encoding="utf-8") as file:
-            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"; Default prior file for LOSVD kernel: {cls.__name__}\n")
             file.write(f"[kinematics]\n")
             file.write(f"los_vel = -500 0 500\n")
             file.write(f"los_sigma = 50 100 500\n")
@@ -478,7 +479,7 @@ class PieceWisePixelKernel(LOSVDPixelKernel):
         """Return default INI values for this kernel."""
         n_bins = int(np.ceil((velocity_max - velocity_min) / velocity_bin_size))
         with open(ini_file, "a", encoding="utf-8") as file:
-            file.write(f"; Default prior file for LOSVD kernel: {str(cls.__class__)}\n")
+            file.write(f"; Default prior file for LOSVD kernel: {cls.__name__}\n")
             file.write(f"[kinematics]\n")
             for ith in range(n_bins):
                 file.write(f"vel_bin_{ith} = 0.0 1.0 10.0\n")
