@@ -875,7 +875,7 @@ class Reader(object):
         tab = self.results_table[good_sample]
         post_sort = np.argsort(tab[log_prob])
         # Select the top frac per cent
-        first_row = max(1, np.ceil(post_sort.size / 100 * frac))
+        first_row = max(1, int(np.ceil(post_sort.size / 100 * frac)))
         solutions = tab[post_sort][-first_row:]
         if as_datablock:
             all_solutions = [self.solution_to_datablock(sol, **kwargs) for sol in solutions]
