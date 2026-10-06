@@ -140,7 +140,8 @@ def get_legendre_polynomial_array(
         pol = legendre(deg)
         pol_wl = pol(norm_wl)
         # Clip the values on the edges to avoid extremes
-        if clip_first_zero and deg > 0:
+        # P1 has its only root at 0, clipping it would zero the whole polynomial
+        if clip_first_zero and deg > 1:
             first_zero = pol.roots.real.min()
             pol_wl[(norm_wl < first_zero) | (norm_wl > -first_zero)] = 0
         poly_set.append(pol_wl)
@@ -1257,7 +1258,7 @@ class LineSegmentationMap:
             )
             peak = np.argmax(flux[mask])
             wl_peak = wl[mask][peak]
-            sigma = np.clip(wl[mask].ptp() / 2.355, (wl[1] - wl[0]) / 10, None)
+            sigma = np.clip(np.ptp(wl[mask]) / 2.355, (wl[1] - wl[0]) / 10, None)
             return dict(
                 id=line_id,
                 line_flux=flux[mask][peak],
