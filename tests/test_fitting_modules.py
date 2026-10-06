@@ -526,6 +526,7 @@ def test_full_spectral_fit_fixed_time_uses_absolute_mass(tmp_path):
         "stars.sfh": {
             "alpha_powerlaw": 1.0,
             "ism_metallicity_today": 0.02,
+            "logsfr_at_bigbang": 0.0,
             "logsfr_at_5.000": 0.0,
             "logsfr_at_2.000": 0.0,
             "logsfr_at_1.000": 0.0,
