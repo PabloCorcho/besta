@@ -495,6 +495,10 @@ class SFHBase(ABC):
     today : astropy.units.Quantity
         Age of the universe at the time of observation. If not provided,
         it is computed using the default cosmology and the value of ``redshift``.
+    sfh_interpolation : {"linear", "pchip"}, optional, default="linear"
+        Interpolation mode of the cumulative mass history between the bins or
+        anchors of the piecewise models. ``"linear"`` gives a constant SFR within each
+        interval (a step SFH); ``"pchip"`` uses a smooth monotone cubic spline.
     """
 
     free_params = {}
@@ -506,6 +510,7 @@ class SFHBase(ABC):
         self.today = kwargs.get("today", cosmology.age(self.redshift))
         self.use_transforms = kwargs.get("use_transforms", False)
         self.use_mass_normalization = kwargs.get("use_mass_normalization", True)
+        self.sfh_interpolation = kwargs.get("sfh_interpolation", "linear")
 
         self.free_params = self.free_params.copy()
         self.sfh_smoothness_prior = self._make_sfh_smoothness_prior(
@@ -751,16 +756,28 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     Description
     -----------
     The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to the mean SFR of each bin. The first bin ranges
-    from the present time to the first lookback time, the second bin from the
-    first to the second, and so on. The last bin ranges from the last lookback
-    time to the beginning of the Universe.
+    parameters correspond to the mean SFR of each bin. The input lookback
+    times are the bin edges. The youngest bin ranges from the present time to
+    the smallest lookback time, the next one from that edge to the following
+    one, and so on. The oldest bin ranges from the largest lookback time to
+    the beginning of the Universe, so ``N`` lookback times define ``N + 1``
+    bins.
+
+    The free parameters are ``log10(SFR / (Msun / yr))`` in each bin. Bins
+    are named after their older edge, ``logsfr_at_<lookback Gyr>``, and the
+    oldest bin is ``logsfr_at_bigbang``.
 
     Attributes
     ----------
     lookback_time : astropy.units.Quantity
-        Lookback time bin edges.
+        Lookback time bin edges, from the beginning of the Universe (``today``)
+        to the present (0).
+    time : astropy.units.Quantity
+        Cosmic time of the bin edges, from 0 to ``today``.
     """
+
+    #: Name of the free parameter of the oldest bin
+    OLDEST_BIN_KEY = "logsfr_at_bigbang"
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -770,21 +787,27 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             )
 
         logger.info("Initialising FixedTimeSFH model")
-        # From the begining of the Universe to the present date
-        self.lookback_time = check_unit(
-            np.sort(lookback_time_bins)[::-1], u.Gyr
-        )
+        lookback_time = check_unit(np.atleast_1d(lookback_time_bins), u.Gyr)
+        lookback_gyr = np.sort(lookback_time.to_value("Gyr"))[::-1]
+        today_gyr = self.today.to_value("Gyr")
+        if lookback_gyr.size == 0:
+            raise ValueError("FixedTimeSFH needs at least one lookback time.")
+        if np.any(lookback_gyr <= 0) or np.any(np.diff(lookback_gyr) == 0):
+            raise ValueError(
+                "Lookback times must be positive and unique, got "
+                f"{lookback_gyr} Gyr.")
+        if lookback_gyr[0] >= today_gyr:
+            raise ValueError(
+                f"Lookback time {lookback_gyr[0]:.4g} Gyr is not smaller than "
+                f"the age of the Universe at the source ({today_gyr:.4g} Gyr). "
+                "The oldest bin, up to the Big Bang, is added automatically.")
         self.use_mass_normalization = False
-        # Add the present time as the last bin
-        self.lookback_time = np.insert(
-            self.lookback_time,
-            self.lookback_time.size,
-            0 << self.lookback_time.unit,
-        )
-
-        self.time = self.today - self.lookback_time
-        if (self.time < 0).any():
-            logger.warning("lookback time bin larger than the age of the Universe")
+        # Bin edges from the beginning of the Universe to the present date
+        self.lookback_time = np.concatenate(
+            ([today_gyr], lookback_gyr, [0.0])) << u.Gyr
+        # Exact edges in cosmic time: 0 (Big Bang), today - lookback, today
+        self.time = np.concatenate(
+            ([0.0], today_gyr - lookback_gyr, [today_gyr])) << u.Gyr
         self.delta_time = np.diff(self.time.to_value("yr"))
 
         logsfr_min = kwargs.get("logsfr_min", -5.0)
@@ -792,15 +815,12 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         logger.info("Setting up free parameters")
         logger.info("Minimum log(SFR)=%s", logsfr_min)
         logger.info("Maximum log(SFR)=%s", logsfr_max)
-        self.sfh_bin_keys = []
-        for lbt in self.lookback_time[:-1].to_value("Gyr"):
+        # Oldest bin first, matching the order of ``delta_time``
+        self.sfh_bin_keys = [self.OLDEST_BIN_KEY] + [
+            f"logsfr_at_{lbt:.3f}" for lbt in lookback_gyr]
+        for k in self.sfh_bin_keys:
             # Initialise parameters assuming a constant star formation history
-            k = f"logsfr_at_{lbt:.3f}"
-            self.sfh_bin_keys.append(k)
-            self.free_params[k] = [logsfr_min,
-                                #    self.today._to_value("Gyr") / lbt,
-                                   0.0,
-                                   logsfr_max]
+            self.free_params[k] = [logsfr_min, 0.0, logsfr_max]
 
         # Initialise PST
         self.model = cem.TabularCEM_ZPowerLaw(
@@ -811,11 +831,13 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+            interpolation=self.sfh_interpolation,
         )
         self.model.times.fixed = True
 
     def parse_datablock(self, datablock: DataBlock):
         """Update the fixed-time SFH model from a CosmoSIS DataBlock."""
+
         sampled_logsfr = self.get_sfh_parameters_array(datablock)
 
         # Convert mean SFR per bin into cumulative mass formed in each bin
@@ -876,7 +898,8 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             tau_ssfr=self.lookback_time,
             ssfr=np.ones(self.lookback_time.size) << 1 / u.Gyr,
             ism_metallicity_today = 0.02 << u.dimensionless_unscaled,
-            alpha_powerlaw = 1.0 << u.dimensionless_unscaled
+            alpha_powerlaw = 1.0 << u.dimensionless_unscaled,
+            interpolation=self.sfh_interpolation,
         )
         self.model.tau_ssfr.fixed = True
         self.model.today.fixed = True
@@ -1152,6 +1175,7 @@ class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+            interpolation=self.sfh_interpolation,
         )
 
     def _time_bounds(self, min_time, min_last_interval):
@@ -1461,6 +1485,8 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         # Initialise the free parameter
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 1.7])
 
+        # The table samples a smooth analytic history, so it is interpolated
+        # with the cubic regardless of ``sfh_interpolation``
         self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time,
             today=self.today,
@@ -1469,6 +1495,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
             << u.dimensionless_unscaled,
             alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+            interpolation="pchip",
         )
 
     def parse_datablock(self, datablock: DataBlock):
@@ -1774,6 +1801,7 @@ _SFH_SMOOTHNESS_OPTIONS = (
 
 # Model options forwarded to the SFH constructor when present (name, type).
 _SFH_MODEL_OPTIONS = (
+    ("sfh_interpolation", str),
     ("min_last_interval", float),
     ("min_time", float),
     ("latent_space", str),
