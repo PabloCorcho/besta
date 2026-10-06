@@ -1664,13 +1664,21 @@ def _unique_sfh_models(ini: Mapping[str, Any], module_name: Optional[str] = None
     return models
 
 
-def _physical_sfh_model(ini: Mapping[str, Any], module: str):
-    """SFH model of ``module`` built with ``use_transforms = False``."""
-    from besta.sfh import build_sfh_from_options
+def _physical_sfh_model(ini: Mapping[str, Any], module: str,
+                        sfh_interpolation: Optional[str] = None):
+    """SFH model of ``module`` built with ``use_transforms = False``.
+
+    ``sfh_interpolation`` overrides the mass-history interpolation of the run
+    (piecewise models only).
+    """
+    from besta.sfh import PieceWiseSFHMixin, build_sfh_from_options
 
     options = dict(ini[module])
     options["use_transforms"] = False
     model = build_sfh_from_options(options)
+    if sfh_interpolation is not None and isinstance(model, PieceWiseSFHMixin):
+        model.model.interpolation = sfh_interpolation  # validated by PST
+        model.sfh_interpolation = model.model.interpolation
     if model.use_transforms:
         raise ValueError(
             f"Could not disable use_transforms for module '{module}' "
@@ -2325,6 +2333,7 @@ def reconstruct_sfh(
     max_samples: Optional[int] = None,
     seed: Optional[int] = 0,
     parameter_prefix: str = "--",
+    sfh_interpolation: Optional[str] = None,
 ) -> SFHReconstruction:
     """Evaluate the posterior SFHs of a run on a grid of lookback times.
 
@@ -2362,6 +2371,11 @@ def reconstruct_sfh(
         replacement) and then equally weighted.
     seed : int, optional
         Seed of the random subset.
+    sfh_interpolation : {"linear", "pchip"}, optional
+        Override the mass-history interpolation of the run (piecewise SFH
+        models only). By default the run's ``sfh_interpolation`` option is
+        used, or ``"linear"`` if it is not set. Runs made before this option
+        existed used ``"pchip"``; pass it to reproduce the fitted model.
 
     Returns
     -------
@@ -2372,7 +2386,7 @@ def reconstruct_sfh(
         if not candidates:
             raise ValueError("No pipeline module with an 'SFHModel' option was found.")
         module_name = candidates[0]
-    model = _physical_sfh_model(ini, module_name)
+    model = _physical_sfh_model(ini, module_name, sfh_interpolation)
     table = _table_to_physical(table, ini, module_name)
     if burn_in > 0:
         table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
