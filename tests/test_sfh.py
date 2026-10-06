@@ -105,8 +105,9 @@ class TestFixedTimeSFH(unittest.TestCase):
         return DataBlock.from_dict({self.model.sect_name: parameters})
 
     def test_initialization(self):
-        # Number of sfh_bin_keys must equal number of input bins
-        self.assertEqual(len(self.model.sfh_bin_keys), len(self.lookback_bins))
+        # N lookback edges define N + 1 bins (the oldest one up to the Big Bang)
+        self.assertEqual(len(self.model.sfh_bin_keys), len(self.lookback_bins) + 1)
+        self.assertEqual(self.model.sfh_bin_keys[0], "logsfr_at_bigbang")
 
         # Each key must be in free_params with valid [min, default, max]
         for key in self.model.sfh_bin_keys:
@@ -117,20 +118,24 @@ class TestFixedTimeSFH(unittest.TestCase):
 
     def test_lookback_time_sorted_descending(self):
         # Internal lookback_time should be sorted descending (oldest first),
-        # with 0 appended as the last entry.
+        # from the Big Bang (today) to 0.
         lbt_values = self.model.lookback_time.to_value("Gyr")
-        self.assertTrue(np.all(np.diff(lbt_values) <= 0))
+        self.assertTrue(np.all(np.diff(lbt_values) < 0))
+        self.assertAlmostEqual(lbt_values[0], self.model.today.to_value("Gyr"))
         self.assertAlmostEqual(lbt_values[-1], 0.0)
 
     def test_time_array_size(self):
-        # time array must have one more element than the input bins (0 appended)
-        self.assertEqual(self.model.time.size, len(self.lookback_bins) + 1)
+        # Big Bang + input edges + today
+        self.assertEqual(self.model.time.size, len(self.lookback_bins) + 2)
+        self.assertEqual(self.model.time[0].to_value("Gyr"), 0.0)
+        self.assertAlmostEqual(self.model.time[-1].to_value("Gyr"),
+                               self.model.today.to_value("Gyr"))
 
     def test_key_names_encode_lookback_time(self):
         # Each key should encode the lookback time in Gyr (sorted descending)
         expected_lbt = np.sort(self.lookback_bins.to_value("Gyr"))[::-1]
-        for key, lbt in zip(self.model.sfh_bin_keys, expected_lbt):
-            self.assertIn(f"{lbt:.3f}", key)
+        for key, lbt in zip(self.model.sfh_bin_keys[1:], expected_lbt):
+            self.assertEqual(key, f"logsfr_at_{lbt:.3f}")
 
     def test_parse_datablock_valid(self):
         db = self._make_db(logsfr_value=-6.0)
@@ -164,13 +169,47 @@ class TestFixedTimeSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(masses) >= 0))
 
     def test_log_sfr_sets_absolute_formed_mass(self):
-        # log10(SFR / (Msun / yr)) = 0 over five Gyr forms 5e9 Msun.
+        # log10(SFR / (Msun / yr)) = 0 since the Big Bang forms today * 1 Msun/yr.
         self.model.parse_datablock(self._make_db(logsfr_value=0.0))
         self.assertAlmostEqual(
-            self.model.model.table_mass[-1].to_value(u.Msun),
-            5e9,
+            self.model.model.table_mass[-1].to_value(u.Msun)
+            / self.model.today.to_value(u.yr),
+            1.0,
         )
         self.assertFalse(self.model.use_mass_normalization)
+
+    def test_stars_older_than_the_largest_lookback_time(self):
+        # Regression: the oldest bin (largest lookback time to the Big Bang)
+        # used to be missing, so no stars older than 5 Gyr could form.
+        params = {key: -6.0 for key in self.model.sfh_bin_keys}
+        params["logsfr_at_bigbang"] = 0.0
+        params.update(alpha_powerlaw=1.0, ism_metallicity_today=0.02)
+        status, _ = self.model.parse_free_params(params)
+        self.assertEqual(status, 1)
+        today = self.model.today.to_value("Gyr")
+        cem_model = self.model.model
+        old_edge = (today - 5.0) << u.Gyr
+        expected = (today - 5.0) * 1e9
+        self.assertAlmostEqual(
+            cem_model.stellar_mass_formed(old_edge).to_value(u.Msun) / expected,
+            1.0, places=6)
+        # Stars form throughout the oldest bin: with the default linear mass
+        # history, half of its mass halfway through it
+        half = cem_model.stellar_mass_formed(0.5 * old_edge).to_value(u.Msun)
+        self.assertAlmostEqual(half / expected, 0.5, places=6)
+
+    def test_constant_sfr_is_reproduced(self):
+        self.model.parse_datablock(self._make_db(logsfr_value=0.0))
+        today = self.model.today
+        times = np.linspace(0.05, 0.999, 30) * today
+        mass = self.model.model.stellar_mass_formed(times).to_value(u.Msun)
+        np.testing.assert_allclose(mass, times.to_value(u.yr), rtol=1e-8)
+
+    def test_invalid_lookback_times(self):
+        today = self.model.today.to_value("Gyr")
+        for bins in ([0.0, 1.0], [1.0, 1.0, 2.0], [-1.0], [today], [1.0, today + 1]):
+            with self.subTest(bins=bins), self.assertRaises(ValueError):
+                sfh.FixedTimeSFH(np.array(bins) * u.Gyr, ism_metallicity_today=0.02)
 
     def test_parse_datablock_updates_alpha(self):
         db = self._make_db(logsfr_value=-6.0, alpha=2.5)
@@ -187,10 +226,9 @@ class TestFixedTimeSFH(unittest.TestCase):
     def test_single_bin(self):
         # A model with a single bin should work without errors
         model = sfh.FixedTimeSFH(np.array([5.0]) * u.Gyr, ism_metallicity_today=0.02)
-        self.assertEqual(len(model.sfh_bin_keys), 1)
-        params = {model.sfh_bin_keys[0]: -3.0,
-                  'alpha_powerlaw': 0.5,
-                  'ism_metallicity_today': 0.02}
+        self.assertEqual(len(model.sfh_bin_keys), 2)  # plus the oldest bin
+        params = {key: -3.0 for key in model.sfh_bin_keys}
+        params.update(alpha_powerlaw=0.5, ism_metallicity_today=0.02)
         db = DataBlock.from_dict({model.sect_name: params})
         status, info = model.parse_datablock(db)
         self.assertEqual(status, 1)
@@ -986,9 +1024,63 @@ class TestTransforms(unittest.TestCase):
     def test_batch_transforms_are_identity_without_transforms(self):
         model = sfh.FixedTimeSFH(
             np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr, ism_metallicity_today=0.02)
-        values = np.random.default_rng(0).normal(size=(10, 4))
+        values = np.random.default_rng(0).normal(size=(10, 5))
         np.testing.assert_array_equal(model.to_physical_batch(values), values)
         np.testing.assert_array_equal(model.to_latent_batch(values), values)
+
+
+class TestSFHInterpolationOption(unittest.TestCase):
+    """``sfh_interpolation``: mass-history interpolation of piecewise models."""
+
+    def piecewise_models(self, **kwargs):
+        common = dict(ism_metallicity_today=0.02, **kwargs)
+        return [
+            sfh.FixedTimeSFH(np.array([0.1, 1.0, 5.0]) * u.Gyr, **common),
+            sfh.FixedTime_sSFR_SFH(np.array([0.1, 1.0, 5.0]) * u.Gyr, **common),
+            sfh.FixedMassFracSFH(np.array([0.5, 0.9, 0.99]), **common),
+            sfh.FixedMassFracSFH2D(np.array([0.5, 0.9, 0.99]), **common),
+        ]
+
+    def test_default_is_linear(self):
+        for model in self.piecewise_models():
+            with self.subTest(model=type(model).__name__):
+                self.assertEqual(model.sfh_interpolation, "linear")
+                self.assertEqual(model.model.interpolation, "linear")
+
+    def test_option_reaches_the_pst_model(self):
+        for model in self.piecewise_models(sfh_interpolation="pchip"):
+            with self.subTest(model=type(model).__name__):
+                self.assertEqual(model.sfh_interpolation, "pchip")
+                self.assertEqual(model.model.interpolation, "pchip")
+        with self.assertRaises(ValueError):
+            sfh.FixedMassFracSFH(np.array([0.5, 0.9]), sfh_interpolation="cubic")
+
+    def test_exponential_model_keeps_the_cubic(self):
+        model = sfh.ExponentialSFH(sfh_interpolation="linear")
+        self.assertEqual(model.model.interpolation, "pchip")
+
+    def test_linear_sfr_is_the_interval_mean(self):
+        model = sfh.FixedMassFracSFH(np.array([0.5, 0.9, 0.99]),
+                                     ism_metallicity_today=0.02)
+        today = model.today.to_value("Gyr")
+        times = np.array([4.0, 10.0, today - 0.5])
+        params = {key: value for key, value in zip(model.sfh_bin_keys, times)}
+        params.update(alpha_powerlaw=1.0, ism_metallicity_today=0.02)
+        status, _ = model.parse_free_params(params)
+        self.assertEqual(status, 1)
+        # Long interval (0.9 -> 0.99) followed by a short one: flat SFR inside
+        inside = np.linspace(10.05, today - 0.55, 50) << u.Gyr
+        sfr = model.model.sfr(inside).to_value(u.Msun / u.Gyr)
+        np.testing.assert_allclose(sfr, 0.09 / (today - 0.5 - 10.0), rtol=1e-10)
+
+    def test_build_from_options(self):
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "FixedMassFracSFH", "SFHArgs": "[0.5, 0.9]",
+            "sfh_interpolation": "pchip"})
+        self.assertEqual(model.model.interpolation, "pchip")
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "FixedMassFracSFH", "SFHArgs": "[0.5, 0.9]"})
+        self.assertEqual(model.model.interpolation, "linear")
 
 
 class TestBuildSFHFromOptions(unittest.TestCase):
