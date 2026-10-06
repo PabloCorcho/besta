@@ -17,6 +17,17 @@ from besta import io
 from besta import pipeline_modules
 from besta.logging import get_logger, setup_logging
 
+import contextlib
+
+_THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "BLIS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
 logger = get_logger(__name__)
 
 # Keys of the ``sfh_reconstruction`` settings of :meth:`MainPipeline.execute_all`
@@ -28,6 +39,23 @@ _SFH_SETTINGS_DEFAULTS = {
     "options": None,       # keyword arguments of postprocess.reconstruct_sfh
 }
 
+@contextlib.contextmanager
+def limit_blas_threads(n_threads):
+    """Temporarily set the thread counts of the BLAS/OpenMP libraries.
+    """
+    if n_threads is None:
+        yield
+        return
+    saved = {k: os.environ.get(k) for k in _THREAD_ENV_VARS}
+    os.environ.update({k: str(int(n_threads)) for k in _THREAD_ENV_VARS})
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 def normalize_sfh_reconstruction_settings(settings):
     """Validate the ``sfh_reconstruction`` settings of the pipeline managers.
@@ -419,12 +447,13 @@ class BatchPipeline(object):
         ini_files=None,
         ini_values_files=None,
         n_jobs_parallel=None,
+        blas_threads=1,
     ):
         # Store the list of independent pipeline configurations.
         self.all_pipelines_config = pipeline_configuration_list
 
         n_pipelines = len(self.all_pipelines_config)
-
+        self.blas_threads = blas_threads
         self.all_n_cores_list = (
             [None] * n_pipelines if n_cores_list is None else n_cores_list
         )
@@ -511,7 +540,9 @@ class BatchPipeline(object):
                                 sfh_reconstruction=sfh_reconstruction)
         if index < 0 or index >= len(jobs):
             raise IndexError(f"Pipeline index {index} out of range")
-        return _run_main_pipeline_job(jobs[index])["status"]
+        # Use the context manager to limit the BLAS threads used by numpy
+        with limit_blas_threads(self.blas_threads):
+            return _run_main_pipeline_job(jobs[index])["status"]
 
     def run_all_pipelines(self, plot_result=False, sfh_reconstruction=None):
         """Run all configured MainPipeline instances in parallel."""
@@ -531,12 +562,13 @@ class BatchPipeline(object):
             n_jobs = max(1, min(self.n_jobs_parallel, len(jobs), max_jobs))
 
         logger.info(f"Running {n_jobs} pipelines in parallel")
-
-        if n_jobs == 1:
-            raw_results = [_run_main_pipeline_job(job) for job in jobs]
-        else:
-            with get_context("spawn").Pool(processes=n_jobs) as pool:
-                raw_results = pool.map(_run_main_pipeline_job, jobs)
+        # Use the context manager to limit the BLAS threads used by numpy
+        with limit_blas_threads(self.blas_threads):
+            if n_jobs == 1:
+                raw_results = [_run_main_pipeline_job(job) for job in jobs]
+            else:
+                with get_context("spawn").Pool(processes=n_jobs) as pool:
+                    raw_results = pool.map(_run_main_pipeline_job, jobs)
 
         raw_results.sort(key=lambda x: x["index"])
         results = [item["status"] for item in raw_results]
