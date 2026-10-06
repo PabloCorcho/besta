@@ -65,12 +65,12 @@ class GalaxyPhotometryModule(PhotometryFitModule):
         galaxy = self.config["galaxy"]
         galaxy.update_parameters(parameters, strict=False, validate=False)
         # Synthesis
-        flux_model = 1e10 * galaxy.emission_photometry(to_obs_frame=True).to_value(
+        flux_model = galaxy.emission_photometry(to_obs_frame=True).to_value(
             self.config["photometry_flux_unit"])
         sfh_model = self.config["sfh_model"]
         if sfh_model.use_mass_normalization:
-            # Maximum-likelihood amplitude from detections only, using the
-            # terms precomputed in prepare_amplitude_weights()
+            flux_model = flux_model * 1e10
+            # Maximum-likelihood amplitude from detections only
             if "amplitude_inv_var" not in self.config:
                 self.prepare_amplitude_weights()
             denominator = np.dot(self.config["amplitude_inv_var"],
@@ -86,15 +86,16 @@ class GalaxyPhotometryModule(PhotometryFitModule):
                 block["extra", "stellar_mass"] = np.nan
         else:
             normalization = 1.0
-            block["extra", "stellar_mass"] = sfh_model.model.stellar_mass_formed(
+            block["extra", "stellar_mass"] = np.log10(sfh_model.model.stellar_mass_formed(
                 sfh_model.today
-            ).to_value("Msun")
+            ).to_value("Msun") + 1e-10)
 
         # Save SFH mass-fraction times and sSFRs (one mass-history evaluation)
         self.save_sfh_extras(block, self.config["sfh_model"])
         # Mostly for visualization purposes
         if include_spec:
-            full_spec = 1e10 * galaxy.emission_spectrum(to_obs_frame=True).to_value(
+            mass_scale = 1e10 if sfh_model.use_mass_normalization else 1.0
+            full_spec = mass_scale * galaxy.emission_spectrum(to_obs_frame=True).to_value(
                     self.config["photometry_flux_unit"],
                     u.spectral_density(galaxy.target_wavelength))
             return flux_model * normalization, full_spec * normalization

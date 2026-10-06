@@ -329,7 +329,7 @@ class SpectraRedshiftFitModule(SpectraFitModule):
             logger.warning(
                 f"Undefined or non-positive amplitude for redshift step {best_fit_slice_index}; skipping this step."
             )
-            return np.full_like(candidate_flux, np.nan), weights
+            return np.zeros_like(candidate_flux), weights
 
         #block["extra", "stellar_mass"] = np.log10(normalization) + 10
         return candidate_flux * normalization, weights
