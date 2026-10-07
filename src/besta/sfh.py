@@ -812,9 +812,9 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         logsfr_min = kwargs.get("logsfr_min", -5.0)
         logsfr_max = kwargs.get("logsfr_max", 3.0)
-        logger.info("Setting up free parameters")
-        logger.info("Minimum log(SFR)=%s", logsfr_min)
-        logger.info("Maximum log(SFR)=%s", logsfr_max)
+        # logger.info("Setting up free parameters")
+        # logger.info("Minimum log(SFR)=%s", logsfr_min)
+        # logger.info("Maximum log(SFR)=%s", logsfr_max)
         # Oldest bin first, matching the order of ``delta_time``
         self.sfh_bin_keys = [self.OLDEST_BIN_KEY] + [
             f"logsfr_at_{lbt:.3f}" for lbt in lookback_gyr]
