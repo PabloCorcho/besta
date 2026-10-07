@@ -348,6 +348,8 @@ def _config_to_string_lines(config, ignore_sec=None):
                 content += " " + value
             elif type(value) is list:
                 content += " ".join([str(v) for v in value])
+            elif type(value) is np.ndarray:
+                content += " ".join([str(v) for v in value.ravel()])
             # elif (type(value) is float) or (type(value) is int):
             #     content += str(value)
             elif value is None:
