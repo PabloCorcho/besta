@@ -6,7 +6,7 @@ import os
 import subprocess
 import copy
 import numpy as np
-
+from datetime import datetime
 from typing import List, Dict
 
 from matplotlib import pyplot as plt
@@ -158,11 +158,16 @@ class MainPipeline(object):
     def _parse_logger(self, pipeline_configuration_list):
         for config in pipeline_configuration_list:
             # select the first module in the pipeline to configure logging (if any)
-            module = config["pipeline"]["modules"].replace(",", " ").split(" ")[0]
+            if isinstance(config["pipeline"]["modules"], list):
+                module = config["pipeline"]["modules"][0]
+            else:
+                module = config["pipeline"]["modules"].replace(",", " ").split(" ")[0]
             logging_console = config[module].get("logging_console", False)
             logging_level = config[module].get("logging_level", "INFO").upper()
             logging_overwrite = config[module].get("logging_overwrite", False)
             logging_file = config[module].get("logging_file", None)
+            if logging_file is not None:
+                logging_file = os.path.expandvars(logging_file)
 
             setup_logging(level=logging_level, log_file=logging_file,
                           overwrite=logging_overwrite, console=logging_console)
@@ -191,9 +196,15 @@ class MainPipeline(object):
             If provided, use this file to set the prior values.
         """
         if ini_filename is None:
+            # get module names
+            if isinstance(config["pipeline"]["modules"], list):
+                module_names = "_".join(config["pipeline"]["modules"])
+            else:
+                module_names = config["pipeline"]["modules"].replace(" ", "_")
+
             ini_filename = os.path.join(
                 os.path.dirname(config["output"]["filename"]),
-                config["pipeline"]["modules"].replace(" ", "_") + "_auto.ini",
+                module_names + f"_{datetime.now().strftime('%m_%d_%Y_%H_%M_%S')}_auto.ini",
             )
             io.make_ini_file(ini_filename, config)
         else:
