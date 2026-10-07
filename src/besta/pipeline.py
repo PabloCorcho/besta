@@ -7,7 +7,7 @@ import subprocess
 import copy
 import numpy as np
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from matplotlib import pyplot as plt
 
@@ -126,11 +126,18 @@ class MainPipeline(object):
 
     def __init__(
         self,
-        pipeline_configuration_list,
+        pipeline_configuration_list=None,
         n_cores_list=None,
         ini_files=None,
         ini_values_files=None,
     ):
+        if pipeline_configuration_list is None:
+            if ini_files is None:
+                raise ValueError(
+                    "Either pipeline_configuration_list or ini_files must be provided"
+                )
+            # The ini files fully define each run: use empty configurations
+            pipeline_configuration_list = [{} for _ in ini_files]
         self._parse_logger(pipeline_configuration_list)
         self.pipelines_config = pipeline_configuration_list
 
@@ -157,6 +164,8 @@ class MainPipeline(object):
 
     def _parse_logger(self, pipeline_configuration_list):
         for config in pipeline_configuration_list:
+            if not config:
+                continue
             # select the first module in the pipeline to configure logging (if any)
             if isinstance(config["pipeline"]["modules"], list):
                 module = config["pipeline"]["modules"][0]
@@ -213,12 +222,13 @@ class MainPipeline(object):
                 raise FileNotFoundError(f"{ini_filename} not found")
 
         if ini_values_filename is None:
-            io.make_values_file(config)
+            if config:
+                io.make_values_file(config)
         else:
             ini_values_filename = os.path.expandvars(ini_values_filename)
             if not os.path.isfile(ini_values_filename):
                 raise FileNotFoundError(f"{ini_values_filename} not found")
-            config["pipeline"]["values"] = ini_values_filename
+            config.setdefault("pipeline", {})["values"] = ini_values_filename
 
         if n_cores == -1:
             n_cores = os.cpu_count()
@@ -353,7 +363,7 @@ class MainPipeline(object):
             self.ini_files,
             self.ini_values_files,
         )):
-            if prev_solution is not None:
+            if prev_solution is not None and subpipe_config:
                 logger.info("Updating configuration file with previous run results")
                 module_name = subpipe_config["pipeline"]["modules"].replace(",", " ").split()[0]
                 if module_name not in subpipe_config:
@@ -395,9 +405,10 @@ class MainPipeline(object):
                 for par_module in reader.modules:
                     logger.info("Plotting results for module: %s", par_module)
                     pipeline_module = reader.get_module(par_module)
-                    figname = subpipe_config["output"].get(
+                    output_section = reader.ini["output"]
+                    figname = output_section.get(
                         "figurename",
-                        subpipe_config["output"]["filename"].replace(".txt", "")
+                        str(output_section["filename"]).replace(".txt", "")
                         + f"_{par_module}_best_fit_solution.png",
                     )
                     figname = os.path.expandvars(figname)
@@ -442,8 +453,8 @@ class BatchPipeline(object):
 
     Parameters
     ----------
-    pipeline_configuration_list : list[list[dict]]
-        Each entry is the configuration list required to initialize a MainPipeline.
+    pipeline_configuration_list : list[list[dict]], optional
+        Can be omitted if ``ini_files`` is provided. Each entry is the configuration list required to initialize a MainPipeline.
     n_cores_list : list, optional
         Per-pipeline n_cores lists to pass to each MainPipeline.
     ini_files : list, optional
@@ -457,13 +468,20 @@ class BatchPipeline(object):
     def __init__(
         self,
         *,
-        pipeline_configuration_list: List[List[Dict]],
+        pipeline_configuration_list: Optional[List[List[Dict]]] = None,
         n_cores_list=None,
         ini_files=None,
         ini_values_files=None,
         n_jobs_parallel=None,
         blas_threads=1,
     ):
+        if pipeline_configuration_list is None:
+            if ini_files is None:
+                raise ValueError(
+                    "Either pipeline_configuration_list or ini_files must be provided"
+                )
+            # The ini files fully define each pipeline
+            pipeline_configuration_list = [None] * len(ini_files)
         # Store the list of independent pipeline configurations.
         self.all_pipelines_config = pipeline_configuration_list
 
