@@ -289,7 +289,7 @@ class MainPipeline(object):
             logger.info("No SFH model in this run; skipping the SFH reconstruction.")
             return None
 
-        results = str(reader.ini["output"]["filename"])
+        results = os.path.expandvars(str(reader.ini["output"]["filename"]))
         root = os.path.splitext(results)[0]
         multi_step = step is not None and len(self.pipelines_config) > 1
 
@@ -299,7 +299,7 @@ class MainPipeline(object):
             if multi_step:
                 base, ext = os.path.splitext(explicit)
                 return f"{base}_step{step}{ext}"
-            return explicit
+            return os.path.expandvars(explicit)
 
         options = dict(settings["options"])
         if options.get("burn_in", 0) and "nwalkers" not in options:
@@ -388,6 +388,7 @@ class MainPipeline(object):
             logger.info("MAP solution: %s", solution)
 
             if plot_result:
+                logger.info("Plotting best-fit solution for each module")
                 solution_datablock = reader.solution_to_datablock(prev_solution)
 
                 # Initialise the module to reconstruct the solution
@@ -399,6 +400,7 @@ class MainPipeline(object):
                         subpipe_config["output"]["filename"].replace(".txt", "")
                         + f"_{par_module}_best_fit_solution.png",
                     )
+                    figname = os.path.expandvars(figname)
                     fig_dir = os.path.dirname(figname)
                     if fig_dir:
                         os.makedirs(fig_dir, exist_ok=True)
@@ -413,6 +415,8 @@ class MainPipeline(object):
                         )
             # Posterior SFH on a lookback-time grid (FITS, optional figure)
             if sfh_settings is not None:
+                logger.info("Reconstructing the posterior SFH for this run")
+                logger.info("SFH reconstruction settings: %s", sfh_settings)
                 self.write_sfh_reconstruction(reader, sfh_settings, step=step)
             # Check for section postprocess
             #TODO
