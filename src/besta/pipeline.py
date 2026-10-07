@@ -204,7 +204,7 @@ class MainPipeline(object):
 
             ini_filename = os.path.join(
                 os.path.dirname(config["output"]["filename"]),
-                module_names + f"_{datetime.now().strftime('%m_%d_%Y_%H_%M_%S')}_auto.ini",
+                module_names + f"_{datetime.now().strftime('%m_%d_%Y_%H_%M_%S.%f')}_auto.ini",
             )
             io.make_ini_file(ini_filename, config)
         else:
