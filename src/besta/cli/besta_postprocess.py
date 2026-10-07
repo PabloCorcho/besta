@@ -176,7 +176,7 @@ def make_sfh(file, args):
         plot_output = args.sfh_plot_output or os.path.splitext(results)[0] + "_sfh.png"
         from matplotlib import pyplot as plt
         fig, _ = reconstruction.make_figure()
-        fig.savefig(plot_output, bbox_inches="tight")
+        fig.savefig(plot_output, bbox_inches="tight", dpi=200)
         plt.close(fig)
         pprint(f"SFH percentile plot written to", plot_output)
     output = args.sfh_output or os.path.splitext(results)[0] + "_sfh.fits"
