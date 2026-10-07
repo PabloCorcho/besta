@@ -1391,7 +1391,8 @@ class SpectraFitModule(BaseModule):
         ax.annotate(f"SNR (16, 50, 84 percentiles): "
                     f"{snr[0]:.1f}, {snr[1]:.1f}, {snr[2]:.1f}",
                     xy=(0.02, 0.98), xycoords="axes fraction", va="top",
-                    fontsize=8)
+                    fontsize=8,
+                    bbox=dict(boxstyle="round", fc="w", alpha=0.7))
         ax.fill_between(
             self.config["wavelength"].value,
             self.config["flux"] - self.config["var"] ** 0.5,
@@ -1505,7 +1506,7 @@ class SpectraFitModule(BaseModule):
                         xytext=(0, -5),
                         textcoords="offset points", ha="center", va="top",
                         fontsize=6, color="orange")
-        ax.legend()
+
         ax.set_xlim(self.config["wavelength"].value[[0, -1]])
         # Plot chi2
         good_pixels = weights > 0
