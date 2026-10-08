@@ -59,6 +59,12 @@ class FullSpectralFitModule(SpectraFitModule):
         # Apply dust extinction in the rest frame, before LOSVD convolution.
         dust_model = self.config["extinction_law"]
         if dust_model is not None:
+            av = block["dust.attenuation", "a_v"]
+            if av is None:
+                raise ValueError("Dust attenuation parameter 'a_v' is missing in the data block.")
+            # check if r is also included
+            if block.has_value("dust.attenuation", "r"):
+                dust_model = self._get_dust_model(dust_model.name, block["dust.attenuation", "r"])
             flux_model = dust_model.apply_extinction(
                 self.config["ssp_model"].wavelength,
                 flux_model,

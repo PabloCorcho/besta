@@ -584,6 +584,9 @@ class BaseModule(ClassModule):
         ssp.to_pickle(filename)
         _log("SSP model saved to ", filename)
 
+    def _get_dust_model(self, name, r_value):
+        return dust.DustScreen(name, r_extinction=r_value)
+
     def prepare_extinction_law(self, options):
         """Prepare a dust extinction model.
 
@@ -595,9 +598,11 @@ class BaseModule(ClassModule):
             self.config["extinction_law"] = None
             return
         ext_law = options.get_string("ExtinctionLaw")
+        r_value = options.get_double("extinction_r", default=3.1)
         _log("Extinction law: ", ext_law)
+        _log("Extinction R value: ", r_value)
         # TODO: add more extinction laws
-        self.config["extinction_law"] = dust.DustScreen(ext_law)
+        self.config["extinction_law"] = self._get_dust_model(ext_law, r_value)
         _log("Configuration is done.")
 
     def prepare_sfh_model(self, options):
