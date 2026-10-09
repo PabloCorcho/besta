@@ -56,13 +56,15 @@ def parser_setup():
     sfh.add_argument("--sfh_percentiles", type=str, default="0.05,0.16,0.5,0.84,0.95",
                      help="Comma-separated quantiles in [0, 1]")
     sfh.add_argument("--sfh_max_samples", type=int, default=5000,
-                     help="Use a random subset of at most this many samples")
+                     help="Use at most this many samples (random subset; the last "
+                          "steps for walker-based samplers)")
     sfh.add_argument("--sfh_module", type=str, default=None,
                      help="Pipeline module defining the SFH (default: the first one)")
     sfh.add_argument("--burn_in", type=int, default=0,
                      help="Samples to discard per walker (default: 0)")
-    sfh.add_argument("--nwalkers", type=int, default=1,
-                     help="Number of walkers, used with --burn_in (default: 1)")
+    sfh.add_argument("--nwalkers", type=int, default=None,
+                     help="Number of walkers, used with --burn_in (default: read from "
+                          "the sampler configuration, else 1)")
     return parser
 
 
