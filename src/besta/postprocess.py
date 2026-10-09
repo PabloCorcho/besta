@@ -2314,6 +2314,17 @@ class SFHReconstruction:
         return rec
 
 
+def _sampler_walkers(ini) -> Optional[int]:
+    """Number of walkers of the last sampler of the run (``None`` if it has none)."""
+    samplers = (ini.get("runtime") or {}).get("sampler")
+    if isinstance(samplers, str):
+        samplers = [samplers]
+    if not samplers:
+        return None
+    walkers = (ini.get(samplers[-1]) or {}).get("walkers")
+    return None if walkers is None else int(walkers)
+
+
 def reconstruct_sfh(
     table: Table,
     ini: Mapping[str, Any],
@@ -2329,7 +2340,7 @@ def reconstruct_sfh(
     posterior_key: str = "post",
     stellar_mass_key: str = "extra--stellar_mass",
     burn_in: int = 0,
-    nwalkers: int = 1,
+    nwalkers: Optional[int] = None,
     max_samples: Optional[int] = None,
     seed: Optional[int] = 0,
     parameter_prefix: str = "--",
@@ -2364,11 +2375,15 @@ def reconstruct_sfh(
         Column with ``log10(M / Msun)`` of each sample, stored as
         :attr:`SFHReconstruction.log_stellar_mass` (``None`` if missing).
     burn_in, nwalkers : int
-        Discard the first ``burn_in`` samples of each walker.
+        Discard the first ``burn_in`` samples of each walker. ``nwalkers``
+        defaults to the ``walkers`` option of the run's last sampler (1 if it
+        has none).
     max_samples : int, optional
-        Use a random subset of at most this many samples (faster). With a
-        weight column, the subset is drawn in proportion to the weights (with
-        replacement) and then equally weighted.
+        Use a subset of at most this many samples (faster). For samplers with
+        walkers (no `weight` column) these are the last steps of the chain,
+        which are the closest to the posterior. With a weight column, the subset is
+        drawn in proportion to the weights and then equally weighted; otherwise
+        selection is random.
     seed : int, optional
         Seed of the random subset.
     sfh_interpolation : {"linear", "pchip"}, optional
@@ -2388,6 +2403,10 @@ def reconstruct_sfh(
         module_name = candidates[0]
     model = _physical_sfh_model(ini, module_name, sfh_interpolation)
     table = _table_to_physical(table, ini, module_name)
+    # Automatically detect if sampler used walkers (e.g. emcee)
+    walkers = _sampler_walkers(ini)
+    if nwalkers is None:
+        nwalkers = walkers or 1
     if burn_in > 0:
         table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
 
@@ -2437,7 +2456,12 @@ def reconstruct_sfh(
     # Use a random subset of samples
     if max_samples is not None and n_rows > max_samples:
         rng = np.random.default_rng(seed)
-        if weight_source == "uniform":
+        if weight_source == "uniform" and walkers:
+            # keep the last complete steps of the flattened chain
+            n_keep = max(int(max_samples) // walkers, 1) * walkers
+            rows = np.arange(max(n_rows - n_keep, 0), n_rows)
+            logger.info("Walker-based sampler: using the last %d of %d samples.", rows.size, n_rows)
+        elif weight_source == "uniform":
             rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
             logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
         else:
