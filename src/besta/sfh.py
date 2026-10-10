@@ -379,17 +379,46 @@ class SFHSmoothnessPrior:
         \right].
 
     For each interior bin, it then compares :math:`y_i` with the value
-    obtained by linearly interpolating its two neighbours at the physical
-    bin-centre time. This residual is zero for any log-SFR history that is
-    linear in physical time, even when the time bins are irregular.
+    obtained by linearly interpolating its two neighbours at the bin-centre
+    coordinate :math:`x_i`. This residual is zero for any log-SFR history that
+    is linear in :math:`x`, even when the bins are irregular. The coordinate
+    is selected with ``time_mode``:
+
+    - ``"lin"``: :math:`x` is the cosmic time of the (arithmetic) bin centre.
+      Log-SFR linear in time, i.e. exponential SFHs (and the constant SFH),
+      are unpenalised.
+    - ``"log"``: :math:`x = \log_{10}` of the *lookback time* of the
+      (geometric) bin centre. Log-SFR linear in :math:`\log t_{\rm lookback}`,
+      i.e. power laws in lookback time (and the constant SFH), are
+      unpenalised. This suits bins that are spaced logarithmically in
+      lookback time. The youngest bin starts at lookback time 0, so its
+      lower edge is placed by continuing the logarithmic spacing of the
+      adjacent bin (:math:`t_{\rm lo} = t_{\rm hi}^2 / t_{\rm hi,prev}`).
+      The last element of ``time_edges`` must be the time of observation.
+
+    By default only the interior bins have a residual, so a model with
+    :math:`B` bins has :math:`B - 2` of them and the end bins enter only
+    through the residuals of their neighbours. ``edge_residuals`` adds a
+    residual for each end bin:
+
+    - ``"none"`` (default): interior bins only.
+    - ``"extrapolate"``: each end bin is compared with the linear
+      extrapolation, in the same coordinate :math:`x`, of its two nearest
+      neighbours. Same unpenalised family as the interior residuals.
+    - ``"index"``: unweighted second difference of the end triple,
+      :math:`(y_0 - y_1) - (y_1 - y_2)` (and the mirrored expression at the
+      young end). It ignores the bin spacing, so it vanishes for log-SFR
+      linear in the bin *index*, not in :math:`x`.
+
+    The end residuals describe the same curvature as the interior residual of
+    the neighbouring bin, but weight the end bin differently (more strongly
+    when the neighbour interpolation gives the end bin a small weight), so
+    the end triples count twice.
 
     The residuals follow a Student-t distribution. Its heavy tails retain
     regularisation around smooth solutions without effectively excluding
-    genuine bursts or quenching transitions.
-
-    - In the case of `dof=1`, the prior is equivalent to a Laplace distribution on the residuals.
-    - In the case of `dof=2`, the prior is equivalent to a Cauchy distribution on the residuals.
-    - In the case of `dof=3`, the prior is equivalent to a Student-t distribution with 3 degrees of freedom on the residuals.
+    genuine bursts or quenching transitions. For ``dof=1`` it is a Cauchy
+    distribution; it tends to a Gaussian as ``dof`` grows.
 
     Parameters
     ----------
@@ -402,11 +431,20 @@ class SFHSmoothnessPrior:
     relative_sfr_floor : float, optional
         Positive floor added to SFR divided by lifetime-averaged SFR. The
         default is 1e-4 and is independent of the input mass units.
+    time_mode : {"lin", "log"}, optional
+        Coordinate used to place the bin centres. Default ``"lin"``.
+    edge_residuals : {"none", "extrapolate", "index"}, optional
+        Residuals for the oldest and youngest bins. Default ``"none"``.
     """
+
+    TIME_MODES = ("lin", "log")
+    EDGE_RESIDUALS = ("none", "extrapolate", "index")
 
     sigma_dex: float = 0.3
     dof: float = 3.0
     relative_sfr_floor: float = 1e-4
+    time_mode: str = "lin"
+    edge_residuals: str = "none"
 
     def __post_init__(self):
         if not np.isfinite(self.sigma_dex) or self.sigma_dex <= 0:
@@ -420,6 +458,26 @@ class SFHSmoothnessPrior:
             raise ValueError(
                 "relative_sfr_floor must be finite and strictly positive."
             )
+        if self.time_mode not in self.TIME_MODES:
+            raise ValueError(
+                f"Unrecognised time_mode {self.time_mode!r}; "
+                f"expected one of {self.TIME_MODES}."
+            )
+        if self.edge_residuals not in self.EDGE_RESIDUALS:
+            raise ValueError(
+                f"Unrecognised edge_residuals {self.edge_residuals!r}; "
+                f"expected one of {self.EDGE_RESIDUALS}."
+            )
+
+    def _bin_time(self, time_edges):
+        """Coordinate :math:`x` of each bin centre (see ``time_mode``)."""
+        if self.time_mode == "lin":
+            return 0.5 * (time_edges[:-1] + time_edges[1:])
+        lookback = time_edges[-1] - time_edges
+        older, younger = lookback[:-1], lookback[1:].copy()
+        # The youngest bin ends at lookback 0: continue the log spacing
+        younger[-1] = older[-1] ** 2 / older[-2]
+        return 0.5 * (np.log10(older) + np.log10(younger))
 
     def __call__(self, mass_per_bin, time_edges) -> float:
         mass_per_bin = np.asarray(mass_per_bin, dtype=float)
@@ -452,14 +510,32 @@ class SFHSmoothnessPrior:
         relative_sfr = sfr / mean_sfr
         log_sfr = np.log10(relative_sfr + self.relative_sfr_floor)
 
-        time_centres = 0.5 * (time_edges[:-1] + time_edges[1:])
-        left_span = time_centres[1:-1] - time_centres[:-2]
-        right_span = time_centres[2:] - time_centres[1:-1]
+        # compute bin centres using linear or log interpolation
+        coord = self._bin_time(time_edges)
+        left_span = coord[1:-1] - coord[:-2]
+        right_span = coord[2:] - coord[1:-1]
         neighbour_span = left_span + right_span
         interpolated_log_sfr = (
             right_span * log_sfr[:-2] + left_span * log_sfr[2:]
         ) / neighbour_span
         residuals = log_sfr[1:-1] - interpolated_log_sfr
+
+        if self.edge_residuals == "extrapolate":
+            first = log_sfr[0] - (
+                log_sfr[1]
+                + (log_sfr[1] - log_sfr[2])
+                * (coord[1] - coord[0]) / (coord[2] - coord[1])
+            )
+            last = log_sfr[-1] - (
+                log_sfr[-2]
+                + (log_sfr[-2] - log_sfr[-3])
+                * (coord[-1] - coord[-2]) / (coord[-2] - coord[-3])
+            )
+            residuals = np.concatenate(([first], residuals, [last]))
+        elif self.edge_residuals == "index":
+            first = (log_sfr[0] - log_sfr[1]) - (log_sfr[1] - log_sfr[2])
+            last = (log_sfr[-2] - log_sfr[-1]) - (log_sfr[-3] - log_sfr[-2])
+            residuals = np.concatenate(([first], residuals, [last]))
 
         nu = self.dof
         sigma = self.sigma_dex
@@ -531,17 +607,24 @@ class SFHBase(ABC):
         relative_floor = float(
             kwargs.get("sfh_smoothness_relative_floor", 1e-4)
         )
+        time_mode = str(kwargs.get("sfh_smoothness_time_mode", "lin")).strip().lower()
+        edge_residuals = str(
+            kwargs.get("sfh_smoothness_edge_residuals", "none")).strip().lower()
         logger.info(
-            "Enabling robust physical-time SFH curvature prior with "
-            "sigma_dex=%s, dof=%s, relative_sfr_floor=%s",
+            "Enabling robust SFH curvature prior with sigma_dex=%s, dof=%s, "
+            "relative_sfr_floor=%s, time_mode=%s, edge_residuals=%s",
             sigma_dex,
             dof,
             relative_floor,
+            time_mode,
+            edge_residuals,
         )
         return SFHSmoothnessPrior(
             sigma_dex=sigma_dex,
             dof=dof,
             relative_sfr_floor=relative_floor,
+            time_mode=time_mode,
+            edge_residuals=edge_residuals,
         )
 
     @property
@@ -1772,6 +1855,7 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
         return 1, 0.0
 
 
+################################################################################
 # Building SFH models from configuration options
 
 # Options forwarded to the SFH constructor (name, type). Everything else comes
@@ -1781,6 +1865,8 @@ _SFH_SMOOTHNESS_OPTIONS = (
     ("sfh_smoothness_sigma_dex", float),
     ("sfh_smoothness_dof", float),
     ("sfh_smoothness_relative_floor", float),
+    ("sfh_smoothness_time_mode", str),
+    ("sfh_smoothness_edge_residuals", str),
     ("sfh_smoothness_order", int),
     ("sfh_smoothness_min_sfr", float),
 )
