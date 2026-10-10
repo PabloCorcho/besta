@@ -1455,7 +1455,7 @@ class SpectraFitModule(BaseModule):
             self.config["wavelength"],
             residuals,
             c="grey",
-            label="Residuals",
+            label=r"Residuals ($\hat{F} - F$)",
             lw=0.7
         )
         ax.plot(
@@ -1467,8 +1467,8 @@ class SpectraFitModule(BaseModule):
         )
         ax.axhline(0, ls="--", color="k", alpha=0.2)
         ax.set_ylabel("Flux")
-        ax.legend(bbox_to_anchor=(0.5, 1.01), loc="lower center",
-                  ncols=5, fontsize=8)
+        ax.legend(bbox_to_anchor=(0.99, 0.99), loc="upper right",
+                  ncols=6, fontsize=8)
 
         p5, p95 = np.nanpercentile(self.config["flux"], [5, 95])
         p_residuals = np.nanpercentile(residuals, 5) * 0.95
