@@ -526,41 +526,22 @@ class SFHBase(ABC):
         if not use_prior:
             return None
 
-        prior_type = str(
-            kwargs.get(
-                "sfh_smoothness_prior_type",
-                kwargs.get("sfh_smoothness_prior", "robust_time_curvature"),
-            )
-        ).strip().lower()
-
-        if prior_type in {
-            "robust_time_curvature",
-            "time_curvature",
-            "robust",
-            "smoothness",
-        }:
-            sigma_dex = float(kwargs.get("sfh_smoothness_sigma_dex", 0.3))
-            dof = float(kwargs.get("sfh_smoothness_dof", 3.0))
-            relative_floor = float(
-                kwargs.get("sfh_smoothness_relative_floor", 1e-4)
-            )
-            logger.info(
-                "Enabling robust physical-time SFH curvature prior with "
-                "sigma_dex=%s, dof=%s, relative_sfr_floor=%s",
-                sigma_dex,
-                dof,
-                relative_floor,
-            )
-            return SFHSmoothnessPrior(
-                sigma_dex=sigma_dex,
-                dof=dof,
-                relative_sfr_floor=relative_floor,
-            )
-
-        raise ValueError(
-            "Unknown sfh_smoothness_prior_type "
-            f"{prior_type!r}; expected 'robust_time_curvature', "
-            "'time_curvature', or 'smoothness'."
+        sigma_dex = float(kwargs.get("sfh_smoothness_sigma_dex", 0.3))
+        dof = float(kwargs.get("sfh_smoothness_dof", 3.0))
+        relative_floor = float(
+            kwargs.get("sfh_smoothness_relative_floor", 1e-4)
+        )
+        logger.info(
+            "Enabling robust physical-time SFH curvature prior with "
+            "sigma_dex=%s, dof=%s, relative_sfr_floor=%s",
+            sigma_dex,
+            dof,
+            relative_floor,
+        )
+        return SFHSmoothnessPrior(
+            sigma_dex=sigma_dex,
+            dof=dof,
+            relative_sfr_floor=relative_floor,
         )
 
     @property
@@ -945,6 +926,8 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         # log(tau1 / tau2) where tau1 > tau2
         self.delta_logtau = - np.diff(np.log10(self.lookback_time.to_value("yr")))
+        self.max_ratio = np.concatenate(
+            ([1.0], np.cumprod(10.0**self.delta_logtau * (1.0 - 1e-9))))
 
     def parse_datablock(self, datablock: DataBlock):
         """Update the fixed-time sSFR model from a CosmoSIS DataBlock."""
@@ -962,6 +945,8 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             log_ssfr = ssfr_over_last
 
         ssfr = 10.0**log_ssfr
+        # Account for rounding errors
+        ssfr = np.minimum(ssfr, self.max_ratio * np.minimum.accumulate(ssfr / self.max_ratio))
         cumulative_mass = 1.0 - self.lookback_time.to_value("yr") * ssfr
         mass_edges = np.concatenate(([0.0], cumulative_mass, [1.0]))
         time_edges = np.concatenate(
