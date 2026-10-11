@@ -443,8 +443,8 @@ class SFHSmoothnessPrior:
     sigma_dex: float = 0.3
     dof: float = 3.0
     relative_sfr_floor: float = 1e-4
-    time_mode: str = "lin"
-    edge_residuals: str = "none"
+    time_mode: str = "log"
+    edge_residuals: str = "extrapolate"
 
     def __post_init__(self):
         if not np.isfinite(self.sigma_dex) or self.sigma_dex <= 0:
@@ -820,16 +820,19 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     Description
     -----------
     The SFH of a galaxy is modelled as a stepwise function where the free
-    parameters correspond to the mean SFR of each bin. The input lookback
+    parameters correspond to the mean log10(SFR) of each bin. The input lookback
     times are the bin edges. The youngest bin ranges from the present time to
     the smallest lookback time, the next one from that edge to the following
     one, and so on. The oldest bin ranges from the largest lookback time to
     the beginning of the Universe, so ``N`` lookback times define ``N + 1``
     bins.
 
-    The free parameters are ``log10(SFR / (Msun / yr))`` in each bin. Bins
-    are named after their older edge, ``logsfr_at_<lookback Gyr>``, and the
-    oldest bin is ``logsfr_at_bigbang``.
+    For the star formation history, the free parameters are ``log10(SFR / (Msun / yr))`` in
+    each bin. Bins are named after their older edge, ``logsfr_at_<lookback Gyr>``,
+    using three decimal places, and the oldest bin is ``logsfr_at_bigbang``.
+
+    The chemical evolution is modelled as a power law in the cumulative stellar
+    mass formed, with the free parameters ``alpha_powerlaw`` and ``ism_metallicity_today``.
 
     Attributes
     ----------
@@ -838,9 +841,11 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         to the present (0).
     time : astropy.units.Quantity
         Cosmic time of the bin edges, from 0 to ``today``.
+    
+    See also
+    --------
+    :class:SFHBase, :class:PieceWiseSFHMixin, :class:ZPowerLawMixin
     """
-
-    #: Name of the free parameter of the oldest bin
     OLDEST_BIN_KEY = "logsfr_at_bigbang"
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
@@ -865,28 +870,27 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
                 f"Lookback time {lookback_gyr[0]:.4g} Gyr is not smaller than "
                 f"the age of the Universe at the source ({today_gyr:.4g} Gyr). "
                 "The oldest bin, up to the Big Bang, is added automatically.")
+
+        # This model already includes the total mass formed
         self.use_mass_normalization = False
         # Bin edges from the beginning of the Universe to the present date
         self.lookback_time = np.concatenate(
             ([today_gyr], lookback_gyr, [0.0])) << u.Gyr
-        # Exact edges in cosmic time: 0 (Big Bang), today - lookback, today
+        # Edges in cosmic time starting from 0 , today - lookback, today
         self.time = np.concatenate(
             ([0.0], today_gyr - lookback_gyr, [today_gyr])) << u.Gyr
         self.delta_time = np.diff(self.time.to_value("yr"))
 
+        # default prior setup
         logsfr_min = kwargs.get("logsfr_min", -5.0)
         logsfr_max = kwargs.get("logsfr_max", 3.0)
-        # logger.info("Setting up free parameters")
-        # logger.info("Minimum log(SFR)=%s", logsfr_min)
-        # logger.info("Maximum log(SFR)=%s", logsfr_max)
-        # Oldest bin first, matching the order of ``delta_time``
         self.sfh_bin_keys = [self.OLDEST_BIN_KEY] + [
             f"logsfr_at_{lbt:.3f}" for lbt in lookback_gyr]
         for k in self.sfh_bin_keys:
             # Initialise parameters assuming a constant star formation history
             self.free_params[k] = [logsfr_min, 0.0, logsfr_max]
 
-        # Initialise PST
+        # Initialise PST model
         self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time,
             masses=np.ones(self.time.size) << u.Msun,
@@ -903,7 +907,6 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         """Update the fixed-time SFH model from a CosmoSIS DataBlock."""
 
         sampled_logsfr = self.get_sfh_parameters_array(datablock)
-
         # Convert mean SFR per bin into cumulative mass formed in each bin
         mass_per_bin = 10.0**sampled_logsfr * self.delta_time
         cumulative = np.cumsum(mass_per_bin)
