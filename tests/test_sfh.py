@@ -34,15 +34,6 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
             1e-4,
         )
 
-    def test_legacy_prior_type_is_rejected(self):
-        with self.assertRaises(ValueError):
-            sfh.FixedTimeSFH(
-                np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
-                ism_metallicity_today=0.02,
-                use_sfh_smoothness_prior=True,
-                sfh_smoothness_prior_type="legacy_index_gaussian",
-            )
-
     def test_prior_is_invariant_to_mass_normalization(self):
         prior = sfh.SFHSmoothnessPrior()
         masses = np.array([0.4, 0.3, 0.2, 0.1])
@@ -80,15 +71,6 @@ class TestSFHSmoothnessPriors(unittest.TestCase):
         self.assertTrue(np.isfinite(burst_value))
         self.assertLess(burst_value, smooth_value)
         self.assertGreater(burst_value, -100.0)
-
-    def test_invalid_prior_type_is_rejected(self):
-        with self.assertRaises(ValueError):
-            sfh.FixedTimeSFH(
-                np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr,
-                ism_metallicity_today=0.02,
-                use_sfh_smoothness_prior=True,
-                sfh_smoothness_prior_type="unknown",
-            )
 
 
 class TestFixedTimeSFH(unittest.TestCase):
@@ -780,6 +762,73 @@ class TestExponentialSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(mass) >= 0))
 
 
+class TestHybridDelayedTau(unittest.TestCase):
+
+    def setUp(self):
+        self.lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
+        self.model = sfh.HybridDelayedTau(
+            self.lookback_bins, redshift=0.05)
+
+    def _parse(self, delta, logtau=0.3):
+        parameters = dict(zip(self.model.sfh_bin_keys, delta))
+        parameters.update(logtau=logtau, alpha_powerlaw=0.0,
+                          ism_metallicity_today=0.02)
+        db = DataBlock.from_dict({self.model.sect_name: parameters})
+        status, log_prior = self.model.parse_datablock(db)
+        self.assertEqual((status, log_prior), (1, 0.0))
+        return self.model.model.table_mass.to_value(u.Msun)
+
+    def test_initialization(self):
+        # N lookback edges define N + 1 bins, the oldest up to the Big Bang
+        keys = self.model.sfh_bin_keys
+        self.assertEqual(len(keys), len(self.lookback_bins) + 1)
+        self.assertEqual(keys[0], "delta_at_bigbang")
+        self.assertEqual(keys[1:], [f"delta_at_{t:.3f}" for t in (5, 2, 1, 0.5)])
+        for key in keys:
+            self.assertEqual(self.model.free_params[key], [-3.0, 0.0, 3.0])
+        self.assertIn("logtau", self.model.free_params)
+
+    def test_invalid_inputs(self):
+        with self.assertRaises(ValueError):
+            sfh.HybridDelayedTau([1.0, 1.0])
+        with self.assertRaises(ValueError):
+            sfh.HybridDelayedTau([1.0, 100.0])
+        with self.assertRaises(NotImplementedError):
+            sfh.HybridDelayedTau([1.0], use_transforms=True)
+
+    def test_zero_corrections_recover_delayed_tau(self):
+        table = self._parse(np.zeros(5), logtau=0.3)
+        reference = sfh.DelayedTauSFH(redshift=0.05)
+        reference.parse_datablock(DataBlock.from_dict({reference.sect_name: {
+            "logtau": 0.3, "alpha_powerlaw": 0.0, "ism_metallicity_today": 0.02}}))
+        mass = reference.model.stellar_mass_formed(self.model.time << u.Gyr)
+        np.testing.assert_allclose(table, (mass / mass[-1]).value, atol=1e-10)
+
+    def test_corrections_scale_the_bin_masses(self):
+        base = self._parse(np.zeros(5))
+        delta = np.array([0.0, 0.0, 0.3, -1.0, 0.5])
+        table = self._parse(delta)
+        ratio = np.diff(table) / np.diff(base)
+        # Mass of each bin relative to the baseline is 10**delta up to a constant
+        np.testing.assert_allclose(ratio / ratio[0], 10.0**delta)
+        self.assertAlmostEqual(table[-1], 1.0)
+        self.assertTrue(np.all(np.diff(table) >= 0))
+
+    def test_constant_shift_of_corrections_is_degenerate(self):
+        delta = np.array([0.2, -0.4, 0.0, 0.7, -0.1])
+        table = self._parse(delta)
+        shifted = self._parse(delta + 1.5)
+        np.testing.assert_allclose(table, shifted, atol=1e-12)
+
+    def test_build_from_options(self):
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "HybridDelayedTau",
+            "SFHArgs": "[0.1, 1.0, 5.0]",
+        })
+        self.assertIsInstance(model, sfh.HybridDelayedTau)
+        self.assertEqual(len(model.sfh_bin_keys), 4)
+
+
 class TestBetaSFH(unittest.TestCase):
 
     def setUp(self):
@@ -1081,6 +1130,164 @@ class TestSFHInterpolationOption(unittest.TestCase):
         model = sfh.build_sfh_from_options({
             "SFHModel": "FixedMassFracSFH", "SFHArgs": "[0.5, 0.9]"})
         self.assertEqual(model.model.interpolation, "linear")
+
+
+class TestSFHSmoothnessPriorModes(unittest.TestCase):
+    """``time_mode`` and ``edge_residuals`` of :class:`sfh.SFHSmoothnessPrior`."""
+
+    # Irregular bins that end at the time of observation
+    EDGES = np.array([0.0, 1.0, 3.0, 6.0, 10.0, 12.0, 13.0])
+    MASSES = np.array([0.1, 0.25, 0.2, 0.3, 0.1, 0.05])
+    COMBINATIONS = [
+        (mode, edges)
+        for mode in sfh.SFHSmoothnessPrior.TIME_MODES
+        for edges in sfh.SFHSmoothnessPrior.EDGE_RESIDUALS
+    ]
+
+    @staticmethod
+    def maximum(prior, n_residuals):
+        """Log-prior of ``n_residuals`` zero residuals."""
+        from math import lgamma
+        nu, sigma = prior.dof, prior.sigma_dex
+        per_residual = (
+            lgamma(0.5 * (nu + 1.0)) - lgamma(0.5 * nu)
+            - 0.5 * np.log(nu * np.pi) - np.log(sigma))
+        return n_residuals * per_residual
+
+    @staticmethod
+    def masses_from_sfr(sfr, edges):
+        return sfr * np.diff(edges)
+
+    def test_defaults_are_unchanged(self):
+        # Values of the interior-only, linear-time prior before the options
+        # were introduced
+        prior = sfh.SFHSmoothnessPrior()
+        self.assertEqual(prior.time_mode, "log")
+        self.assertEqual(prior.edge_residuals, "extrapolate")
+        self.assertAlmostEqual(
+            prior(self.MASSES, self.EDGES), -0.003899273776147627, places=12)
+        custom = sfh.SFHSmoothnessPrior(
+            sigma_dex=0.2, dof=2.0, relative_sfr_floor=1e-3)
+        self.assertAlmostEqual(
+            custom(self.MASSES, self.EDGES), 0.709562582905297, places=12)
+
+    def test_invalid_options_are_rejected(self):
+        with self.assertRaises(ValueError):
+            sfh.SFHSmoothnessPrior(time_mode="geometric")
+        with self.assertRaises(ValueError):
+            sfh.SFHSmoothnessPrior(edge_residuals="reflect")
+
+    def test_constant_sfh_is_free_in_every_mode(self):
+        masses = self.masses_from_sfr(np.ones(6), self.EDGES)
+        for mode, edges in self.COMBINATIONS:
+            with self.subTest(time_mode=mode, edge_residuals=edges):
+                prior = sfh.SFHSmoothnessPrior(
+                    time_mode=mode, edge_residuals=edges)
+                n_residuals = 4 if edges == "none" else 6
+                self.assertAlmostEqual(
+                    prior(masses, self.EDGES),
+                    self.maximum(prior, n_residuals), places=10)
+
+    def test_linear_mode_leaves_exponentials_free(self):
+        # log SFR linear in the cosmic time of the arithmetic bin centres
+        centres = 0.5 * (self.EDGES[:-1] + self.EDGES[1:])
+        masses = self.masses_from_sfr(np.exp(-centres / 4.0), self.EDGES)
+        for edges, n_residuals in (("none", 4), ("extrapolate", 6)):
+            prior = sfh.SFHSmoothnessPrior(
+                relative_sfr_floor=1e-12, time_mode="lin", edge_residuals=edges)
+            self.assertAlmostEqual(
+                prior(masses, self.EDGES),
+                self.maximum(prior, n_residuals), places=6)
+        # ... while the log mode penalises them
+        log_prior = sfh.SFHSmoothnessPrior(
+            relative_sfr_floor=1e-12, time_mode="log")
+        self.assertLess(
+            log_prior(masses, self.EDGES), self.maximum(log_prior, 4) - 1e-3)
+
+    def test_log_mode_leaves_lookback_power_laws_free(self):
+        # log SFR linear in log10 of the geometric lookback bin centres
+        lookback = self.EDGES[-1] - self.EDGES
+        older, younger = lookback[:-1], lookback[1:].copy()
+        younger[-1] = older[-1] ** 2 / older[-2]
+        centres = np.sqrt(older * younger)
+        masses = self.masses_from_sfr(centres ** -0.7, self.EDGES)
+        for edges, n_residuals in (("none", 4), ("extrapolate", 6)):
+            prior = sfh.SFHSmoothnessPrior(
+                relative_sfr_floor=1e-12, time_mode="log", edge_residuals=edges)
+            self.assertAlmostEqual(
+                prior(masses, self.EDGES),
+                self.maximum(prior, n_residuals), places=6)
+        lin_prior = sfh.SFHSmoothnessPrior(
+            relative_sfr_floor=1e-12, time_mode="lin", edge_residuals="none")
+        self.assertLess(
+            lin_prior(masses, self.EDGES), self.maximum(lin_prior, 4) - 1e-3)
+
+    def test_index_edge_residuals_ignore_bin_spacing(self):
+        # Exponential in time: free for the interior and spacing-aware end
+        # terms, but not for the unweighted second difference on uneven bins
+        centres = 0.5 * (self.EDGES[:-1] + self.EDGES[1:])
+        masses = self.masses_from_sfr(np.exp(-centres / 4.0), self.EDGES)
+        kwargs = dict(relative_sfr_floor=1e-12, time_mode="lin")
+        spacing_aware = sfh.SFHSmoothnessPrior(
+            edge_residuals="extrapolate", **kwargs)
+        index = sfh.SFHSmoothnessPrior(edge_residuals="index", **kwargs)
+        self.assertGreater(
+            spacing_aware(masses, self.EDGES),
+            index(masses, self.EDGES) + 1e-3)
+        # With uniformly spaced bins they coincide
+        uniform = np.linspace(0.0, 12.0, 7)
+        masses = np.array([0.1, 0.3, 0.2, 0.05, 0.25, 0.1])
+        self.assertAlmostEqual(
+            spacing_aware(masses, uniform), index(masses, uniform), places=10)
+
+    def test_end_residuals_penalise_a_burst_in_the_end_bin(self):
+        masses = self.masses_from_sfr(np.ones(6), self.EDGES)
+        masses[0] *= 30.0
+        for mode in sfh.SFHSmoothnessPrior.TIME_MODES:
+            none = sfh.SFHSmoothnessPrior(time_mode=mode)
+            for edges in ("extrapolate", "index"):
+                prior = sfh.SFHSmoothnessPrior(
+                    time_mode=mode, edge_residuals=edges)
+                # Two more residuals (log-density maximum) minus the extra penalty
+                self.assertLess(
+                    prior(masses, self.EDGES) - self.maximum(prior, 6),
+                    none(masses, self.EDGES) - self.maximum(none, 4))
+
+    def test_prior_is_invariant_to_mass_and_time_units(self):
+        for mode, edges in self.COMBINATIONS:
+            prior = sfh.SFHSmoothnessPrior(time_mode=mode, edge_residuals=edges)
+            value = prior(self.MASSES, self.EDGES)
+            self.assertAlmostEqual(
+                prior(1e9 * self.MASSES, self.EDGES), value, places=10)
+            self.assertAlmostEqual(
+                prior(self.MASSES, 1e3 * self.EDGES), value, places=10)
+
+    def test_options_reach_the_model_prior(self):
+        model = sfh.FixedMassFracSFH(
+            [0.2, 0.5, 0.8], ism_metallicity_today=0.02,
+            use_sfh_smoothness_prior=True,
+            sfh_smoothness_time_mode="log",
+            sfh_smoothness_edge_residuals="extrapolate")
+        self.assertEqual(model.sfh_smoothness_prior.time_mode, "log")
+        self.assertEqual(model.sfh_smoothness_prior.edge_residuals, "extrapolate")
+        model = sfh.build_sfh_from_options({
+            "SFHModel": "FixedMassFracSFH", "SFHArgs": "(0.2, 0.5, 0.8)",
+            "use_sfh_smoothness_prior": "T",
+            "sfh_smoothness_time_mode": "log",
+            "sfh_smoothness_edge_residuals": "index"})
+        self.assertEqual(model.sfh_smoothness_prior.time_mode, "log")
+        self.assertEqual(model.sfh_smoothness_prior.edge_residuals, "index")
+
+    def test_all_models_accept_log_mode(self):
+        # FixedTimeSFH passes cosmic-time edges ending at the observation time
+        model = sfh.FixedTimeSFH(
+            np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr, ism_metallicity_today=0.02,
+            use_sfh_smoothness_prior=True, sfh_smoothness_time_mode="log")
+        params = dict(zip(model.sfh_bin_keys, [-10.0] * len(model.sfh_bin_keys)))
+        params.update(alpha_powerlaw=0.5, ism_metallicity_today=0.02)
+        status, log_prior = model.parse_free_params(params)
+        self.assertEqual(status, 1)
+        self.assertTrue(np.isfinite(log_prior))
 
 
 class TestBuildSFHFromOptions(unittest.TestCase):
