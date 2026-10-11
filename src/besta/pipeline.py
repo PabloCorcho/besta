@@ -67,7 +67,9 @@ def normalize_sfh_reconstruction_settings(settings):
         with the defaults. A dict may contain ``output``, ``samples``,
         ``plot``, ``plot_output`` and ``options`` (keyword arguments of
         :func:`besta.postprocess.reconstruct_sfh`, e.g. ``n_bins``,
-        ``lookback_edges``, ``taus``, ``max_samples``, ``burn_in``).
+        ``lookback_edges``, ``taus``, ``max_samples``, ``burn_in``). If
+        ``nwalkers`` is not given it is read from the sampler configuration
+        of the run, and ``max_samples`` defaults to 5000.
 
     Returns
     -------
@@ -312,11 +314,14 @@ class MainPipeline(object):
             return os.path.expandvars(explicit)
 
         options = dict(settings["options"])
-        if options.get("burn_in", 0) and "nwalkers" not in options:
+        # if walkers/samples are unspecified, then read the walkers from the sampler
+        if options.get("nwalkers") is None:
             try:
                 options["nwalkers"] = int(reader.walkers or 1)
             except (KeyError, TypeError, ValueError):
                 options["nwalkers"] = 1
+        options.setdefault("max_samples", 5000)
+        if options.get("burn_in", 0):
             logger.info("Burn-in of %d samples per walker (%d walkers).",
                         options["burn_in"], options["nwalkers"])
 
@@ -424,7 +429,7 @@ class MainPipeline(object):
                             par_module,
                             figname,
                         )
-            # Posterior SFH on a lookback-time grid (FITS, optional figure)
+            # Build posterior SFH
             if sfh_settings is not None:
                 logger.info("Reconstructing the posterior SFH for this run")
                 logger.info("SFH reconstruction settings: %s", sfh_settings)
