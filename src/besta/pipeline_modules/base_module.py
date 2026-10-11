@@ -9,6 +9,19 @@ import os
 import pickle
 import sys
 
+# Limit the BLAS/OpenMP thread pools to prevent core oversubscription.
+_BLAS_THREADS = int(os.environ.get("BESTA_BLAS_THREADS", "1"))
+
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "BLIS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ[_var] = str(_BLAS_THREADS)
+
 import importlib.util
 import pathlib
 import types
