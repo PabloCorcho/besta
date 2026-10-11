@@ -1527,8 +1527,9 @@ class FixedMassFracSFH2D(FixedMassFracSFH):
         return super().parse_datablock(datablock)
 
 
-# Analytical star formation histories
-
+################################################################################
+################ Analytical star formation histories ###########################
+################################################################################
 
 class ExponentialSFH(ZPowerLawMixin, SFHBase):
     """An analytical exponentially declining SFH model.
@@ -1854,6 +1855,104 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
             beta=datablock[self.sect_name, "beta"],
             t_start=t_start << u.Gyr,
             t_end=t_end << u.Gyr,
+        )
+        return 1, 0.0
+
+####################### Hybrid star formation histories#########################
+
+
+class HybridDelayedTau(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+    r"""A delayed-tau SFH with an independent correction in each time bin.
+
+    Description
+    -----------
+    The baseline is the delayed-tau SFH, :math:`\psi(t) \propto t e^{-t/\tau}`.
+    The mass fraction of the baseline in bin :math:`i` is :math:`f^0_i`, and
+    each bin has a free correction :math:`\Delta_i` in dex,
+
+    .. math::
+        f_i = \frac{f^0_i 10^{\Delta_i}}{\sum_j f^0_j 10^{\Delta_j}}.
+
+    Their prior has to be set in the ``values`` and ``priors`` .ini files.
+    It is recommended to use a Gaussian centred on zero, that controls how much
+    the SFH may depart from the baseline. Note that this model is degenerate with
+    respect to adding a constant to all :math:`\Delta_i`, which leaves the SFH
+    unchanged, so we recommend using a conservative value of $\sigma_\Delta$ (<1.0),
+    to minimise the degeneracy.
+
+    The bins follow :class:`FixedTimeSFH`: ``N`` lookback times define
+    ``N + 1`` bins, the oldest one running to the Big Bang. The free
+    parameters are ``logtau`` (the base e-folding time) and
+    ``delta_at_<lookback Gyr>`` (the oldest bin is ``delta_at_bigbang``).
+
+    Parameters
+    ----------
+    lookback_time_bins : array-like
+        Lookback times of the bin edges, in Gyr.
+    """
+    OLDEST_BIN_KEY = "delta_at_bigbang"
+
+    def __init__(self, lookback_time_bins, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.use_transforms:
+            raise NotImplementedError(
+                "HybridDelayedTau does not support latent variable transforms."
+            )
+        logger.info("Initialising HybridDelayedTau model")
+
+        lookback_gyr = np.sort(
+            check_unit(np.atleast_1d(lookback_time_bins), u.Gyr).to_value("Gyr")
+        )[::-1]
+        today_gyr = self.today.to_value("Gyr")
+        if (
+            lookback_gyr.size == 0
+            or np.any(lookback_gyr <= 0)
+            or np.any(np.diff(lookback_gyr) == 0)
+            or lookback_gyr[0] >= today_gyr
+        ):
+            raise ValueError(
+                "Lookback times must be unique, positive and smaller than the "
+                f"age of the Universe ({today_gyr:.4g} Gyr), got {lookback_gyr} Gyr."
+            )
+
+        # Bin edges in cosmic time
+        self.time = np.concatenate(([0.0], today_gyr - lookback_gyr, [today_gyr]))
+
+        # Beyond tau~50 the SFH does not change much
+        self.free_params["logtau"] = kwargs.get("logtau", [-0.5, 0.5, 1.7])
+        # Oldest bin first, matching the order of ``self.time``
+        self.sfh_bin_keys = [self.OLDEST_BIN_KEY] + [
+            f"delta_at_{lbt:.3f}" for lbt in lookback_gyr]
+        
+        # Default prior range. This can be combined with the Gaussian prior
+        # such that the distribution is truncated to the range
+        for key in self.sfh_bin_keys:
+            self.free_params[key] = [-3.0, 0.0, 3.0]
+
+        self.model = cem.TabularCEM_ZPowerLaw(
+            times=self.time << u.Gyr,
+            masses=np.ones(self.time.size) << u.Msun,
+            today=self.today,
+            mass_today=1 << u.Msun,
+            ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
+            << u.dimensionless_unscaled,
+            alpha_powerlaw=kwargs.get("alpha_powerlaw", 0.0),
+            interpolation=self.sfh_interpolation,
+        )
+        self.model.times.fixed = True
+
+    def parse_datablock(self, datablock: DataBlock):
+        """Update the SFH from a CosmoSIS DataBlock."""
+        delta = self.get_sfh_parameters_array(datablock)
+        x = self.time / 10 ** datablock[self.sect_name, "logtau"]
+        # M(t)/M(today) is (1 + x) exp(-x)
+        baseline = -np.diff((1 + x) * np.exp(-x))
+        mass = baseline * 10.0**delta
+        self.model.table_mass = np.insert(np.cumsum(mass), 0, 0.0) / mass.sum() << u.Msun
+        self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
+        self.model.ism_metallicity_today = (
+            datablock[self.sect_name, "ism_metallicity_today"]
+            << u.dimensionless_unscaled
         )
         return 1, 0.0
 
