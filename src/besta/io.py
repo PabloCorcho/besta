@@ -798,7 +798,7 @@ class Reader(object):
         nwalkers : int, optional
             Number of walkers used during the sampling. Required if burn_in > 0. Default is 1.
         """
-        path = self.ini["output"]["filename"]
+        path = self.results_file
         if ".txt" not in path:
             path += ".txt"
         self.results_table = read_results_file(path)
