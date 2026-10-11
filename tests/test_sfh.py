@@ -762,11 +762,11 @@ class TestExponentialSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(mass) >= 0))
 
 
-class TestHybridDelayedTau(unittest.TestCase):
+class TestHybridDelayedTauSFH(unittest.TestCase):
 
     def setUp(self):
         self.lookback_bins = np.array([0.5, 1.0, 2.0, 5.0]) * u.Gyr
-        self.model = sfh.HybridDelayedTau(
+        self.model = sfh.HybridDelayedTauSFH(
             self.lookback_bins, redshift=0.05)
 
     def _parse(self, delta, logtau=0.3):
@@ -790,11 +790,11 @@ class TestHybridDelayedTau(unittest.TestCase):
 
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):
-            sfh.HybridDelayedTau([1.0, 1.0])
+            sfh.HybridDelayedTauSFH([1.0, 1.0])
         with self.assertRaises(ValueError):
-            sfh.HybridDelayedTau([1.0, 100.0])
+            sfh.HybridDelayedTauSFH([1.0, 100.0])
         with self.assertRaises(NotImplementedError):
-            sfh.HybridDelayedTau([1.0], use_transforms=True)
+            sfh.HybridDelayedTauSFH([1.0], use_transforms=True)
 
     def test_zero_corrections_recover_delayed_tau(self):
         table = self._parse(np.zeros(5), logtau=0.3)
@@ -822,10 +822,10 @@ class TestHybridDelayedTau(unittest.TestCase):
 
     def test_build_from_options(self):
         model = sfh.build_sfh_from_options({
-            "SFHModel": "HybridDelayedTau",
+            "SFHModel": "HybridDelayedTauSFH",
             "SFHArgs": "[0.1, 1.0, 5.0]",
         })
-        self.assertIsInstance(model, sfh.HybridDelayedTau)
+        self.assertIsInstance(model, sfh.HybridDelayedTauSFH)
         self.assertEqual(len(model.sfh_bin_keys), 4)
 
 

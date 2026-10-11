@@ -1861,7 +1861,7 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
 ####################### Hybrid star formation histories#########################
 
 
-class HybridDelayedTau(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     r"""A delayed-tau SFH with an independent correction in each time bin.
 
     Description
@@ -1896,9 +1896,9 @@ class HybridDelayedTau(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         super().__init__(*args, **kwargs)
         if self.use_transforms:
             raise NotImplementedError(
-                "HybridDelayedTau does not support latent variable transforms."
+                "HybridDelayedTauSFH does not support latent variable transforms."
             )
-        logger.info("Initialising HybridDelayedTau model")
+        logger.info("Initialising HybridDelayedTauSFH model")
 
         lookback_gyr = np.sort(
             check_unit(np.atleast_1d(lookback_time_bins), u.Gyr).to_value("Gyr")
