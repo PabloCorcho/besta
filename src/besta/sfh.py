@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 # Latent variables and transformations
 
 def _softmax(x):
-    """Numerically stable softmax.
+    r"""Numerically stable softmax.
     
     The softmax is defined as:
 
@@ -34,7 +34,7 @@ def _softmax(x):
     return exp_x / np.sum(exp_x)
 
 def _sigmoid(x):
-    """Simple sigmoid to clamp values into (0, 1).
+    r"""Simple sigmoid to clamp values into (0, 1).
     
     This function maps any real number to the interval (0, 1).
     The sigmoid is defined as:
@@ -47,7 +47,7 @@ def _sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 def _logit(x):
-    """Inverse of sigmoid on (0,1).
+    r"""Inverse of sigmoid on (0,1).
     
     The inverse sigmoid, or logit, is defined as:
 
