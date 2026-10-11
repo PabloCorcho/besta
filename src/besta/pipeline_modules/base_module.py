@@ -1450,12 +1450,12 @@ class SpectraFitModule(BaseModule):
                 )
 
         # Plot residuals
-        residuals = flux_model - self.config["flux"]
+        residuals = self.config["flux"] - flux_model
         ax.plot(
             self.config["wavelength"],
             residuals,
             c="grey",
-            label=r"Residuals ($\hat{F} - F$)",
+            label=r"Residuals ($F - \hat{F}$)",
             lw=0.7
         )
         ax.plot(
