@@ -181,10 +181,14 @@ class EquivalentWidthFitModule(SpectraFitModule):
 
         self.config["ew_obs"] = ew_obs[good]
         self.config["ew_obs_ivar"] = 1.0 / ew_err[good] ** 2
-        # Model window means are taken on the SSP grid
+        # Model window means: on the SSP grid, or on the observed grid if the
+        # SED is trimmed after the LOSVD convolution
         ssp_wl = self.config["ssp_model"].wavelength.to_value("Angstrom")
+        self.config["ssp_wl"] = ssp_wl
         self.config["ew_matrix"] = self._window_matrix(
             ssp_wl, self.config["ew_ranges"])
+        self.config["ew_matrix_trimmed"] = self._window_matrix(
+            wl, self.config["ew_ranges"])
         logger.info("Fitting %d equivalent widths: %s",
                     len(self.config["ew_names"]), self.config["ew_names"])
 
@@ -264,6 +268,17 @@ class EquivalentWidthFitModule(SpectraFitModule):
                 dust_model.name, block["dust.attenuation", "r"])
         return dust_model, block["dust.attenuation", "a_v"]
 
+    def _model_grid(self, sed):
+        """Wavelength grid and window matrix matching a model SED.
+
+        The SED is on the SSP grid, or on the observed grid if it was trimmed
+        after the LOSVD convolution.
+        """
+        if sed.size == self.config["ew_matrix"].shape[1]:
+            return self.config["ssp_wl"], self.config["ew_matrix"]
+        return (self.config["wavelength"].value,
+                self.config["ew_matrix_trimmed"])
+
     def model_sed(self, block, parse=False):
         """Stellar SED on the SSP grid (1e-16 erg/s/AA), including dust."""
         sfh_model = self.config["sfh_model"]
@@ -284,7 +299,8 @@ class EquivalentWidthFitModule(SpectraFitModule):
 
     def make_observable(self, block, parse=False):
         """Compute the model equivalent widths (Angstrom)."""
-        means = self.config["ew_matrix"] @ self.model_sed(block, parse=parse)
+        sed = self.model_sed(block, parse=parse)
+        means = self._model_grid(sed)[1] @ sed
         lines = self.balmer_luminosities(block)
         if lines is not None:
             means = means + self.config["balmer_matrix"] @ lines
@@ -347,15 +363,15 @@ class EquivalentWidthFitModule(SpectraFitModule):
             Names, observed EWs and errors, model EWs and residuals in units
             of the error.
         """
-        ssp_wl = self.config["ssp_model"].wavelength.to_value("Angstrom")
         ew_model = self.make_observable(block, parse=True)
         sed = self.model_sed(block)
+        model_wl = self._model_grid(sed)[0]
         lines = self.balmer_luminosities(block)
         if lines is not None:
             sigma = self.config["balmer_sigma"]
             sed = sed + np.sum(
                 lines / (sigma * np.sqrt(2 * np.pi))
-                * np.exp(-0.5 * ((ssp_wl[:, None] - _BALMER_WAVELENGTH) / sigma) ** 2),
+                * np.exp(-0.5 * ((model_wl[:, None] - _BALMER_WAVELENGTH) / sigma) ** 2),
                 axis=1)
         names = np.array(self.config["ew_names"])
         ew_obs = self.config["ew_obs"]
@@ -386,7 +402,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
             window = (wl >= left[0]) & (wl <= right[1])
 
             # Scale the model to the data over the index windows
-            model_on_obs = np.interp(wl, ssp_wl, sed)
+            model_on_obs = np.interp(wl, model_wl, sed)
             scale = ml_amplitude(flux[window], model_on_obs[window],
                                  self.config["ivar"][window])
 
