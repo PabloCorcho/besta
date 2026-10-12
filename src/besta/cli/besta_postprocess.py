@@ -21,7 +21,7 @@ def parser_setup():
     parser.add_argument("file", help="Input file (results or ini)")
     parser.add_argument("--from_ini", action="store_true",
                         help="Indicate that the input file is an ini file")
-    parser.add_argument("--make_best_fit", action="store_true",
+    parser.add_argument("--make_best_fit", "-mbf", action="store_true",
                         help="Generate best fit plots for each module")
     parser.add_argument("--save_best_fit_data", action="store_true",
                         help="Save best fit data to a FITS file")
@@ -40,11 +40,11 @@ def parser_setup():
         "SFH reconstruction",
         "Posterior SFHs on a grid of lookback times, saved as FITS. Latent SFH "
         "parameters are converted to physical space automatically.")
-    sfh.add_argument("--make_sfh", action="store_true",
+    sfh.add_argument("--make_sfh", "-sfh", action="store_true",
                      help="Reconstruct the SFH and write it to a FITS file")
     sfh.add_argument("--sfh_output", type=str, default=None,
                      help="Output FITS file (default: <results>_sfh.fits)")
-    sfh.add_argument("--sfh_plot", "--sfh-plot", action="store_true",
+    sfh.add_argument("--sfh_plot", "--sfh-plot", "-sfp", action="store_true",
                      help="Generate SFH percentile plots")
     sfh.add_argument("--sfh_plot_output", "--sfh-plot-output", type=str, default=None,
                      help="Output plot file (default: <results>_sfh.png)")
