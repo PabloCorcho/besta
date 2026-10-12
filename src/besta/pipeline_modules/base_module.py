@@ -1485,7 +1485,8 @@ class SpectraFitModule(BaseModule):
 
         p5, p95 = np.nanpercentile(self.config["flux"], [5, 95])
         p_residuals = np.nanpercentile(residuals, 5) * 0.95
-        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
+        ax.set_yscale("symlog", linthresh=p95 * 1.2)
+        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 5)
 
         # Plot masked emission lines and telluric regions
         if plot_lines:
