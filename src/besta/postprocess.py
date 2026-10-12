@@ -1880,71 +1880,156 @@ def _weighted_mean_samples(values: np.ndarray, weights: np.ndarray) -> np.ndarra
         return np.where(norm > 0, total / np.where(norm > 0, norm, 1.0), np.nan)
 
 
-_SFH_QUANTITIES = ("mass_fraction", "ssfr", "metallicity", "ssfr_tau",
-                   "log_stellar_mass", "t_formed")
+def _weighted_geometric_mean_samples(values: np.ndarray,
+                                     weights: np.ndarray) -> np.ndarray:
+    """Weighted geometric mean over the samples along axis 0.
+
+    ``10 ** <log10(x)>`` over the finite, non-negative values (negative and
+    non-finite values are ignored with their weights). If some sample with a
+    positive weight is exactly 0, the geometric mean is 0. Returns NaN where
+    no valid value remains.
+    """
+    values = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float).reshape((-1,) + (1,) * (values.ndim - 1))
+    w = np.broadcast_to(w, values.shape)
+    valid = np.isfinite(values) & (values >= 0) & np.isfinite(w)
+    zero = valid & (values == 0) & (w > 0)
+    positive = valid & (values > 0)
+    wp = np.where(positive, w, 0.0)
+    norm = wp.sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        logs = np.where(positive, np.log10(np.where(positive, values, 1.0)), 0.0)
+        result = 10.0 ** ((wp * logs).sum(axis=0) / np.where(norm > 0, norm, 1.0))
+    result = np.where(norm > 0, result, np.nan)
+    return np.where(zero.any(axis=0), 0.0, result)
 
 
-@dataclass
+# Quantities of a reconstruction: name -> (grid, positive).
+# ``grid`` is the axis the values are defined on and ``positive`` tells whether
+# a geometric mean makes sense (strictly positive quantities).
+_SFH_QUANTITIES = {
+    "mass_fraction": ("edges", False),      # at the lookback edges
+    "ssfr": ("bins", True),                 # averaged in each lookback bin
+    "metallicity": ("edges", True),         # at the lookback edges
+    "ssfr_tau": ("taus", True),             # averaged over the last tau
+    "t_formed": ("fractions", True),        # lookback time of mass fractions
+    "log_stellar_mass": ("scalar", False),  # log10 of the total mass
+}
+_SFH_MEAN_KINDS = ("arithmetic", "geometric")
+# Arrays of the class: changing one invalidates the cached statistics
+_SFH_DATA_FIELDS = (
+    "lookback_edges", "percentiles", "mass_fraction", "ssfr", "ssfr_tau", "taus",
+    "weights", "metallicity", "log_stellar_mass", "t_formed", "mass_frac_formed")
+
+
 class SFHReconstruction:
     """Posterior SFHs evaluated on a grid of lookback times.
 
-    Every quantity is summarised by its weighted percentiles
-    (:meth:`percentile_values`) and its weighted posterior mean
-    (:meth:`mean_values`). The mean is the estimator to use when combining
-    several reconstructions (e.g. averaging or stacking runs), since it is
-    linear in the samples while the percentiles are not.
+    Every quantity (see :attr:`quantities`) is summarised by its weighted
+    percentiles (:meth:`percentile_values`) and by two weighted posterior
+    means (:meth:`mean_values`):
 
-    Attributes
+    - ``"arithmetic"``: the mean of the values. It is linear in the samples,
+      so it is the estimator to use when combining several reconstructions
+      (averaging or stacking runs) and to compare with sums of masses.
+    - ``"geometric"``: ``10 ** <log10(x)>`` for the strictly positive
+      quantities (sSFRs, metallicity, formation times). It is less sensitive
+      than the arithmetic mean to the tail of high values of the posterior.
+
+    Parameters
     ----------
-    lookback_edges : ndarray, shape (n_bins + 1,)
+    lookback_edges : array-like, shape (n_bins + 1,)
         Lookback-time bin edges [Gyr].
-    percentiles : tuple of float
+    percentiles : sequence of float
         Quantiles (in [0, 1]) stored in the ``*_percentiles`` arrays.
-    mass_fraction, ssfr, metallicity, ssfr_tau : ndarray
-        Per-sample values, shapes (n_samples, n_bins + 1), (n_samples, n_bins),
-        (n_samples, n_bins + 1) and (n_samples, n_tau). ``metallicity`` is
-        ``None`` for models without an enrichment history. ``mass_fraction``
-        and the sSFRs are relative to the total mass formed at the time of
-        observation.
-    taus : ndarray
+    mass_fraction, ssfr, ssfr_tau : array-like
+        Per-sample values with shapes (n_samples, n_bins + 1),
+        (n_samples, n_bins) and (n_samples, n_tau). ``mass_fraction`` and the
+        sSFRs [1/yr] are relative to the total mass formed at the time of
+        observation. ``ssfr`` is the average over each lookback bin and
+        ``ssfr_tau`` the average over the last ``tau`` (a cumulative
+        average, not comparable bin by bin).
+    taus : array-like, shape (n_tau,)
         Timescales [Gyr] of ``ssfr_tau``.
-    t_formed : ndarray, shape (n_samples, n_fractions), optional
-        Lookback time [Gyr] at which the fractions ``mass_frac_formed`` of the
-        mass were formed (the oldest lookback edge if they were formed before
-        it). It is linearly interpolated from ``mass_fraction``, so it is limited by the
-        resolution of the lookback grid. ``None`` if not computed.
-    mass_frac_formed : ndarray, shape (n_fractions,), optional
-        Mass fractions of ``t_formed``.
-    weights : ndarray, shape (n_samples,)
+    weights : array-like, shape (n_samples,)
         Sample weights used for the percentiles and the means.
-    log_stellar_mass : ndarray, shape (n_samples,), optional
+    metallicity : array-like, shape (n_samples, n_bins + 1), optional
+        ISM metallicity at the bin edges (``None`` for models without an
+        enrichment history).
+    log_stellar_mass : array-like, shape (n_samples,), optional
         ``log10(M / Msun)`` of each sample (the ``extra--stellar_mass``
         column of the run), i.e. the mass that ``mass_fraction`` and the sSFRs
-        are normalised to. ``None`` if the run did not store it. Non-finite
-        values (e.g. a failed normalisation) are ignored in the statistics.
-    sample_table : astropy.table.Table
+        are normalised to. Non-finite values are ignored in the statistics.
+    t_formed : array-like, shape (n_samples, n_fractions), optional
+        Lookback time [Gyr] at which the fractions ``mass_frac_formed`` of the
+        mass were formed (the oldest lookback edge if they were formed before
+        it). It is linearly interpolated from ``mass_fraction``, so it is
+        limited by the resolution of the lookback grid.
+    mass_frac_formed : array-like, shape (n_fractions,), optional
+        Mass fractions of ``t_formed``.
+    sample_table : astropy.table.Table, optional
         Per-sample input values (SFH parameters, ``post``, weights, ...).
-    meta : dict
+    meta : dict, optional
         Model name, redshift, age of the Universe, source, ...
     """
 
-    lookback_edges: np.ndarray
-    percentiles: Tuple[float, ...]
-    mass_fraction: np.ndarray
-    ssfr: np.ndarray
-    ssfr_tau: np.ndarray
-    taus: np.ndarray
-    weights: np.ndarray
-    metallicity: Optional[np.ndarray] = None
-    log_stellar_mass: Optional[np.ndarray] = None
-    t_formed: Optional[np.ndarray] = None
-    mass_frac_formed: Optional[np.ndarray] = None
-    sample_table: Optional[Table] = None
-    meta: Dict[str, Any] = field(default_factory=dict)
-    _percentile_cache: Dict[str, np.ndarray] = field(
-        default_factory=dict, init=False, repr=False, compare=False)
-    _mean_cache: Dict[str, np.ndarray] = field(
-        default_factory=dict, init=False, repr=False, compare=False)
+    def __init__(self, lookback_edges, percentiles, mass_fraction, ssfr, ssfr_tau,
+                 taus, weights, metallicity=None, log_stellar_mass=None,
+                 t_formed=None, mass_frac_formed=None, sample_table=None,
+                 meta=None):
+        # Caches of the summary statistics
+        self._percentile_cache: Dict[Any, np.ndarray] = {}
+        self._mean_cache: Dict[Any, np.ndarray] = {}
+        self.lookback_edges = lookback_edges
+        self.percentiles = percentiles
+        self.mass_fraction = mass_fraction
+        self.ssfr = ssfr
+        self.ssfr_tau = ssfr_tau
+        self.taus = taus
+        self.weights = weights
+        self.metallicity = metallicity
+        self.log_stellar_mass = log_stellar_mass
+        self.t_formed = t_formed
+        self.mass_frac_formed = mass_frac_formed
+        self.sample_table = sample_table
+        self.meta = {} if meta is None else dict(meta)
+        self._validate()
+
+    def __setattr__(self, name, value):
+        if name in _SFH_DATA_FIELDS:
+            if name == "percentiles":
+                value = tuple(float(q) for q in value)
+            elif value is not None:
+                value = np.asarray(value, dtype=float)
+            # Changing the data invalidates the statistics computed from them
+            self.__dict__.get("_percentile_cache", {}).clear()
+            self.__dict__.get("_mean_cache", {}).clear()
+        object.__setattr__(self, name, value)
+
+    def _validate(self):
+        """Check that the shapes of the arrays are consistent."""
+        n = self.weights.size
+        n_edges, n_taus = self.lookback_edges.size, self.taus.size
+        expected = {"mass_fraction": (n, n_edges), "ssfr": (n, n_edges - 1),
+                    "ssfr_tau": (n, n_taus)}
+        if self.metallicity is not None:
+            expected["metallicity"] = (n, n_edges)
+        if self.log_stellar_mass is not None:
+            expected["log_stellar_mass"] = (n,)
+        if (self.t_formed is None) != (self.mass_frac_formed is None):
+            raise ValueError("t_formed and mass_frac_formed must be given together.")
+        if self.t_formed is not None:
+            expected["t_formed"] = (n, self.mass_frac_formed.size)
+        for name, shape in expected.items():
+            if getattr(self, name).shape != shape:
+                raise ValueError(f"'{name}' has shape {getattr(self, name).shape}, "
+                                 f"expected {shape}.")
+
+    def __repr__(self):
+        return (f"SFHReconstruction(n_samples={self.n_samples}, "
+                f"n_bins={self.lookback_edges.size - 1}, "
+                f"quantities={list(self.quantities)}, "
+                f"model={self.meta.get('sfhmodel')!r})")
 
     # --- Derived grids --------------------------------------------------------
     @property
@@ -1963,51 +2048,92 @@ class SFHReconstruction:
     def n_samples(self) -> int:
         return int(self.weights.size)
 
+    @property
+    def quantities(self) -> Tuple[str, ...]:
+        """Names of the quantities available in this reconstruction."""
+        return tuple(name for name in _SFH_QUANTITIES
+                     if getattr(self, name) is not None)
+
     # --- Summary statistics ---------------------------------------------------
     def quantity(self, name: str) -> Optional[np.ndarray]:
-        """Per-sample array of ``mass_fraction``, ``ssfr``, ``metallicity``,
-        ``ssfr_tau``, ``log_stellar_mass`` or ``t_formed``."""
+        """Per-sample array of a quantity (``None`` if not available).
+
+        ``name`` is one of ``mass_fraction``, ``ssfr``, ``metallicity``,
+        ``ssfr_tau``, ``t_formed`` or ``log_stellar_mass``.
+        """
         if name not in _SFH_QUANTITIES:
-            raise KeyError(f"Unknown SFH quantity '{name}'.")
+            raise KeyError(f"Unknown SFH quantity '{name}'; "
+                           f"expected one of {list(_SFH_QUANTITIES)}.")
         return getattr(self, name)
 
-    def percentile_values(self, name: str) -> Optional[np.ndarray]:
+    def percentile_values(self, name: str, percentiles: Optional[Sequence[float]] = None
+                          ) -> Optional[np.ndarray]:
         """Weighted percentiles of a quantity.
 
         Shape (n_percentiles, n_points), or (n_percentiles,) for
         ``log_stellar_mass``. ``None`` if the quantity is not available.
+
+        Parameters
+        ----------
+        name : str
+            Quantity (see :meth:`quantity`).
+        percentiles : sequence of float, optional
+            Quantiles in [0, 1]. Default: :attr:`percentiles`, which are the
+            only ones available without the per-sample values (e.g. when the
+            reconstruction was read from a FITS file without samples).
         """
-        if name in self._percentile_cache:
-            return self._percentile_cache[name]
+        custom = percentiles is not None and tuple(
+            float(q) for q in percentiles) != self.percentiles
+        key = (name, tuple(float(q) for q in percentiles)) if custom else name
+        if key in self._percentile_cache:
+            return self._percentile_cache[key]
         values = self.quantity(name)
         if values is None:
             return None
+        if custom and self.n_samples == 0:
+            raise ValueError("Custom percentiles need the per-sample values; "
+                             f"only {self.percentiles} are stored.")
+        quantiles = percentiles if custom else self.percentiles
         n_points = int(np.prod(values.shape[1:]))
         flat = values.reshape(values.shape[0], n_points)
         if flat.shape[0] == 0:
-            result = np.full((len(self.percentiles), n_points), np.nan)
+            result = np.full((len(quantiles), n_points), np.nan)
         else:
             result = np.column_stack([
-                weighted_quantile(flat[:, j], self.weights, self.percentiles)
+                weighted_quantile(flat[:, j], self.weights, quantiles)
                 for j in range(n_points)])
-        result = result.reshape((len(self.percentiles),) + values.shape[1:])
-        self._percentile_cache[name] = result
+        result = result.reshape((len(quantiles),) + values.shape[1:])
+        self._percentile_cache[key] = result
         return result
 
-    def mean_values(self, name: str) -> Optional[np.ndarray]:
+    def mean_values(self, name: str, kind: str = "arithmetic") -> Optional[np.ndarray]:
         """Weighted posterior mean of a quantity.
 
         Shape (n_points,), or () for ``log_stellar_mass``. ``None`` if the
-        quantity is not available. Unlike the percentiles, means can be
-        averaged across reconstructions (e.g. to combine several runs).
+        quantity is not available. Unlike the percentiles, arithmetic means
+        can be averaged across reconstructions (e.g. to combine several runs).
+
+        Parameters
+        ----------
+        name : str
+            Quantity (see :meth:`quantity`).
+        kind : {"arithmetic", "geometric"}
+            Type of mean. The geometric mean is only defined for the strictly
+            positive quantities (sSFRs, metallicity and formation times).
         """
-        if name in self._mean_cache:
-            return self._mean_cache[name]
+        if kind not in _SFH_MEAN_KINDS:
+            raise ValueError(f"kind must be one of {_SFH_MEAN_KINDS}, got '{kind}'.")
+        if kind == "geometric" and not _SFH_QUANTITIES.get(name, (None, False))[1]:
+            raise ValueError(f"No geometric mean for '{name}'.")
+        key = (name, kind)
+        if key in self._mean_cache:
+            return self._mean_cache[key]
         values = self.quantity(name)
         if values is None:
             return None
-        result = _weighted_mean_samples(values, self.weights)
-        self._mean_cache[name] = result
+        mean = _weighted_mean_samples if kind == "arithmetic" else _weighted_geometric_mean_samples
+        result = mean(values, self.weights)
+        self._mean_cache[key] = result
         return result
 
     @property
@@ -2027,8 +2153,36 @@ class SFHReconstruction:
                 linear, self.weights)
         return float(self._mean_cache["stellar_mass"])
 
+    def subset(self, selection) -> "SFHReconstruction":
+        """New reconstruction with a subset of the samples.
+
+        Parameters
+        ----------
+        selection : array-like of bool or int
+            Boolean mask or indices of the samples to keep.
+        """
+        selection = np.asarray(selection)
+        if self.n_samples == 0:
+            raise ValueError("The reconstruction has no per-sample values.")
+
+        def pick(array):
+            return None if array is None else array[selection]
+
+        return SFHReconstruction(
+            lookback_edges=self.lookback_edges, percentiles=self.percentiles,
+            mass_fraction=self.mass_fraction[selection], ssfr=self.ssfr[selection],
+            ssfr_tau=self.ssfr_tau[selection], taus=self.taus,
+            weights=self.weights[selection], metallicity=pick(self.metallicity),
+            log_stellar_mass=pick(self.log_stellar_mass),
+            t_formed=pick(self.t_formed), mass_frac_formed=self.mass_frac_formed,
+            sample_table=(None if self.sample_table is None
+                          else self.sample_table[selection]),
+            meta=self.meta)
+
+    # --- Plots ----------------------------------------------------------------
     def _plot_percentiles(self, name: str, ax=None, *, color="C0", alpha=0.25,
-                          show_mean: bool = True, **kwargs):
+                          show_mean: bool = True, mean_kind: str = "arithmetic",
+                          **kwargs):
         """Plot the percentile bands of a quantity vs lookback time.
 
         Parameters
@@ -2045,10 +2199,13 @@ class SFHReconstruction:
             Opacity of each band (nested bands add up).
         show_mean : bool
             Also draw the posterior mean (dashed).
+        mean_kind : {"arithmetic", "geometric"}
+            Type of the mean (see :meth:`mean_values`).
         **kwargs
             Passed to :func:`matplotlib.axes.Axes.fill_between`.
         """
-        if name in ("ssfr_tau", "log_stellar_mass", "t_formed"):
+        grid = _SFH_QUANTITIES.get(name, (None,))[0]
+        if grid not in ("edges", "bins"):
             raise ValueError(f"'{name}' is not a function of lookback time; "
                              f"use percentile_values('{name}') and "
                              f"mean_values('{name}').")
@@ -2058,7 +2215,7 @@ class SFHReconstruction:
         if ax is None:
             _, ax = plt.subplots(figsize=(6, 4))
 
-        step = name == "ssfr"                 # bin averages -> steps over the edges
+        step = grid == "bins"                 # bin averages -> steps over the edges
         x = self.lookback_edges
 
         def curve(v):
@@ -2080,11 +2237,13 @@ class SFHReconstruction:
                     drawstyle="steps-post" if step else "default",
                     label=f"{100 * quantiles[mid]:g}%")
         if show_mean:
-            mean = self.mean_values(name)
+            if mean_kind == "geometric" and not _SFH_QUANTITIES[name][1]:
+                mean_kind = "arithmetic"
+            mean = self.mean_values(name, mean_kind)
             if mean is not None and np.any(np.isfinite(mean)):
                 ax.plot(x, curve(mean), color=color, lw=1.2, ls="--",
                         drawstyle="steps-post" if step else "default",
-                        label="Mean")
+                        label=f"Mean ({mean_kind})")
 
         ax.set_xlabel("Lookback time [Gyr]")
         ax.set_ylabel(name.replace("_", " ").capitalize())
@@ -2108,13 +2267,35 @@ class SFHReconstruction:
                           f"({100 * quantiles[low]:g}-{100 * quantiles[high]:g}%)")
         return label
 
-    def make_figure(self, figsize=(6, 6), **kwargs):
+    def _plot_ssfr_tau(self, ax, *, color="k"):
+        """Median and innermost percentile band of the sSFR averaged over the
+        last ``tau`` (a cumulative average, drawn at ``lookback = tau``)."""
+        values = self.percentile_values("ssfr_tau")
+        quantiles = np.asarray(self.percentiles, dtype=float)
+        mid = int(np.argmin(np.abs(quantiles - 0.5)))
+        order = np.argsort(quantiles)
+        n_pairs = quantiles.size // 2
+        yerr = None
+        if n_pairs:
+            low, high = values[order[n_pairs - 1]], values[order[-n_pairs]]
+            yerr = np.vstack([np.clip(values[mid] - low, 0, None),
+                              np.clip(high - values[mid], 0, None)])
+        return ax.errorbar(self.taus, values[mid], yerr=yerr, fmt="o", ms=4,
+                           color=color, capsize=2, lw=1,
+                           label=r"average over the last $\tau$")
+
+    def make_figure(self, figsize=(6, 6), show_taus: bool = True, **kwargs):
         """Make a figure with the percentiles of all quantities.
 
         Parameters
         ----------
         figsize : tuple of float
             Figure size in inches.
+        show_taus : bool
+            Mark on the sSFR panel the sSFR averaged over the last ``tau``
+            (the ``SSFR_TAU`` table of the FITS file) at ``lookback = tau``.
+            It is a cumulative average over ``[0, tau]``, so it can differ
+            from the bin values around that lookback time.
         **kwargs
             Passed to :meth:`_plot_percentiles`.
         """
@@ -2132,6 +2313,8 @@ class SFHReconstruction:
 
         ax = axes[1]
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
+        tau_handle = (self._plot_ssfr_tau(ax) if show_taus and self.taus.size
+                      else None)
         ax.set_yscale("log")
         ylim = list(ax.get_ylim())
         ylim[0] = max(ylim[0], 1e-15)
@@ -2156,17 +2339,24 @@ class SFHReconstruction:
             legend = ax.get_legend()
             if legend is not None:
                 legend.remove()
+        if tau_handle is not None:
+            axes[1].legend(handles=[tau_handle], frameon=False, fontsize="small",
+                           loc="upper left")
         axes[-1].set_xlabel("Lookback time [Gyr]")
         fig.tight_layout()
         return fig, axes
 
     # --- I/O -----------------------------------------------------------------
     def _summary_table(self, name: str, prefix: str) -> Dict[str, np.ndarray]:
-        """``{prefix}_mean`` and ``{prefix}_pNN`` columns of a quantity."""
+        """``{prefix}_mean``, ``{prefix}_gmean`` (strictly positive quantities)
+        and ``{prefix}_pNN`` columns of a quantity."""
         values = self.percentile_values(name)
         if values is None:
             return {}
         columns = {f"{prefix}_mean": np.atleast_1d(self.mean_values(name))}
+        if _SFH_QUANTITIES[name][1]:
+            columns[f"{prefix}_gmean"] = np.atleast_1d(
+                self.mean_values(name, "geometric"))
         columns.update({f"{prefix}_{_percentile_label(q)}": np.atleast_1d(values[i])
                         for i, q in enumerate(self.percentiles)})
         return columns
@@ -2174,20 +2364,21 @@ class SFHReconstruction:
     def to_fits(self, include_samples: bool = False) -> fits.HDUList:
         """FITS representation.
 
-        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR per lookback bin),
-        ``SFH_EDGES`` (mass fraction and metallicity at the bin edges),
-        ``SSFR_TAU`` (sSFR averaged over the last ``tau``) and, if available,
-        ``T_FORMED`` (lookback time at which given mass fractions were
-        formed) and ``STELLAR_MASS`` (one row: ``log_stellar_mass`` in log10(Msun) and
-        ``stellar_mass_mean`` in Msun). Every quantity has a ``*_mean`` column
-        (weighted posterior mean) and ``*_pNN`` columns (weighted
-        percentiles). With ``include_samples``: ``SAMPLES`` (per-sample
-        table) and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC`` and
-        ``SAMPLES_Z`` (rows = samples).
+        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR averaged in each
+        lookback bin), ``SFH_EDGES`` (mass fraction and metallicity at the bin
+        edges), ``SSFR_TAU`` (sSFR averaged over the last ``tau``, a
+        cumulative average) and, if available, ``T_FORMED`` (lookback time at
+        which given mass fractions were formed) and ``STELLAR_MASS`` (one row:
+        ``log_stellar_mass`` in log10(Msun) and ``stellar_mass_mean`` in Msun).
+        Every quantity has a ``*_mean`` column (weighted arithmetic mean), a
+        ``*_gmean`` column (weighted geometric mean; strictly positive
+        quantities only) and ``*_pNN`` columns (weighted percentiles). With
+        ``include_samples``: ``SAMPLES`` (per-sample table) and the image HDUs
+        ``SAMPLES_SSFR``, ``SAMPLES_MFRAC`` and ``SAMPLES_Z`` (rows = samples).
         """
         primary = fits.PrimaryHDU()
         header = primary.header
-        header["BESTASFH"] = (2, "BESTA SFH reconstruction format version")
+        header["BESTASFH"] = (3, "BESTA SFH reconstruction format version")
         header["NSAMPLES"] = (self.n_samples, "Posterior samples used")
         header["ESS"] = (float(effective_sample_size(self.weights))
                          if self.n_samples else 0.0, "Effective sample size")
@@ -2215,9 +2406,9 @@ class SFHReconstruction:
                 fits.BinTableHDU(Table(bins), name="SFH_BINS"),
                 fits.BinTableHDU(Table(edges), name="SFH_EDGES"),
                 fits.BinTableHDU(Table(taus), name="SSFR_TAU")]
-        has_t_formed = self.t_formed is not None and self.mass_frac_formed is not None
+        has_t_formed = self.t_formed is not None
         if has_t_formed:
-            t_formed = {"mass_fraction": np.asarray(self.mass_frac_formed, dtype=float)}
+            t_formed = {"mass_fraction": self.mass_frac_formed}
             t_formed.update(self._summary_table("t_formed", "t_formed"))
             hdus.append(fits.BinTableHDU(Table(t_formed), name="T_FORMED"))
         if self.log_stellar_mass is not None:
@@ -2263,7 +2454,8 @@ class SFHReconstruction:
         (the per-sample arrays are empty and :meth:`percentile_values`,
         :meth:`mean_values` and :attr:`stellar_mass_mean` return the stored
         values). Files written before the means were added (format version 1)
-        have no stored means; :meth:`mean_values` then returns NaN.
+        have no stored means, and those before version 3 no geometric means;
+        :meth:`mean_values` then returns NaN.
         """
         with fits.open(os.path.expandvars(path)) as hdul:
             header = hdul[0].header
@@ -2320,9 +2512,9 @@ class SFHReconstruction:
                     return np.vstack([np.asarray(table[f"{prefix}_{_percentile_label(q)}"],
                                                  dtype=float) for q in percentiles])
 
-                def stored_mean(table, prefix):
-                    col = f"{prefix}_mean"
-                    if col not in table.colnames:      # format version 1
+                def stored_mean(table, prefix, column="mean"):
+                    col = f"{prefix}_{column}"
+                    if col not in table.colnames:      # older format version
                         return None
                     return np.asarray(table[col], dtype=float)
 
@@ -2337,11 +2529,15 @@ class SFHReconstruction:
                     rec._percentile_cache[name] = stored(table, prefix)
                     mean = stored_mean(table, prefix)
                     if mean is not None:
-                        rec._mean_cache[name] = mean
+                        rec._mean_cache[(name, "arithmetic")] = mean
+                    gmean = stored_mean(table, prefix, "gmean")
+                    if gmean is not None:
+                        rec._mean_cache[(name, "geometric")] = gmean
                 if mass_tab is not None:
                     prefix = "log_stellar_mass"
                     rec._percentile_cache[prefix] = stored(mass_tab, prefix)[:, 0]
-                    rec._mean_cache[prefix] = np.asarray(stored_mean(mass_tab, prefix)[0])
+                    rec._mean_cache[(prefix, "arithmetic")] = np.asarray(
+                        stored_mean(mass_tab, prefix)[0])
                     rec._mean_cache["stellar_mass"] = np.asarray(
                         mass_tab["stellar_mass_mean"][0], dtype=float)
         return rec
