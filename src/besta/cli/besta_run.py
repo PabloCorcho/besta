@@ -121,9 +121,20 @@ def parser_setup():
                      help="Comma-separated timescales in Gyr for the average sSFR")
     sfh.add_argument("--sfh-max-samples", type=int, default=None,
                      help="Use at most this many posterior samples")
-    sfh.add_argument("--sfh-burn-in", type=int, default=None,
-                     help="Samples to discard per walker")
+    sfh.add_argument("--sfh-burn-in", type=_burn_in, default=None,
+                     help="Samples to discard per walker: 'auto' (estimated from "
+                          "the autocorrelation time), a number of steps (>= 1), a "
+                          "fraction of the chain (in (0, 1)) or 0 for none "
+                          "(default: auto)")
     return parser
+
+
+def _burn_in(text):
+    from besta.postprocess import parse_burn_in
+    try:
+        return parse_burn_in(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def _sfh_settings(args):

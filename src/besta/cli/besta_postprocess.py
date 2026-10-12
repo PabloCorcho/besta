@@ -5,7 +5,14 @@ from besta.io import Reader
 from besta.logging import setup_logging
 from besta.postprocess import (
     summarize_results, to_physical_table,
-    reconstruct_sfh_from_file, reconstruct_sfh_from_reader)
+    reconstruct_sfh_from_file, reconstruct_sfh_from_reader, parse_burn_in)
+
+def _burn_in(text):
+    try:
+        return parse_burn_in(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+
 
 def parser_setup():
     parser = argparse.ArgumentParser(
@@ -60,8 +67,11 @@ def parser_setup():
                           "steps for walker-based samplers)")
     sfh.add_argument("--sfh_module", type=str, default=None,
                      help="Pipeline module defining the SFH (default: the first one)")
-    sfh.add_argument("--burn_in", type=int, default=0,
-                     help="Samples to discard per walker (default: 0)")
+    sfh.add_argument("--burn_in", type=_burn_in, default="auto",
+                     help="Samples to discard per walker: 'auto' (estimated from "
+                          "the autocorrelation time), a number of steps (>= 1), a "
+                          "fraction of the chain (in (0, 1)) or 0 for none "
+                          "(default: auto)")
     sfh.add_argument("--nwalkers", type=int, default=None,
                      help="Number of walkers, used with --burn_in (default: read from "
                           "the sampler configuration, else 1)")
