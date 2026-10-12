@@ -278,7 +278,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
         # Include kinematics if the block has a kinematics section
         # This is particularly relevant when combining with other modules
         if block.has_section("kinematics"):
-            self._losvd_kernel.parse_parameters(block)
+            self.config["losvd_kernel"].parse_parameters(block)
             sed = self.convolve_losvd_and_trim(sed)
         return sed
 

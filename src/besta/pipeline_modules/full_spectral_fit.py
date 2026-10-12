@@ -40,7 +40,7 @@ class FullSpectralFitModule(SpectraFitModule):
         self.prepare_extinction_law(options)
         self.prepare_legendre_polynomials(options)
         self.prepare_losvd_kernel(options)
-        self._losvd_kernel = self.config["losvd_kernel"]
+
 
     def make_observable(self, block, parse=False):
         """Create the spectra model from the input parameters"""

@@ -1243,6 +1243,7 @@ class SpectraFitModule(BaseModule):
             )
         else:
             raise ValueError(f"Unsupported LOSVD kernel: {kernel_name}")
+        self._losvd_kernel = self.config["losvd_kernel"]
         _log("Configuration done")
 
     def get_feature_weights(self, options):
