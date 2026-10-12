@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -1822,7 +1822,9 @@ def load_physical_results(results_path: str, *, module_name: Optional[str] = Non
 # - ``ssfr``: mass formed in each lookback bin / (M(t_obs) * bin width) [1/yr];
 # - ``metallicity``: ISM metallicity at the bin edges (models with an
 #   enrichment history only);
-# - ``ssfr_tau``: sSFR averaged over the last ``tau`` [1/yr].
+# - ``ssfr_tau``: sSFR averaged over the last ``tau`` [1/yr];
+# - ``t_formed``: lookback time [Gyr] at which a given fraction of the mass
+#   was already formed (e.g. 0.5 -> half-mass lookback time).
 
 
 def _percentile_label(q: float) -> str:
@@ -1879,7 +1881,7 @@ def _weighted_mean_samples(values: np.ndarray, weights: np.ndarray) -> np.ndarra
 
 
 _SFH_QUANTITIES = ("mass_fraction", "ssfr", "metallicity", "ssfr_tau",
-                   "log_stellar_mass")
+                   "log_stellar_mass", "t_formed")
 
 
 @dataclass
@@ -1906,6 +1908,13 @@ class SFHReconstruction:
         observation.
     taus : ndarray
         Timescales [Gyr] of ``ssfr_tau``.
+    t_formed : ndarray, shape (n_samples, n_fractions), optional
+        Lookback time [Gyr] at which the fractions ``mass_frac_formed`` of the
+        mass were formed (the oldest lookback edge if they were formed before
+        it). It is linearly interpolated from ``mass_fraction``, so it is limited by the
+        resolution of the lookback grid. ``None`` if not computed.
+    mass_frac_formed : ndarray, shape (n_fractions,), optional
+        Mass fractions of ``t_formed``.
     weights : ndarray, shape (n_samples,)
         Sample weights used for the percentiles and the means.
     log_stellar_mass : ndarray, shape (n_samples,), optional
@@ -1928,6 +1937,8 @@ class SFHReconstruction:
     weights: np.ndarray
     metallicity: Optional[np.ndarray] = None
     log_stellar_mass: Optional[np.ndarray] = None
+    t_formed: Optional[np.ndarray] = None
+    mass_frac_formed: Optional[np.ndarray] = None
     sample_table: Optional[Table] = None
     meta: Dict[str, Any] = field(default_factory=dict)
     _percentile_cache: Dict[str, np.ndarray] = field(
@@ -1955,7 +1966,7 @@ class SFHReconstruction:
     # --- Summary statistics ---------------------------------------------------
     def quantity(self, name: str) -> Optional[np.ndarray]:
         """Per-sample array of ``mass_fraction``, ``ssfr``, ``metallicity``,
-        ``ssfr_tau`` or ``log_stellar_mass``."""
+        ``ssfr_tau``, ``log_stellar_mass`` or ``t_formed``."""
         if name not in _SFH_QUANTITIES:
             raise KeyError(f"Unknown SFH quantity '{name}'.")
         return getattr(self, name)
@@ -2037,7 +2048,7 @@ class SFHReconstruction:
         **kwargs
             Passed to :func:`matplotlib.axes.Axes.fill_between`.
         """
-        if name in ("ssfr_tau", "log_stellar_mass"):
+        if name in ("ssfr_tau", "log_stellar_mass", "t_formed"):
             raise ValueError(f"'{name}' is not a function of lookback time; "
                              f"use percentile_values('{name}') and "
                              f"mean_values('{name}').")
@@ -2166,7 +2177,8 @@ class SFHReconstruction:
         HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR per lookback bin),
         ``SFH_EDGES`` (mass fraction and metallicity at the bin edges),
         ``SSFR_TAU`` (sSFR averaged over the last ``tau``) and, if available,
-        ``STELLAR_MASS`` (one row: ``log_stellar_mass`` in log10(Msun) and
+        ``T_FORMED`` (lookback time at which given mass fractions were
+        formed) and ``STELLAR_MASS`` (one row: ``log_stellar_mass`` in log10(Msun) and
         ``stellar_mass_mean`` in Msun). Every quantity has a ``*_mean`` column
         (weighted posterior mean) and ``*_pNN`` columns (weighted
         percentiles). With ``include_samples``: ``SAMPLES`` (per-sample
@@ -2203,6 +2215,11 @@ class SFHReconstruction:
                 fits.BinTableHDU(Table(bins), name="SFH_BINS"),
                 fits.BinTableHDU(Table(edges), name="SFH_EDGES"),
                 fits.BinTableHDU(Table(taus), name="SSFR_TAU")]
+        has_t_formed = self.t_formed is not None and self.mass_frac_formed is not None
+        if has_t_formed:
+            t_formed = {"mass_fraction": np.asarray(self.mass_frac_formed, dtype=float)}
+            t_formed.update(self._summary_table("t_formed", "t_formed"))
+            hdus.append(fits.BinTableHDU(Table(t_formed), name="T_FORMED"))
         if self.log_stellar_mass is not None:
             mass = self._summary_table("log_stellar_mass", "log_stellar_mass")
             mass["stellar_mass_mean"] = np.atleast_1d(self.stellar_mass_mean)
@@ -2217,6 +2234,9 @@ class SFHReconstruction:
                 samples["log_stellar_mass"] = self.log_stellar_mass
             for j, tau in enumerate(self.taus):
                 samples[f"ssfr_tau_{tau:g}"] = self.ssfr_tau[:, j]
+            if has_t_formed:
+                for j, frac in enumerate(self.mass_frac_formed):
+                    samples[f"t_formed_{frac:g}"] = self.t_formed[:, j]
             hdus.append(fits.BinTableHDU(samples, name="SAMPLES"))
             hdus.append(fits.ImageHDU(self.ssfr, name="SAMPLES_SSFR"))
             hdus.append(fits.ImageHDU(self.mass_fraction, name="SAMPLES_MFRAC"))
@@ -2253,6 +2273,10 @@ class SFHReconstruction:
             taus_tab = Table(hdul["SSFR_TAU"].data)
             mass_tab = (Table(hdul["STELLAR_MASS"].data)
                         if "STELLAR_MASS" in hdul else None)
+            t_formed_tab = (Table(hdul["T_FORMED"].data)
+                            if "T_FORMED" in hdul else None)
+            mass_frac_formed = (np.asarray(t_formed_tab["mass_fraction"], dtype=float)
+                                if t_formed_tab is not None else None)
             has_samples = "SAMPLES" in hdul
             lookback_edges = np.asarray(edges["lookback"], dtype=float)
             taus = np.asarray(taus_tab["tau"], dtype=float)
@@ -2269,6 +2293,10 @@ class SFHReconstruction:
                 ) if taus.size else np.empty((weights.size, 0))
                 log_mass = (np.asarray(samples["log_stellar_mass"], dtype=float)
                             if "log_stellar_mass" in samples.colnames else None)
+                t_formed = (np.column_stack(
+                    [np.asarray(samples[f"t_formed_{frac:g}"], dtype=float)
+                     for frac in mass_frac_formed])
+                    if mass_frac_formed is not None else None)
             else:
                 samples, weights = None, np.empty(0)
                 ssfr = np.empty((0, lookback_edges.size - 1))
@@ -2276,6 +2304,8 @@ class SFHReconstruction:
                 z = np.empty((0, lookback_edges.size)) if has_z else None
                 ssfr_tau = np.empty((0, taus.size))
                 log_mass = np.empty(0) if mass_tab is not None else None
+                t_formed = (np.empty((0, mass_frac_formed.size))
+                            if mass_frac_formed is not None else None)
             meta = {key.lower(): header[key] for key in
                     ("SFHMODEL", "MODULE", "REDSHIFT", "TODAY", "SOURCE",
                      "SFHSPACE", "WEIGHTS")
@@ -2283,6 +2313,7 @@ class SFHReconstruction:
             rec = cls(lookback_edges=lookback_edges, percentiles=percentiles,
                       mass_fraction=mfrac, ssfr=ssfr, ssfr_tau=ssfr_tau, taus=taus,
                       weights=weights, metallicity=z, log_stellar_mass=log_mass,
+                      t_formed=t_formed, mass_frac_formed=mass_frac_formed,
                       sample_table=samples, meta=meta)
             if not has_samples:
                 def stored(table, prefix):
@@ -2300,6 +2331,8 @@ class SFHReconstruction:
                                  ("ssfr_tau", taus_tab, "ssfr")]
                 if has_z:
                     stored_tables.append(("metallicity", edges, "metallicity"))
+                if t_formed_tab is not None:
+                    stored_tables.append(("t_formed", t_formed_tab, "t_formed"))
                 for name, table, prefix in stored_tables:
                     rec._percentile_cache[name] = stored(table, prefix)
                     mean = stored_mean(table, prefix)
@@ -2325,6 +2358,55 @@ def _sampler_walkers(ini) -> Optional[int]:
     return None if walkers is None else int(walkers)
 
 
+def parse_burn_in(value) -> Union[float, str]:
+    """Validate a ``burn_in`` setting: ``"auto"`` or a non-negative number.
+
+    Strings holding a number (e.g. from the command line) are converted.
+    """
+    if isinstance(value, str):
+        if value.strip().lower() == "auto":
+            return "auto"
+        try:
+            value = float(value)
+        except ValueError:
+            raise ValueError(f"burn_in must be 'auto' or a number, got '{value}'.") from None
+    if isinstance(value, bool) or not np.isfinite(value) or value < 0:
+        raise ValueError(f"burn_in must be 'auto' or a non-negative number, got {value!r}.")
+    return value
+
+
+def _burn_in_steps(table: Table, parameter_columns: Sequence[str], burn_in,
+                   nwalkers: int, has_walkers: bool) -> int:
+    """Number of steps per walker to discard from a flattened chain.
+
+    ``burn_in`` is ``"auto"`` (autocorrelation-time estimate; only for
+    samplers with walkers), a fraction of the chain in (0, 1) or a number of
+    steps (>= 1). The table rows are ordered step by step (all the walkers of a
+    step, then the next step).
+    """
+    burn_in = parse_burn_in(burn_in)
+    nsteps = len(table) // nwalkers
+    if nsteps == 0:
+        return 0
+    if isinstance(burn_in, str):
+        if not has_walkers or not parameter_columns:
+            return 0
+        flat = np.column_stack([_as_float_array(table[col])[:nsteps * nwalkers]
+                                for col in parameter_columns])
+        chains = flat_chain_to_walkers(flat, nwalkers=nwalkers, nsamples=nsteps)
+        steps = auto_burning_results(chains)
+        # Never discard more than half of the chain (unreliable estimates)
+        if steps > nsteps // 2:
+            logger.warning("Estimated burn-in (%d steps) exceeds half of the chain "
+                           "(%d steps); using %d steps.", steps, nsteps, nsteps // 2)
+            steps = nsteps // 2
+        logger.info("Automatic burn-in: %d of %d steps per walker.", steps, nsteps)
+        return int(steps)
+    if 0 < burn_in < 1:
+        return int(burn_in * nsteps)
+    return int(round(burn_in))
+
+
 def reconstruct_sfh(
     table: Table,
     ini: Mapping[str, Any],
@@ -2335,11 +2417,12 @@ def reconstruct_sfh(
     n_bins: int = 40,
     min_lookback: float = 1e-2,
     taus: Sequence[float] = (0.01, 0.1, 1.0),
+    mass_frac_formed: Optional[Sequence[float]] = (0.5, 0.9, 0.99),
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
     weight_key: str = "log_weight",
     posterior_key: str = "post",
     stellar_mass_key: str = "extra--stellar_mass",
-    burn_in: int = 0,
+    burn_in: Union[float, str] = "auto",
     nwalkers: Optional[int] = None,
     max_samples: Optional[int] = None,
     seed: Optional[int] = 0,
@@ -2352,7 +2435,7 @@ def reconstruct_sfh(
     ----------
     table : astropy.table.Table
         Results table. Latent SFH parameters are converted to physical space
-        first (logged).
+        first.
     ini : dict
         Run configuration (e.g. :attr:`besta.io.Reader.ini`).
     values : dict, optional
@@ -2360,56 +2443,67 @@ def reconstruct_sfh(
         parameters that are not columns of ``table`` (e.g.
         :attr:`besta.io.Reader.ini_values`).
     module_name : str, optional
-        Module defining the SFH (default: the first one).
-    lookback_edges : sequence of float, optional
-        Lookback-time bin edges in Gyr (increasing, starting at 0). Default:
-        :func:`default_lookback_edges` with ``n_bins`` and ``min_lookback``.
+        Module defining the SFH. If None, the first one is used.
+    lookback_edges : np.ndarray, optional
+        Lookback-time bin edges in Gyr (increasing, starting at 0).
+    n_bins : int
+        Number of lookback bins (ignored if ``lookback_edges`` is given). Default
+        is 40.
+    min_lookback : float
+        Minimum lookback time [Gyr] of the first bin (ignored if
+        ``lookback_edges`` is given). The remaining bins are log-spaced between
+        ``min_lookback`` and the age of the Universe at the source.
+        Default is 0.01 Gyr.
     taus : sequence of float
-        Timescales [Gyr] for the sSFR averaged over the last ``tau``.
+        Timescales [Gyr] for the sSFR averaged over the last ``tau``. Default
+        is 0.01, 0.1 and 1 Gyr.
+    mass_frac_formed : sequence of float, optional
+        Mass fractions in (0, 1) for which the lookback time at which they were
+        already formed is computed (``SFHReconstruction.t_formed``, linearly
+        interpolated on the lookback grid). Default is 0.5, 0.9 and 0.99. If
+        ``None``, it is not computed.
     percentiles : sequence of float
-        Quantiles in [0, 1].
+        Quantiles in [0, 1]. Default is 0.05, 0.16, 0.5, 0.84 and 0.95.
     weight_key : str
-        Column with sample weights (nested samplers); uniform weights are used
-        if it is missing.
+        Column with sample weights (used in nested samplers); default is 
+        "log_weight". If it is missing, uniform weights are used instead.
     stellar_mass_key : str
-        Column with ``log10(M / Msun)`` of each sample, stored as
-        :attr:`SFHReconstruction.log_stellar_mass` (``None`` if missing).
-    burn_in, nwalkers : int
-        Discard the first ``burn_in`` samples of each walker. ``nwalkers``
-        defaults to the ``walkers`` option of the run's last sampler (1 if it
-        has none).
+        Column containing the total mass in ``log10(M / Msun)`` of each sample.
+    burn_in : float or "auto"
+        Samples discarded at the start of each walker. A value in (0, 1) is a
+        fraction of the chain length, a value >= 1 a number of steps per
+        walker and 0 disables it. With ``"auto"`` (default) the burn-in is
+        estimated from the autocorrelation time (at most half of the chain),
+        only for samplers with walkers (``walkers`` in the sampler options).
+        Chains with a weight column (nested samplers) are never burned.
+    nwalkers : int, optional
+        Number of walkers of the sampler. If None, defaults to the ``walkers``
+        option of the run's last sampler (1 if it has none).
     max_samples : int, optional
-        Use a subset of at most this many samples (faster). For samplers with
-        walkers (no `weight` column) these are the last steps of the chain,
-        which are the closest to the posterior. With a weight column, the subset is
-        drawn in proportion to the weights and then equally weighted; otherwise
+        Use a subset of at most this many samples. For samplers with
+        walkers these are the last steps of the (burned) chain. When using 
+        `weight_key`, the subset is drawn in proportion to the weights; otherwise
         selection is random.
     seed : int, optional
         Seed of the random subset.
     sfh_interpolation : {"linear", "pchip"}, optional
         Override the mass-history interpolation of the run (piecewise SFH
-        models only). By default the run's ``sfh_interpolation`` option is
-        used, or ``"linear"`` if it is not set. Runs made before this option
-        existed used ``"pchip"``; pass it to reproduce the fitted model.
+        models only).
 
     Returns
     -------
     SFHReconstruction
+        A data container with the posterior SFHs and summary statistics.
     """
-    candidates = find_sfh_modules(ini)
     if module_name is None:
+        candidates = find_sfh_modules(ini)
         if not candidates:
             raise ValueError("No pipeline module with an 'SFHModel' option was found.")
         module_name = candidates[0]
     model = _physical_sfh_model(ini, module_name, sfh_interpolation)
     table = _table_to_physical(table, ini, module_name)
-    # Automatically detect if sampler used walkers (e.g. emcee)
-    walkers = _sampler_walkers(ini)
-    if nwalkers is None:
-        nwalkers = walkers or 1
-    if burn_in > 0:
-        table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_in)
 
+    # Compute the lookback edges
     today = float(model.today.to_value("Gyr"))
     if lookback_edges is None:
         edges = default_lookback_edges(today, n_bins=n_bins, min_lookback=min_lookback)
@@ -2420,15 +2514,22 @@ def reconstruct_sfh(
         if edges[0] != 0 or edges[-1] > today:
             raise ValueError(f"lookback_edges must start at 0 and end before "
                              f"{today:.4g} Gyr (age of the Universe at the source).")
+    # average sSFR timescales
     taus = np.atleast_1d(np.asarray(taus, dtype=float))
     if np.any((taus <= 0) | (taus > today)):
         raise ValueError("taus must lie in (0, today].")
+    # Mass fractions for formation time
+    if mass_frac_formed is not None:
+        mass_frac_formed = np.atleast_1d(np.asarray(mass_frac_formed, dtype=float))
+        if np.any((mass_frac_formed <= 0) | (mass_frac_formed >= 1)):
+            raise ValueError("mass_frac_formed must lie in (0, 1).")
 
     # Columns of the SFH section and fixed values from the priors
     sect = model.sect_name
     prefix = f"{sect}{parameter_prefix}".lower()
     columns = {name[len(prefix):]: name for name in table.colnames
                if name.lower().startswith(prefix)}
+    # include the fixed parameters from the priors
     fixed = {}
     for section, params in (values or {}).items():
         if section.lower() != sect.lower():
@@ -2440,6 +2541,21 @@ def reconstruct_sfh(
                 raise KeyError(f"Free parameter '{sect}--{key}' is not in the table.")
             fixed[key.lower()] = value
 
+    # Walkers of the sampler (e.g. emcee); None for the other samplers
+    walkers = _sampler_walkers(ini)
+    if nwalkers is None:
+        nwalkers = walkers or 1
+    if weight_key in table.colnames:
+        # Weighted samples (nested samplers) have no burn-in
+        if not isinstance(burn_in, str) and burn_in > 0:
+            logger.warning("Ignoring burn_in: the samples are weighted ('%s').", weight_key)
+    else:
+        burn_steps = _burn_in_steps(table, list(columns.values()), burn_in, nwalkers,
+                                    has_walkers=walkers is not None or nwalkers > 1)
+        if burn_steps > 0:
+            table = io.burn_table(table, nwalkers=nwalkers, burn_in=burn_steps)
+
+    # Select the number of samples
     n_rows = len(table)
     if weight_key in table.colnames:
         logger.info("Using column '%s' as sample weights.", weight_key)
@@ -2477,7 +2593,10 @@ def reconstruct_sfh(
             logger.info("Resampled %d of %d samples in proportion to '%s'.",
                         rows.size, n_rows, weight_key)
 
-    arrays = {key: _as_float_array(table[col]) for key, col in columns.items()}
+    # Build arrays of the SFH parameters for all samples
+    sfh_params_arrays = {
+        key: _as_float_array(table[col]) for key, col in columns.items()}
+    # Cosmic time in increasing order
     times = today - edges[::-1]
     # Combine all times to one PST call per sample
     eval_times = np.concatenate((times, today - taus))
@@ -2487,22 +2606,31 @@ def reconstruct_sfh(
     def as_values(x):
         return np.asarray(getattr(x, "value", x), dtype=float)
 
-    mfrac, ssfr, zhist, ssfr_tau, used = [], [], [], [], []
+    # Compute the mass fractions, sSFR, formation times and metallicity of each sample
+    mfrac, ssfr, zhist, ssfr_tau, t_formed, used = [], [], [], [], [], []
     for row in rows:
         # prepare the model parameters
         params = dict(fixed)
-        params.update({key: float(values_[row]) for key, values_ in arrays.items()})
+        params.update({key: float(values_[row]) for key, values_ in sfh_params_arrays.items()})
         if not all(np.isfinite(v) for v in params.values() if isinstance(v, float)):
             continue
+        # parse parameters
         status, _ = model.parse_free_params(params)
         if not status:
             continue
+        # evaluate the SFH at the requested times
         mass = as_values(model.model.stellar_mass_formed(eval_times))
         mass_today = mass[n_edges - 1]
         if not np.isfinite(mass_today) or mass_today <= 0:
             continue
-        frac = mass[:n_edges][::-1] / mass_today       # at edges, lookback order
+        frac_time = mass[:n_edges] / mass_today        # at ``times`` (increasing)
+        frac = frac_time[::-1]                         # at ``edges`` (lookback order)
         mfrac.append(frac)
+        # Lookback time at which the requested mass fractions were formed
+        # (fractions below the oldest edge are set to that edge)
+        if mass_frac_formed is not None:
+            t_formed.append(np.interp(mass_frac_formed, frac_time, edges[::-1],
+                                      left=edges[-1], right=0.0))
         ssfr.append((frac[:-1] - frac[1:]) / (np.diff(edges) * 1e9))
         ssfr_tau.append((1.0 - mass[n_edges:] / mass_today) / (taus * 1e9))
         if has_z:
@@ -2540,6 +2668,9 @@ def reconstruct_sfh(
         weights=weights_all[used],
         metallicity=np.array(zhist).reshape(-1, n_edges) if has_z else None,
         log_stellar_mass=log_stellar_mass,
+        t_formed=(np.array(t_formed).reshape(-1, mass_frac_formed.size)
+                  if mass_frac_formed is not None else None),
+        mass_frac_formed=mass_frac_formed,
         sample_table=sample_table,
         meta=meta,
     )
