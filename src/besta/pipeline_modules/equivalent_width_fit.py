@@ -89,6 +89,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
         self.prepare_extinction_law(options)
         self.prepare_equivalent_widths(options)
         self.prepare_balmer_emission(options)
+        self.prepare_losvd_kernel(options)
 
     @staticmethod
     def _window_matrix(wavelength, ranges):
@@ -274,6 +275,11 @@ class EquivalentWidthFitModule(SpectraFitModule):
         dust_model, a_v = self._get_dust_for_block(block)
         if dust_model is not None:
             sed = dust_model.apply_extinction(ssp_model.wavelength, sed, a_v=a_v)
+        # Include kinematics if the block has a kinematics section
+        # This is particularly relevant when combining with other modules
+        if block.has_section("kinematics"):
+            self._losvd_kernel.parse_parameters(block)
+            sed = self.convolve_losvd_and_trim(sed)
         return sed
 
     def make_observable(self, block, parse=False):
