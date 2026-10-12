@@ -69,7 +69,8 @@ def normalize_sfh_reconstruction_settings(settings):
         :func:`besta.postprocess.reconstruct_sfh`, e.g. ``n_bins``,
         ``lookback_edges``, ``taus``, ``max_samples``, ``burn_in``). If
         ``nwalkers`` is not given it is read from the sampler configuration
-        of the run, and ``max_samples`` defaults to 5000.
+        of the run, ``max_samples`` defaults to 5000 and ``burn_in`` to
+        ``"auto"``.
 
     Returns
     -------
@@ -98,7 +99,10 @@ def normalize_sfh_reconstruction_settings(settings):
     out["options"] = dict(out["options"] or {})
 
     import inspect
-    from besta.postprocess import reconstruct_sfh
+    from besta.postprocess import parse_burn_in, reconstruct_sfh
+
+    if "burn_in" in out["options"]:
+        out["options"]["burn_in"] = parse_burn_in(out["options"]["burn_in"])
 
     accepted = set(inspect.signature(reconstruct_sfh).parameters) - {"table", "ini"}
     unknown = set(out["options"]) - accepted
@@ -321,8 +325,9 @@ class MainPipeline(object):
             except (KeyError, TypeError, ValueError):
                 options["nwalkers"] = 1
         options.setdefault("max_samples", 5000)
-        if options.get("burn_in", 0):
-            logger.info("Burn-in of %d samples per walker (%d walkers).",
+        options.setdefault("burn_in", "auto")
+        if options["burn_in"] != 0:
+            logger.info("Burn-in: %s (%d walkers).",
                         options["burn_in"], options["nwalkers"])
 
         try:
