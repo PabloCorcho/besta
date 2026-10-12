@@ -28,6 +28,7 @@ import types
 from typing import Callable, Optional
 
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from besta.visualization import draw_dict_in_axes
 
 import numpy as np
@@ -1485,8 +1486,13 @@ class SpectraFitModule(BaseModule):
 
         p5, p95 = np.nanpercentile(self.config["flux"], [5, 95])
         p_residuals = np.nanpercentile(residuals, 5) * 0.95
-        ax.set_yscale("symlog", linthresh=p95 * 1.2)
-        ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 5)
+        if (self.config["flux"] > p95 * 1.3).any():
+            # use log scale to show the strong emission lines
+            ax.set_yscale("symlog", linthresh=p95 * 1.2)
+            ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 5)
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=10, min_n_ticks=5))
+        else:
+            ax.set_ylim(np.min([p_residuals, p5 * 0.8]), p95 * 1.2)
 
         # Plot masked emission lines and telluric regions
         if plot_lines:
