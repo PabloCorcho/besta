@@ -60,6 +60,10 @@ def parser_setup():
     sfh.add_argument("--sfh_taus", type=str, default="0.01,0.1,1.0",
                      help="Comma-separated timescales in Gyr for the average sSFR "
                           "(default: 0.01,0.1,1.0)")
+    sfh.add_argument("--sfh_time_frac", type=str, default="0.5, 0.9, 0.99",
+                     help="Comma-separated mass fractions in [0, 1] for computing"
+                     " the lookback times at which the given fraction of the stellar mass was formed."
+                          "(default: 0.5, 0.90, 0.99)")
     sfh.add_argument("--sfh_percentiles", type=str, default="0.05,0.16,0.5,0.84,0.95",
                      help="Comma-separated quantiles in [0, 1]")
     sfh.add_argument("--sfh_max_samples", type=int, default=5000,
@@ -167,6 +171,7 @@ def make_sfh(file, args):
         n_bins=args.sfh_n_bins,
         min_lookback=args.sfh_min_lookback,
         taus=_floats(args.sfh_taus),
+        mass_frac_formed=(args.sfh_time_frac),
         percentiles=_floats(args.sfh_percentiles),
         max_samples=args.sfh_max_samples,
         burn_in=args.burn_in,

@@ -2362,19 +2362,26 @@ class SFHReconstruction:
         return columns
 
     def to_fits(self, include_samples: bool = False) -> fits.HDUList:
-        """FITS representation.
+        """Save results in a FITS file.
 
-        HDUs: ``PRIMARY`` (metadata), ``SFH_BINS`` (sSFR averaged in each
-        lookback bin), ``SFH_EDGES`` (mass fraction and metallicity at the bin
-        edges), ``SSFR_TAU`` (sSFR averaged over the last ``tau``, a
-        cumulative average) and, if available, ``T_FORMED`` (lookback time at
-        which given mass fractions were formed) and ``STELLAR_MASS`` (one row:
-        ``log_stellar_mass`` in log10(Msun) and ``stellar_mass_mean`` in Msun).
+        Description
+        -----------
+        The contents are organised into the following HDUs
+
+        - ``PRIMARY``:  stores metadata,
+        - ``SFH_BINS``: sSFR averaged in each lookback bin,
+        - ``SFH_EDGES``: mass fraction and metallicity at the bin edges,
+        - ``SSFR_TAU``: sSFR averaged over the last ``tau``
+        - ``T_FORMED``: lookback time at which given mass fractions were formed
+        - ``STELLAR_MASS``: stellar mass information.
+    
         Every quantity has a ``*_mean`` column (weighted arithmetic mean), a
         ``*_gmean`` column (weighted geometric mean; strictly positive
-        quantities only) and ``*_pNN`` columns (weighted percentiles). With
-        ``include_samples``: ``SAMPLES`` (per-sample table) and the image HDUs
-        ``SAMPLES_SSFR``, ``SAMPLES_MFRAC`` and ``SAMPLES_Z`` (rows = samples).
+        quantities only) and ``*_pNN`` columns (weighted percentiles).
+        
+        With ``include_samples`` it adds an extra ``SAMPLES`` HDU with a 
+        per-sample table and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC``
+        and ``SAMPLES_Z``.
         """
         primary = fits.PrimaryHDU()
         header = primary.header
@@ -2768,12 +2775,7 @@ def reconstruct_sfh(
     # Use a random subset of samples
     if max_samples is not None and n_rows > max_samples:
         rng = np.random.default_rng(seed)
-        if weight_source == "uniform" and walkers:
-            # keep the last complete steps of the flattened chain
-            n_keep = max(int(max_samples) // walkers, 1) * walkers
-            rows = np.arange(max(n_rows - n_keep, 0), n_rows)
-            logger.info("Walker-based sampler: using the last %d of %d samples.", rows.size, n_rows)
-        elif weight_source == "uniform":
+        if weight_source == "uniform":
             rows = np.sort(rng.choice(n_rows, size=int(max_samples), replace=False))
             logger.info("Using a random subset of %d of %d samples.", rows.size, n_rows)
         else:
