@@ -60,7 +60,7 @@ def parser_setup():
     sfh.add_argument("--sfh_taus", type=str, default="0.01,0.1,1.0",
                      help="Comma-separated timescales in Gyr for the average sSFR "
                           "(default: 0.01,0.1,1.0)")
-    sfh.add_argument("--sfh_time_frac", type=str, default="0.5, 0.9, 0.99",
+    sfh.add_argument("--sfh_time_frac", type=str, default="0.5,0.9,0.99",
                      help="Comma-separated mass fractions in [0, 1] for computing"
                      " the lookback times at which the given fraction of the stellar mass was formed."
                           "(default: 0.5, 0.90, 0.99)")
