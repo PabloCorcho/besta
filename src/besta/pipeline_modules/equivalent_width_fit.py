@@ -18,8 +18,12 @@ logger = get_logger(__name__)
 _BALMER_WAVELENGTH = np.array([6562.80, 4861.33, 4340.47, 4101.74, 3970.07])
 _BALMER_RATIO = np.array([1.0, 1.0 / 2.86, 0.468 / 2.86, 0.259 / 2.86,
                           0.159 / 2.86])
-# Kennicutt (1998): L(Halpha) [erg/s] = SFR [Msun/yr] / 7.9e-42 (Salpeter IMF)
-_LHA_PER_SFR = 1.0 / 7.9e-42
+# From Madau & Dickinson (2014)
+_LHA_PER_SFR = {"salpeter": 1.0 / 7.9e-42,  # Kennicutt (1998)
+                "kroupa": 1.0 / 5.37e-42,  # Murphy et al. (2011)
+                "chabrier": 1.0 / 5.37e-42
+                }
+
 # Case B: L(Halpha) [erg/s] = 1.37e-12 * Q(H) [photons/s]
 _LHA_PER_Q = 1.37e-12
 # erg/s -> luminosity units of BaseModule.luminosity_values (1e-16 erg/s)
@@ -209,11 +213,25 @@ class EquivalentWidthFitModule(SpectraFitModule):
                     "The SSP model does not provide ionising photon rates; "
                     "use balmer_emission = kennicutt.")
         else:
-            tau = options.get_double("balmer_tau", default=10.0) << u.Myr
+            # Default is Kennicutt (1998)
+            tau = options.get_double("balmer_tau", default=20.0) << u.Myr
             if tau > self.config["sfh_model"].today:
                 raise ValueError("balmer_tau cannot exceed the age of the Universe "
                                  "at the source.")
             self.config["balmer_tau"] = tau
+            ssp_imf = self.config["ssp_model"].imf
+            if "cha" in ssp_imf.lower():
+                ssp_imf = "chabrier"
+            elif "kro" in ssp_imf.lower():
+                ssp_imf = "kroupa"
+            elif "sal" in ssp_imf.lower():
+                ssp_imf = "salpeter"
+            else:
+                raise ValueError(
+                    f"Unknown SSP IMF {ssp_imf!r}; expected Salpeter, Kroupa or Chabrier.")
+            self.config["LHa_per_SFR"] = _LHA_PER_SFR[ssp_imf.lower()]
+            logger.info("Using Balmer emission from SFR averaged over %s, "
+                        "IMF %s", tau, ssp_imf)
 
         # Fraction of each line inside each window, per Angstrom of window
         sigma = options.get_double("balmer_sigma", default=2.0)
@@ -246,7 +264,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
                                 today.to_value(u.Gyr)], u.Gyr)
             mass = sfh_model.model.stellar_mass_formed(times)
             sfr = (mass[1] - mass[0]).to_value(u.Msun) / tau.to_value(u.yr)
-            l_halpha = _LHA_PER_SFR * max(sfr, 0.0)
+            l_halpha = self.config["LHa_per_SFR"] * max(sfr, 0.0)
         lines = _LUMINOSITY_PER_ERG_S * l_halpha * _BALMER_RATIO
 
         dust_model, a_v = self._get_dust_for_block(block)
