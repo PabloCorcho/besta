@@ -171,7 +171,7 @@ def make_sfh(file, args):
         n_bins=args.sfh_n_bins,
         min_lookback=args.sfh_min_lookback,
         taus=_floats(args.sfh_taus),
-        mass_frac_formed=(args.sfh_time_frac),
+        mass_frac_formed=_floats(args.sfh_time_frac),
         percentiles=_floats(args.sfh_percentiles),
         max_samples=args.sfh_max_samples,
         burn_in=args.burn_in,
