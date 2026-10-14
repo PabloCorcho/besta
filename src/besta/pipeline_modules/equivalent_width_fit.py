@@ -140,18 +140,43 @@ class EquivalentWidthFitModule(SpectraFitModule):
 
     def prepare_equivalent_widths(self, options):
         """Measure the observed equivalent widths and select the usable ones."""
-        names = options["ew_names"]
-        if isinstance(names, str):
-            names = names.split(",")
-        names = [str(name).strip() for name in names if str(name).strip()]
+        
+        if options.has_value("ew_list"):
+            # load from a list containing 7 columns
+            ews = []
+            ew_list = np.loadtxt(options["ew_list"],
+                       dtype=[("name", "U20"),
+                              ("bl", "f4"),
+                              ("br", "f4"),
+                              ("cl", "f4"),
+                              ("cr", "f4"),
+                              ("rl", "f4"),
+                              ("rr", "f4")
+                              ]
+                        )
+            for name, bl, br, cl, cr, rl, rr in zip(
+                ew_list["name"],
+                ew_list["bl"], ew_list["br"],
+                ew_list["cl"], ew_list["cr"],
+                ew_list["rl"], ew_list["rr"]):
+                ew = EquivalentWidth(left_wl_range=[bl, br],
+                                     central_wl_range=[cl, cr],
+                                     right_wl_range=[rl, rr],
+                                     name=name)
+                ews.append(ew)
+
+        elif options.has_value("ew_names"):
+            names = options["ew_names"]
+            if isinstance(names, str):
+                names = names.split(",")
+            
+            ews = [EquivalentWidth.from_name(str(name).strip()) for name in names if str(name).strip()]
 
         wl = self.config["wavelength"].value
         bad_pixel = (self.config["weights"] <= 0) | ~np.isfinite(self.config["flux"])
 
         selected = []
-        for name in names:
-            ew = EquivalentWidth.from_name(name)
-            ew.name = name
+        for ew in ews:
             windows = (ew.left_wl_range.value, ew.central_wl_range.value,
                        ew.right_wl_range.value)
             low, high = windows[0][0], windows[2][1]
@@ -166,12 +191,16 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if not selected:
             raise ValueError("None of the requested equivalent widths can be measured.")
 
+        # Store the indices that will be used
         self._set_indices(selected)
+        # Compute a matrix for estimating mean fluxes across all wavelength ranges
         matrix = self._window_matrix(wl, self.config["ew_ranges"])
+        # Observed EWs
         means = matrix @ self.config["flux"]
         var_means = (matrix ** 2) @ self.config["var"]
         ew_obs = self._ew_from_means(means)
         ew_err = np.hypot(self._ew_error_from_means(means, var_means),
+                          # This can be relevant is the EW is close to 0
                           options.get_double("ew_error_floor", default=0.0))
 
         good = np.isfinite(ew_obs) & np.isfinite(ew_err) & (ew_err > 0)
