@@ -49,6 +49,9 @@ class EquivalentWidthFitModule(SpectraFitModule):
 
     - ``ew_names``: comma-separated names of the indices, as understood by
       :meth:`pst.observables.EquivalentWidth.from_name`.
+    - ``ew_list`` *(alternative to* ``ew_names`` *)*: text file with one index
+      per row and 7 columns, ``name left_min left_max central_min central_max
+      right_min right_max`` (Angstrom). It takes precedence if both are given.
     - ``ew_error_floor`` *(optional, default 0)*: error (in Angstrom) added in
       quadrature to the measured uncertainty of each index, to account for
       model systematics.
@@ -84,8 +87,8 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if not options.has_value("velscale"):
             raise ValueError(
                 "Option 'velscale' is required for setting up EquivalentWidthFitModule.")
-        if not options.has_value("ew_names"):
-            raise ValueError("Option 'ew_names' is required.")
+        if not (options.has_value("ew_names") or options.has_value("ew_list")):
+            raise ValueError("Option 'ew_names' or 'ew_list' is required.")
 
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
@@ -152,8 +155,8 @@ class EquivalentWidthFitModule(SpectraFitModule):
                               ("cr", "f4"),
                               ("rl", "f4"),
                               ("rr", "f4")
-                              ]
-                        )
+                              ],
+                       ndmin=1)
             for name, bl, br, cl, cr, rl, rr in zip(
                 ew_list["name"],
                 ew_list["bl"], ew_list["br"],
@@ -181,11 +184,11 @@ class EquivalentWidthFitModule(SpectraFitModule):
                        ew.right_wl_range.value)
             low, high = windows[0][0], windows[2][1]
             if low < wl[0] or high > wl[-1]:
-                logger.warning("Dropping index %s: outside the observed range", name)
+                logger.warning("Dropping index %s: outside the observed range", ew.name)
             elif bad_pixel[(wl >= low) & (wl <= high)].any():
-                logger.warning("Dropping index %s: it includes masked pixels", name)
+                logger.warning("Dropping index %s: it includes masked pixels", ew.name)
             elif any(not ((wl >= a) & (wl <= b)).any() for a, b in windows):
-                logger.warning("Dropping index %s: a window has no pixels", name)
+                logger.warning("Dropping index %s: a window has no pixels", ew.name)
             else:
                 selected.append(ew)
         if not selected:
