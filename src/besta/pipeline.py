@@ -3,6 +3,7 @@ This module contains the pipeline manager to concatenate multiple modules.
 """
 
 import os
+import shlex
 import subprocess
 import copy
 import numpy as np
@@ -241,9 +242,9 @@ class MainPipeline(object):
             logger.info(f"Using all available cores: {n_cores}")
 
         if n_cores > 1:
-            command = f"mpiexec -n {n_cores} cosmosis --mpi {ini_filename}"
+            command = f"mpiexec -n {n_cores} cosmosis --mpi {shlex.quote(ini_filename)}"
         else:
-            command = f"cosmosis {ini_filename}"
+            command = f"cosmosis {shlex.quote(ini_filename)}"
         return_code = self.run_command(command)
         if return_code == 0:
             logger.info("Successful run, return code: %s", return_code)
@@ -375,7 +376,9 @@ class MainPipeline(object):
         )):
             if prev_solution is not None and subpipe_config:
                 logger.info("Updating configuration file with previous run results")
-                module_name = subpipe_config["pipeline"]["modules"].replace(",", " ").split()[0]
+                modules = subpipe_config["pipeline"]["modules"]
+                module_name = (modules[0] if isinstance(modules, list)
+                               else modules.replace(",", " ").split()[0])
                 if module_name not in subpipe_config:
                     raise KeyError(
                         f"Module '{module_name}' not found in subpipeline configuration."
