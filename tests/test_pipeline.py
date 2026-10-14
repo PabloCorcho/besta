@@ -187,6 +187,10 @@ def test_sfh_settings_validation():
         norm({"sample": True})                       # typo in a setting
     with pytest.raises(ValueError):
         norm({"options": {"nbins": 10}})             # typo in an option
+    assert norm({"options": {"burn_in": "auto"}})["options"]["burn_in"] == "auto"
+    assert norm({"options": {"burn_in": "0.2"}})["options"]["burn_in"] == 0.2
+    with pytest.raises(ValueError):
+        norm({"options": {"burn_in": "soon"}})       # caught before the fit
     with pytest.raises(TypeError):
         norm("yes")
 

@@ -566,6 +566,59 @@ class TestSFHReconstruction(unittest.TestCase):
         np.testing.assert_allclose(rec.ssfr_tau[0] * np.array(edges[1:3]) * 1e9,
                                    [0.1, 0.5], rtol=1e-10)
 
+    def test_formation_times(self):
+        # Edges at the anchors: the lookback times of 10, 50 and 90% are exact
+        from besta.postprocess import reconstruct_sfh_from_file
+        edges = np.concatenate(([0.0], (self.today - self.times[0])[::-1], [self.today]))
+        rec = reconstruct_sfh_from_file(self.path, lookback_edges=edges,
+                                        mass_frac_formed=(0.1, 0.5, 0.9))
+        np.testing.assert_allclose(rec.t_formed[0], [edges[3], edges[2], edges[1]])
+        self.assertTrue(np.all(np.diff(rec.t_formed, axis=1) <= 0))  # older -> younger
+        with self.assertRaises(ValueError):
+            reconstruct_sfh_from_file(self.path, mass_frac_formed=(0.5, 1.0))
+        self.assertIsNone(
+            reconstruct_sfh_from_file(self.path, mass_frac_formed=None).t_formed)
+
+    def test_burn_in(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        kwargs = dict(n_bins=5, nwalkers=5)
+        # 60 rows = 12 steps x 5 walkers
+        self.assertEqual(reconstruct_sfh_from_file(self.path, burn_in=2, **kwargs).n_samples, 50)
+        self.assertEqual(reconstruct_sfh_from_file(self.path, burn_in=0.5, **kwargs).n_samples, 30)
+        self.assertEqual(reconstruct_sfh_from_file(self.path, burn_in=0, **kwargs).n_samples, 60)
+        # "auto" needs a sampler with walkers (not in this file)
+        self.assertEqual(reconstruct_sfh_from_file(self.path, n_bins=5).n_samples, 60)
+        with self.assertRaises(ValueError):
+            reconstruct_sfh_from_file(self.path, burn_in="fast", **kwargs)
+        with self.assertRaises(ValueError):
+            reconstruct_sfh_from_file(self.path, burn_in=-1, **kwargs)
+
+    def test_burn_in_argument(self):
+        from besta.postprocess import parse_burn_in
+        self.assertEqual(parse_burn_in("auto"), "auto")
+        self.assertEqual(parse_burn_in("AUTO"), "auto")
+        self.assertEqual(parse_burn_in("0.3"), 0.3)
+        self.assertEqual(parse_burn_in("100"), 100.0)
+        self.assertEqual(parse_burn_in(0), 0)
+        for bad in ("fast", -1, "-2", float("nan"), True):
+            with self.assertRaises(ValueError):
+                parse_burn_in(bad)
+
+    def test_burn_in_steps(self):
+        from astropy.table import Table
+        from besta.postprocess import _burn_in_steps
+        rng = np.random.default_rng(0)
+        nwalkers, nsteps = 4, 400
+        decay = 5.0 * np.exp(-np.arange(nsteps) / 20.0)[:, None]
+        chain = decay + rng.normal(size=(nsteps, nwalkers))
+        table = Table({"a": chain.ravel()})
+        steps = _burn_in_steps(table, ["a"], "auto", nwalkers, has_walkers=True)
+        self.assertTrue(0 < steps <= nsteps // 2)
+        self.assertEqual(_burn_in_steps(table, ["a"], "auto", nwalkers, has_walkers=False), 0)
+        self.assertEqual(_burn_in_steps(table, ["a"], 0.25, nwalkers, has_walkers=True), 100)
+        self.assertEqual(_burn_in_steps(table, ["a"], 7, nwalkers, has_walkers=False), 7)
+        self.assertEqual(_burn_in_steps(table, ["a"], 7.0, nwalkers, has_walkers=True), 7)
+
     def test_subset_and_invalid_grids(self):
         from besta.postprocess import reconstruct_sfh_from_file
         rec = reconstruct_sfh_from_file(self.path, max_samples=10, n_bins=5)
@@ -597,6 +650,111 @@ class TestSFHReconstruction(unittest.TestCase):
         np.testing.assert_allclose(back.percentile_values("ssfr"),
                                    rec.percentile_values("ssfr"))
         self.assertIn("stars.sfh--t_at_frac_0.5000", back.sample_table.colnames)
+        np.testing.assert_allclose(back.t_formed, rec.t_formed)
+        for name in ("ssfr", "ssfr_tau", "t_formed", "metallicity"):
+            np.testing.assert_allclose(back.mean_values(name, "geometric"),
+                                       rec.mean_values(name, "geometric"))
+            np.testing.assert_allclose(back.mean_values(name), rec.mean_values(name))
+        np.testing.assert_allclose(back.mass_frac_formed, rec.mass_frac_formed)
+        light_back = SFHReconstruction.from_fits(light)
+        for name in ("ssfr", "ssfr_tau", "t_formed", "metallicity"):
+            np.testing.assert_allclose(light_back.mean_values(name, "geometric"),
+                                       rec.mean_values(name, "geometric"))
+        np.testing.assert_allclose(light_back.percentile_values("t_formed"),
+                                   rec.percentile_values("t_formed"))
+
+    def test_ssfr_tau_is_the_cumulative_average_of_the_bins(self):
+        # sSFR over the last tau = mass formed in the bins up to tau / tau, so
+        # the table of averages and the plot of bins cannot disagree
+        from besta.postprocess import reconstruct_sfh_from_file
+        edges = np.array([0.0, 0.05, 0.1, 0.4, 1.0, 3.0, self.today])
+        taus = (0.05, 0.1, 1.0)
+        rec = reconstruct_sfh_from_file(self.path, lookback_edges=edges, taus=taus)
+        formed = np.cumsum(rec.ssfr * np.diff(edges) * 1e9, axis=1)
+        for tau, bin_index in zip(taus, (0, 1, 3)):
+            np.testing.assert_allclose(rec.ssfr_tau[:, taus.index(tau)] * tau * 1e9,
+                                       formed[:, bin_index], rtol=1e-10, atol=1e-15)
+        # Mass fraction at tau = 1 - mass formed within tau
+        np.testing.assert_allclose(rec.mass_fraction[:, 2], 1 - formed[:, 1], atol=1e-12)
+
+    def test_means_arithmetic_and_geometric(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=8, max_samples=40)
+        for name in ("ssfr", "ssfr_tau", "t_formed"):
+            values = rec.quantity(name)
+            w = rec.weights / rec.weights.sum()
+            np.testing.assert_allclose(rec.mean_values(name), w @ values)
+            positive = np.all(values > 0, axis=0)
+            gmean = rec.mean_values(name, "geometric")
+            np.testing.assert_allclose(gmean[positive],
+                                       10 ** (w @ np.log10(values[:, positive])))
+            # AM-GM inequality
+            self.assertTrue(np.all(gmean[positive] <= rec.mean_values(name)[positive] * (1 + 1e-12)))
+        with self.assertRaises(ValueError):
+            rec.mean_values("mass_fraction", "geometric")
+        with self.assertRaises(ValueError):
+            rec.mean_values("ssfr", "median")
+
+    def test_geometric_mean_with_zeros_and_weights(self):
+        from besta.postprocess import _weighted_geometric_mean_samples as gmean
+        values = np.array([[1.0, 0.0, np.nan], [100.0, 5.0, np.nan], [10.0, 5.0, np.nan]])
+        out = gmean(values, np.array([1.0, 1.0, 2.0]))
+        np.testing.assert_allclose(out[0], 10 ** ((0 + 2 + 2) / 4))
+        self.assertEqual(out[1], 0.0)          # a zero with positive weight
+        self.assertTrue(np.isnan(out[2]))      # no valid value
+        # Zero-weighted zeros do not matter
+        out = gmean(values[:, :2], np.array([0.0, 1.0, 1.0]))
+        np.testing.assert_allclose(out, [np.sqrt(1000.0), 5.0])
+
+    def test_plain_class_validation_and_cache(self):
+        import dataclasses
+        from besta.postprocess import SFHReconstruction, reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=6)
+        self.assertFalse(dataclasses.is_dataclass(rec))
+        self.assertIn("ssfr", rec.quantities)
+        self.assertIn("n_samples=60", repr(rec))
+        # Changing the data invalidates the cached statistics
+        before = rec.mean_values("ssfr").copy()
+        rec.ssfr = rec.ssfr * 2
+        np.testing.assert_allclose(rec.mean_values("ssfr"), 2 * before)
+        # Inconsistent shapes
+        with self.assertRaises(ValueError):
+            SFHReconstruction(
+                lookback_edges=rec.lookback_edges, percentiles=rec.percentiles,
+                mass_fraction=rec.mass_fraction, ssfr=rec.ssfr[:, :-1],
+                ssfr_tau=rec.ssfr_tau, taus=rec.taus, weights=rec.weights)
+        with self.assertRaises(ValueError):
+            SFHReconstruction(
+                lookback_edges=rec.lookback_edges, percentiles=rec.percentiles,
+                mass_fraction=rec.mass_fraction, ssfr=rec.ssfr,
+                ssfr_tau=rec.ssfr_tau, taus=rec.taus, weights=rec.weights,
+                t_formed=rec.t_formed)               # without mass_frac_formed
+        with self.assertRaises(KeyError):
+            rec.quantity("sfr")
+
+    def test_custom_percentiles_and_subset(self):
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=6)
+        median = rec.percentile_values("ssfr", [0.5])
+        np.testing.assert_allclose(median[0], rec.percentile_values("ssfr")[2])
+        half = rec.subset(np.arange(rec.n_samples) < 30)
+        self.assertEqual(half.n_samples, 30)
+        self.assertEqual(len(half.sample_table), 30)
+        np.testing.assert_allclose(half.ssfr, rec.ssfr[:30])
+
+    def test_figure_marks_ssfr_tau(self):
+        from matplotlib import pyplot as plt
+        from besta.postprocess import reconstruct_sfh_from_file
+        rec = reconstruct_sfh_from_file(self.path, n_bins=6, taus=(0.1, 1.0))
+        fig, axes = rec.make_figure()
+        self.assertEqual(len(axes[1].containers), 1)       # error bars of ssfr_tau
+        np.testing.assert_allclose(axes[1].containers[0].lines[0].get_xdata(), [0.1, 1.0])
+        np.testing.assert_allclose(axes[1].containers[0].lines[0].get_ydata(),
+                                   rec.percentile_values("ssfr_tau")[2])
+        plt.close(fig)
+        fig, axes = rec.make_figure(show_taus=False)
+        self.assertEqual(len(axes[1].containers), 0)
+        plt.close(fig)
 
     def test_unknown_option_is_rejected(self):
         from besta.postprocess import reconstruct_sfh_from_file
@@ -629,6 +787,12 @@ class TestSFHReconstruction(unittest.TestCase):
         rec = SFHReconstruction.from_fits(output)
         self.assertEqual(rec.lookback_edges.size, 9)
         np.testing.assert_allclose(rec.taus, [0.1, 1.0])
+        # burn-in: 'auto' by default, otherwise a number
+        main([self.path, "--make_sfh", "--sfh_output", output, "--burn_in", "0.5",
+              "--nwalkers", "5"])
+        self.assertEqual(SFHReconstruction.from_fits(output).meta.get("weights"), "uniform")
+        with self.assertRaises(SystemExit):
+            main([self.path, "--make_sfh", "--burn_in", "fast"])
         # Default output name
         main([self.path, "--make_sfh"])
         self.assertTrue(os.path.exists(os.path.join(self.tmp.name, "results_sfh.fits")))
