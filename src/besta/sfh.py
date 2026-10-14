@@ -1860,37 +1860,170 @@ class BetaSFH(ZPowerLawMixin, SFHBase):
 
 ####################### Hybrid star formation histories#########################
 
+def _delayed_tau_tangent(x):
+    """Derivative of ln(I) with respect to ln(tau), where ln(I) corresponds to
+    the integral of the delayed-tau SFH over each bin.
+
+    Parameters
+    ----------
+    x : array-like
+        The ratio of the bin edges to tau, i.e. x = t / tau.
+    
+    Returns
+    -------
+    u_i : array-like
+        The derivative of ln(I) with respect to ln(tau) for each bin, normalized
+        to have zero mean and unit variance.
+    """
+    x = np.asarray(x, dtype=float)
+    x2 = x * x
+    ex = np.exp(-np.diff(x))
+    h_i = 2 + (x2[:-1] - x2[1:] * ex) / (1 + x[:-1] - (1 + x[1:]) * ex)
+    # remove the mean
+    h_i_tilde = h_i - np.mean(h_i)
+    # normalise
+    u_i = h_i_tilde / np.sqrt(np.sum(h_i_tilde**2))
+    return u_i
+
+def _helmert_basis(n):
+    """Orthonormal basis of the vectors orthogonal to (1, ..., 1).
+
+    Parameters
+    ----------
+    n : int
+        Number of elements (time bins), at least 2.
+
+    Returns
+    -------
+    np.ndarray, shape (n, n - 1)
+        column ``k`` (starting at 1) has ``k`` entries
+        ``1 / sqrt(k (k + 1))`` followed by ``-k / sqrt(k (k + 1))``. Its columns
+        are orthonormal and sum to zero, so ``basis @ z`` has zero sum for
+        any ``z``.
+    """
+    basis = np.zeros((n, n - 1))
+    for k in range(1, n):
+        norm = np.sqrt(k * (k + 1))
+        basis[:k, k - 1] = 1.0 / norm
+        basis[k, k - 1] = -k / norm
+    return basis
+
+def _soft_orthogonal_mapping(z, basis, u, sigma_dex, eta=1.0):
+    r"""Map the latent variables to the per-bin corrections of the SFH.
+
+    The latent variables :math:`z_k` are mapped to zero-sum residuals
+    :math:`\mathbf r = C\mathbf z`, and the component of :math:`\mathbf r` along
+    the delayed-tau tangent :math:`\mathbf u` is multiplied by :math:`\eta`:
+
+    .. math::
+        \boldsymbol\Delta = \sigma_\Delta\left[\mathbf r
+        - (1 - \eta)(\mathbf u\cdot\mathbf r)\,\mathbf u\right].
+
+    If :math:`z_k \sim \mathcal N(0, 1)`, the corrections have standard
+    deviation :math:`\sigma_\Delta` in every direction orthogonal to
+    :math:`\mathbf u`, and :math:`\eta\sigma_\Delta` along it. The directions
+    that can be produced by changing tau are therefore penalised, while the
+    rest of the SFH shape is left free. ``eta=1`` applies no suppression.
+
+    Parameters
+    ----------
+    z : array-like, shape (N - 1,)
+        Latent variables, with a standard normal prior.
+    basis : np.ndarray, shape (N, N - 1)
+        Orthonormal basis of the zero-sum vectors, see :func:`_helmert_basis`.
+    u : np.ndarray, shape (N,)
+        Unit vector along the change of the bin masses with tau, see
+        :func:`_delayed_tau_tangent`. It must have zero sum.
+    sigma_dex : float
+        Standard deviation of the corrections, in dex.
+    eta : float, optional
+        Suppression of the tau-like component, in (0, 1]. Default 1.
+
+    Returns
+    -------
+    np.ndarray, shape (N,)
+        Logarithmic corrections :math:`\Delta_i` of the bins, in dex. They sum
+        to zero.
+    """
+    z = np.asarray(z)
+    # Zero-sum residuals: the normalisation direction is never sampled
+    r = basis @ z
+    a = u @ r
+    delta_over_sigma = r - (1 - eta) * a * u
+    return delta_over_sigma * sigma_dex
+
 
 class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
-    r"""A delayed-tau SFH with an independent correction in each time bin.
+    r"""A hybrid non-parametric model combined with a delayed-tau SFH.
 
     Description
     -----------
     The baseline is the delayed-tau SFH, :math:`\psi(t) \propto t e^{-t/\tau}`.
-    The mass fraction of the baseline in bin :math:`i` is :math:`f^0_i`, and
-    each bin has a free correction :math:`\Delta_i` in dex,
+    Let :math:`f^0_i` be the mass fraction of the baseline in bin :math:`i`.
+    Each bin has a logarithmic correction :math:`\Delta_i` in dex,
 
     .. math::
-        f_i = \frac{f^0_i 10^{\Delta_i}}{\sum_j f^0_j 10^{\Delta_j}}.
+        f_i = \frac{f^0_i 10^{\Delta_i}}{\sum_j f^0_j 10^{\Delta_j}},
 
-    Their prior has to be set in the ``values`` and ``priors`` .ini files.
-    It is recommended to use a Gaussian centred on zero, that controls how much
-    the SFH may depart from the baseline. Note that this model is degenerate with
-    respect to adding a constant to all :math:`\Delta_i`, which leaves the SFH
-    unchanged, so we recommend using a conservative value of $\sigma_\Delta$ (<1.0),
-    to minimise the degeneracy.
+    so that the baseline captures the smooth evolution and the corrections
+    capture departures from it, such as quenching, bursts or rejuvenation.
 
-    The bins follow :class:`FixedTimeSFH`: ``N`` lookback times define
-    ``N + 1`` bins, the oldest one running to the Big Bang. The free
-    parameters are ``logtau`` (the base e-folding time) and
-    ``delta_at_<lookback Gyr>`` (the oldest bin is ``delta_at_bigbang``).
+    To improve performance and reduce parameter degeneracies, the corrections
+    are not sampled directly. Instead, we sample :math:`N - 1` latent variables
+    :math:`z_k`, with a standard normal prior, and map them to
+
+    .. math::
+        \boldsymbol\Delta = \sigma_\Delta\left[\mathbf r
+        - (1 - \eta)(\mathbf u_\tau\cdot\mathbf r)\,\mathbf u_\tau\right],
+        \qquad \mathbf r = C\mathbf z .
+
+    The columns of :math:`C` are a fixed orthonormal basis of the vectors with
+    zero sum (known as Helmert contrasts), so :math:`\sum_i\Delta_i = 0` and the
+    normalisation direction is never sampled. Latent variable :math:`z_k`
+    compares bin :math:`k + 1` with the mean of bins :math:`0, \ldots, k`,
+    counting from the oldest bin. The unit vector :math:`\mathbf u_\tau` is the
+    direction in which the bin masses change when :math:`\tau` changes; it is
+    recomputed for every :math:`\tau`. The corrections therefore have standard
+    deviation :math:`\sigma_\Delta` in every direction except along
+    :math:`\mathbf u_\tau`, where it is :math:`\eta\sigma_\Delta`. With
+    ``sfh_eta = 1`` there is no suppression.
+
+    The time bins are parametrised as used in :class:`FixedTimeSFH`: ``M``
+    lookback times define ``M + 1`` bins, the oldest one running to the Big Bang,
+    so at least two lookback times are required. The free parameters are
+    ``logtau`` (the base e-folding time, in dex of Gyr) and ``z_latent_<k>``, with
+    ``k = 0, ..., M - 1``.
+
+    .. warning::
+        The prior of the latent variables is not set by this class. Add a
+        standard normal prior for each of them to the ``priors`` .ini file,
+        for example ``z_latent_0 = gaussian 0.0 1.0``. The ``values`` file only
+        gives the range (``[-5, 0, 5]`` by default), and without the Gaussian
+        prior the latent variables would be uniform in that range, which is a
+        different and much broader model.
 
     Parameters
     ----------
     lookback_time_bins : array-like
         Lookback times of the bin edges, in Gyr.
+    sfh_sigma_delta_dex : float, optional
+        Standard deviation :math:`\sigma_\Delta` of the corrections, in dex.
+        Default 1. Values below 1 shrink strong departures from the baseline
+        such as quenching.
+    sfh_eta : float, optional
+        Suppression :math:`\eta \in (0, 1]` of the corrections that mimic a
+        change of :math:`\tau`. Default 0.3. Small values leave the
+        :math:`\tau`-like variation to :math:`\tau`; very small values
+        penalise histories that are not delayed-tau like at all, such as a
+        steadily rising SFR.
+
+    Examples
+    --------
+    In the pipeline ``.ini`` file::
+
+        SFHModel = HybridDelayedTauSFH
+        SFHArgs = (0.01, 0.1, 0.5, 1.0, 3.0, 7.0), sfh_sigma_delta_dex=1.0, sfh_eta=0.3
     """
-    OLDEST_BIN_KEY = "delta_at_bigbang"
 
     def __init__(self, lookback_time_bins, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1905,29 +2038,44 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )[::-1]
         today_gyr = self.today.to_value("Gyr")
         if (
-            lookback_gyr.size == 0
+            lookback_gyr.size < 2
             or np.any(lookback_gyr <= 0)
             or np.any(np.diff(lookback_gyr) == 0)
             or lookback_gyr[0] >= today_gyr
         ):
             raise ValueError(
-                "Lookback times must be unique, positive and smaller than the "
+                "Lookback times must be at least 2, unique, positive and smaller than the "
                 f"age of the Universe ({today_gyr:.4g} Gyr), got {lookback_gyr} Gyr."
             )
+
+        # Hyperparameters defining the internal latent transformation
+        self.sigma_dex = float(kwargs.get("sfh_sigma_delta_dex", 1.0))
+        if self.sigma_dex <= 0.0:
+            raise ValueError(
+                "The standard deviation of the SFH bin corrections must be positive, "
+                f"got {self.sigma_dex} dex."
+            )
+        self.eta = float(kwargs.get("sfh_eta", 0.5))
+        if self.eta <= 0.0 or self.eta > 1.0:
+            raise ValueError(
+                "The suppression of the tau-tangent component must be in (0, 1], "
+                f"got {self.eta}."
+            )
+
+        self.h_basis = _helmert_basis(lookback_gyr.size + 1)
 
         # Bin edges in cosmic time
         self.time = np.concatenate(([0.0], today_gyr - lookback_gyr, [today_gyr]))
 
         # Beyond tau~50 the SFH does not change much
-        self.free_params["logtau"] = kwargs.get("logtau", [-0.5, 0.5, 1.7])
-        # Oldest bin first, matching the order of ``self.time``
-        self.sfh_bin_keys = [self.OLDEST_BIN_KEY] + [
-            f"delta_at_{lbt:.3f}" for lbt in lookback_gyr]
-        
+        self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 2])
+        # standard latent parameters
+        self.sfh_bin_keys = [f"z_latent_{i}" for i in range(lookback_gyr.size)]
+
         # Default prior range. This can be combined with the Gaussian prior
         # such that the distribution is truncated to the range
         for key in self.sfh_bin_keys:
-            self.free_params[key] = [-3.0, 0.0, 3.0]
+            self.free_params[key] = [-5.0, 0.0, 5.0]
 
         self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time << u.Gyr,
@@ -1943,8 +2091,11 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
     def parse_datablock(self, datablock: DataBlock):
         """Update the SFH from a CosmoSIS DataBlock."""
-        delta = self.get_sfh_parameters_array(datablock)
+        z = self.get_sfh_parameters_array(datablock)
         x = self.time / 10 ** datablock[self.sect_name, "logtau"]
+        # Corrections, with the tau-like direction at this tau suppressed
+        delta = _soft_orthogonal_mapping(
+            z, self.h_basis, _delayed_tau_tangent(x), self.sigma_dex, self.eta)
         # M(t)/M(today) is (1 + x) exp(-x)
         baseline = -np.diff((1 + x) * np.exp(-x))
         mass = baseline * 10.0**delta
