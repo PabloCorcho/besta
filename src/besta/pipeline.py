@@ -195,7 +195,8 @@ class MainPipeline(object):
         return subprocess.call(command, shell=True)
 
     def execute_pipeline(
-        self, config, n_cores, ini_filename=None, ini_values_filename=None
+        self, config, n_cores, ini_filename=None, ini_values_filename=None,
+        chain_from=None, chain_settings=None, step=0,
     ):
         """Execute a sub-pipeline.
 
@@ -210,6 +211,15 @@ class MainPipeline(object):
             If provided, this file is used to run cosmosis.
         ini_values_filename : str, optional, default=None
             If provided, use this file to set the prior values.
+        chain_from : :class:`besta.chain.StepResult`, optional
+            Results of the previous step, whose point estimates are passed to
+            this one following ``chain_settings`` (see
+            :func:`besta.chain.normalize_chain_settings`). The run then uses
+            copies of the ini, values and priors files.
+        chain_settings : dict, optional
+            Normalized chain settings.
+        step : int, optional
+            Index of this sub-pipeline.
         """
         if ini_filename is None:
             # get module names
@@ -236,6 +246,12 @@ class MainPipeline(object):
             if not os.path.isfile(ini_values_filename):
                 raise FileNotFoundError(f"{ini_values_filename} not found")
             config.setdefault("pipeline", {})["values"] = ini_values_filename
+
+        if chain_from is not None:
+            from besta import chain
+            ini_filename = chain.prepare_step(
+                ini_filename, chain_from, chain_settings, step,
+                values_file=ini_values_filename)
 
         if n_cores == -1:
             n_cores = os.cpu_count()
@@ -354,7 +370,7 @@ class MainPipeline(object):
                     plt.close(fig)
         return output
 
-    def execute_all(self, plot_result=False, sfh_reconstruction=None):
+    def execute_all(self, plot_result=False, sfh_reconstruction=None, chain=None):
         """Execute all sub-pipelines.
 
         Parameters
@@ -364,37 +380,34 @@ class MainPipeline(object):
         sfh_reconstruction : None, bool or dict, optional
             Reconstruct the posterior SFH after each run and write it to a
             FITS file (see :func:`normalize_sfh_reconstruction_settings`).
+        chain : None, bool or dict, optional
+            Pass a point estimate of each run (MAP, posterior mean or median)
+            to the next one, for the parameters that are free in the values
+            file of both. The estimate is computed according to the sampler of
+            the previous run. By default (``None``) the runs are independent.
+            See :func:`besta.chain.normalize_chain_settings`.
         """
+        from besta import chain as chain_module
+
         sfh_settings = normalize_sfh_reconstruction_settings(sfh_reconstruction)
+        chain_settings = chain_module.normalize_chain_settings(chain)
         logger.info("Executing all pipelines")
-        prev_solution = None
+        previous = None
         for step, (subpipe_config, n_cores, ini_filename, ini_values_filename) in enumerate(zip(
             self.pipelines_config,
             self.n_cores_list,
             self.ini_files,
             self.ini_values_files,
         )):
-            if prev_solution is not None and subpipe_config:
-                logger.info("Updating configuration file with previous run results")
-                modules = subpipe_config["pipeline"]["modules"]
-                module_name = (modules[0] if isinstance(modules, list)
-                               else modules.replace(",", " ").split()[0])
-                if module_name not in subpipe_config:
-                    raise KeyError(
-                        f"Module '{module_name}' not found in subpipeline configuration."
-                    )
-                # Update the input values
-                subpipe_config[module_name].update(
-                    (k, v)
-                    for k, v in prev_solution.items()
-                    if k in subpipe_config[module_name]
-                )
             # Execute sub-pipepline
             ini_filename = self.execute_pipeline(
                 subpipe_config,
                 n_cores,
                 ini_filename=ini_filename,
                 ini_values_filename=ini_values_filename,
+                chain_from=previous,
+                chain_settings=chain_settings,
+                step=step,
             )
 
             if ini_filename is None:
@@ -406,6 +419,9 @@ class MainPipeline(object):
             reader = io.Reader(ini_file=ini_filename)
             reader.load_results()
             self.write_physical_results(reader)
+            if chain_settings is not None and step < len(self.pipelines_config) - 1:
+                # Checks the sampler of the run before any estimate is made
+                previous = chain_module.StepResult.from_reader(reader)
             solution = reader.get_maxlike_solution()
             prev_solution = solution.copy()
             logger.info("MAP solution: %s", solution)
