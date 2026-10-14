@@ -762,6 +762,68 @@ class TestExponentialSFH(unittest.TestCase):
         self.assertTrue(np.all(np.diff(mass) >= 0))
 
 
+class TestDelayedTauTangent(unittest.TestCase):
+    """Unit vector along which the bin masses of a delayed-tau SFH change with tau."""
+
+    EDGES = np.array([0.0, 6.0, 10.0, 12.0, 12.5, 12.9, 12.99, 13.0])
+
+    def _tangent(self, logtau):
+        return sfh._delayed_tau_tangent(self.EDGES / 10**logtau)
+
+    def _numerical(self, logtau, eps=1e-6):
+        # Mean-removed, normalised d ln(mass fraction) / d ln tau
+        def log_mass(lt):
+            x = self.EDGES / 10**lt
+            return np.log(-np.diff((1 + x) * np.exp(-x)))
+        grad = (log_mass(logtau + eps) - log_mass(logtau - eps)) / (2 * eps)
+        grad -= grad.mean()
+        return grad / np.linalg.norm(grad)
+
+    def test_reference_values(self):
+        expected = [-0.796650, -0.298036, 0.057878, 0.205895,
+                    0.256554, 0.284367, 0.289993]
+        np.testing.assert_allclose(self._tangent(0.5), expected, atol=1e-6)
+
+    def test_unit_norm_and_zero_mean(self):
+        for logtau in (-1.0, 0.5, 2.0):
+            u = self._tangent(logtau)
+            self.assertAlmostEqual(np.linalg.norm(u), 1.0, places=12)
+            self.assertAlmostEqual(u.sum(), 0.0, places=12)
+
+    def test_matches_finite_difference(self):
+        for logtau in (-1.0, -0.5, 0.0, 0.5):
+            np.testing.assert_allclose(
+                self._tangent(logtau), self._numerical(logtau), atol=1e-6)
+
+    def test_small_tau_is_finite(self):
+        # exp(-x) underflows here, the direction must stay finite
+        self.assertTrue(np.all(np.isfinite(self._tangent(-2.0))))
+
+
+class TestHelmertBasis(unittest.TestCase):
+    """Fixed orthonormal basis of the zero-sum vectors."""
+
+    def test_orthonormal_and_zero_sum(self):
+        for n in (3, 10):
+            basis = sfh._helmert_basis(n)
+            self.assertEqual(basis.shape, (n, n - 1))
+            np.testing.assert_allclose(basis.T @ basis, np.eye(n - 1), atol=1e-12)
+            np.testing.assert_allclose(basis.sum(axis=0), 0.0, atol=1e-12)
+
+    def test_spans_the_whole_zero_sum_space(self):
+        # basis @ basis.T is the projector onto the vectors orthogonal to (1, ..., 1)
+        n = 10
+        basis = sfh._helmert_basis(n)
+        np.testing.assert_allclose(
+            basis @ basis.T, np.eye(n) - np.ones((n, n)) / n, atol=1e-12)
+
+    def test_reference_values(self):
+        expected = [[0.707107, 0.408248],
+                    [-0.707107, 0.408248],
+                    [0.0, -0.816497]]
+        np.testing.assert_allclose(sfh._helmert_basis(3), expected, atol=1e-6)
+
+
 class TestHybridDelayedTauSFH(unittest.TestCase):
 
     def setUp(self):
@@ -769,24 +831,14 @@ class TestHybridDelayedTauSFH(unittest.TestCase):
         self.model = sfh.HybridDelayedTauSFH(
             self.lookback_bins, redshift=0.05)
 
-    def _parse(self, delta, logtau=0.3):
-        parameters = dict(zip(self.model.sfh_bin_keys, delta))
+    def _parse(self, z, logtau=0.3):
+        parameters = dict(zip(self.model.sfh_bin_keys, z))
         parameters.update(logtau=logtau, alpha_powerlaw=0.0,
                           ism_metallicity_today=0.02)
         db = DataBlock.from_dict({self.model.sect_name: parameters})
         status, log_prior = self.model.parse_datablock(db)
         self.assertEqual((status, log_prior), (1, 0.0))
         return self.model.model.table_mass.to_value(u.Msun)
-
-    def test_initialization(self):
-        # N lookback edges define N + 1 bins, the oldest up to the Big Bang
-        keys = self.model.sfh_bin_keys
-        self.assertEqual(len(keys), len(self.lookback_bins) + 1)
-        self.assertEqual(keys[0], "delta_at_bigbang")
-        self.assertEqual(keys[1:], [f"delta_at_{t:.3f}" for t in (5, 2, 1, 0.5)])
-        for key in keys:
-            self.assertEqual(self.model.free_params[key], [-3.0, 0.0, 3.0])
-        self.assertIn("logtau", self.model.free_params)
 
     def test_invalid_inputs(self):
         with self.assertRaises(ValueError):
@@ -797,28 +849,12 @@ class TestHybridDelayedTauSFH(unittest.TestCase):
             sfh.HybridDelayedTauSFH([1.0], use_transforms=True)
 
     def test_zero_corrections_recover_delayed_tau(self):
-        table = self._parse(np.zeros(5), logtau=0.3)
+        table = self._parse(np.zeros(len(self.model.sfh_bin_keys)), logtau=0.3)
         reference = sfh.DelayedTauSFH(redshift=0.05)
         reference.parse_datablock(DataBlock.from_dict({reference.sect_name: {
             "logtau": 0.3, "alpha_powerlaw": 0.0, "ism_metallicity_today": 0.02}}))
         mass = reference.model.stellar_mass_formed(self.model.time << u.Gyr)
         np.testing.assert_allclose(table, (mass / mass[-1]).value, atol=1e-10)
-
-    def test_corrections_scale_the_bin_masses(self):
-        base = self._parse(np.zeros(5))
-        delta = np.array([0.0, 0.0, 0.3, -1.0, 0.5])
-        table = self._parse(delta)
-        ratio = np.diff(table) / np.diff(base)
-        # Mass of each bin relative to the baseline is 10**delta up to a constant
-        np.testing.assert_allclose(ratio / ratio[0], 10.0**delta)
-        self.assertAlmostEqual(table[-1], 1.0)
-        self.assertTrue(np.all(np.diff(table) >= 0))
-
-    def test_constant_shift_of_corrections_is_degenerate(self):
-        delta = np.array([0.2, -0.4, 0.0, 0.7, -0.1])
-        table = self._parse(delta)
-        shifted = self._parse(delta + 1.5)
-        np.testing.assert_allclose(table, shifted, atol=1e-12)
 
     def test_build_from_options(self):
         model = sfh.build_sfh_from_options({
@@ -826,7 +862,7 @@ class TestHybridDelayedTauSFH(unittest.TestCase):
             "SFHArgs": "[0.1, 1.0, 5.0]",
         })
         self.assertIsInstance(model, sfh.HybridDelayedTauSFH)
-        self.assertEqual(len(model.sfh_bin_keys), 4)
+        self.assertEqual(len(model.sfh_bin_keys), 3)
 
 
 class TestBetaSFH(unittest.TestCase):
