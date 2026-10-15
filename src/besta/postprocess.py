@@ -906,6 +906,33 @@ class ResultsSummary:
 
     extra_info: Dict[str, Any] = field(default_factory=dict)
 
+    def __call__(self, key: str, statistic: str="mean") -> np.ndarray:
+        """Return the statistic for a given parameter key.
+        
+        Parameters
+        ----------
+        key : str
+            Parameter key (e.g. "sfh--tau" or "tau").
+        statistic : str, optional
+            Statistic to return: "mean", "map", or "percentiles". Default is "mean".
+        """
+        if key not in self.parameter_keys:
+            if key in self.parameter_names:
+                idx = self.parameter_names.index(key)
+                key = self.parameter_keys[idx]
+            else:
+                raise KeyError(f"Parameter key '{key}' not found in summary.")
+        else:
+            idx = self.parameter_keys.index(key)
+        if statistic == "mean":
+            return self.mean[idx]
+        elif statistic == "map":
+            return self.map[idx]
+        elif statistic == "percentiles":
+            return self.percentiles_values[idx]
+        else:
+            raise ValueError(f"Unknown statistic '{statistic}'")
+
     def estimate_evidence_from_table(
         self,
         table: Table,
@@ -2976,6 +3003,10 @@ def summarize_results(
     -------
     ResultsSummary
     """
+    if not verbose:
+        # set the base logger to WARNING
+        logger.parent.setLevel("ERROR")
+
     if posterior_key not in table.colnames:
         raise KeyError(f"posterior_key='{posterior_key}' not in table.")
 
