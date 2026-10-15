@@ -3,6 +3,7 @@
 from besta.pipeline_modules.base_module import SpectraFitModule, ml_amplitude
 import numpy as np
 from astropy import units as u
+from astropy.constants import c as _SPEED_OF_LIGHT
 from matplotlib import pyplot as plt
 from scipy.special import ndtr
 
@@ -31,18 +32,29 @@ _LUMINOSITY_PER_ERG_S = 1e16
 
 
 class EquivalentWidthFitModule(SpectraFitModule):
-    """Fit stellar populations to a set of spectral equivalent widths.
+    """Fit stellar populations to a set of spectral indices.
 
-    The equivalent widths are measured once on the observed spectrum and then
-    compared with those of the model spectrum at every sample. To be fast, the
-    EW of each index is estimated from the mean flux in its three windows,
+    Two fitting modes are available (option ``fit_mode``):
 
-    ``EW = (1 - F_C / F_cont) * (lambda_C,max - lambda_C,min)``,
+    - ``ew`` *(default)*: the equivalent widths are measured once on the
+      observed spectrum and then compared with those of the model spectrum at
+      every sample. To be fast, the EW of each index is estimated from the mean
+      flux in its three windows,
 
-    where ``F_C`` is the mean flux in the central window and ``F_cont`` is the
-    linear interpolation of the mean fluxes of the side windows at the centre
-    of the central window. Indices that are not fully covered by the observed
-    spectrum or that touch masked pixels are discarded.
+      ``EW = (1 - F_C / F_cont) * (lambda_C,max - lambda_C,min)``,
+
+      where ``F_C`` is the mean flux in the central window and ``F_cont`` is
+      the linear interpolation of the mean fluxes of the side windows at the
+      centre of the central window. Indices that are not fully covered by the
+      observed spectrum or that touch masked pixels are discarded.
+    - ``spectra``: the pseudo-continuum normalised spectrum in the central
+      window of each index, ``F(lambda) / F_cont(lambda)``, is compared pixel
+      by pixel with the observed one. The residuals of all indices are
+      concatenated into a single likelihood. Masked pixels in the central
+      window are excluded (the side windows must be clean). It requires a
+      ``kinematics`` section in the parameters (the model is convolved with
+      the LOSVD and trimmed to the observed pixels). Pixels shared by
+      overlapping indices are counted once per index.
 
     Module options (on top of the ones needed to read the spectrum and set up
     the SSP, SFH and dust models):
@@ -52,9 +64,13 @@ class EquivalentWidthFitModule(SpectraFitModule):
     - ``ew_list`` *(alternative to* ``ew_names`` *)*: text file with one index
       per row and 7 columns, ``name left_min left_max central_min central_max
       right_min right_max`` (Angstrom). It takes precedence if both are given.
+    - ``fit_mode`` *(optional, default* ``ew`` *)*: ``ew`` or ``spectra``.
     - ``ew_error_floor`` *(optional, default 0)*: error (in Angstrom) added in
       quadrature to the measured uncertainty of each index, to account for
-      model systematics.
+      model systematics (``ew`` mode).
+    - ``spectra_error_floor`` *(optional, default 0)*: error, relative to the
+      continuum, added in quadrature to every normalised pixel (``spectra``
+      mode).
     - ``balmer_emission`` *(optional, default* ``none`` *)*: add the Balmer
       emission (H-alpha to H-epsilon, Case B ratios) to the model.
       ``ionising`` derives H-alpha from the number of ionising photons of the
@@ -89,6 +105,14 @@ class EquivalentWidthFitModule(SpectraFitModule):
                 "Option 'velscale' is required for setting up EquivalentWidthFitModule.")
         if not (options.has_value("ew_names") or options.has_value("ew_list")):
             raise ValueError("Option 'ew_names' or 'ew_list' is required.")
+
+        # Select the fitting mode (EW or normalised spectra)
+        fit_mode = options.get_string("fit_mode", default="ew")
+        fit_mode = fit_mode.strip().strip("\"'").strip().lower()
+        if fit_mode not in {"ew", "spectra"}:
+            raise ValueError(
+                f"Unknown fit_mode={fit_mode!r}; expected ew or spectra.")
+        self.config["fit_mode"] = fit_mode
 
         self.prepare_observed_spectra(options)
         self.prepare_ssp_model(options)
@@ -141,6 +165,34 @@ class EquivalentWidthFitModule(SpectraFitModule):
         self.config["ew_t"] = (mid[:, 1] - mid[:, 0]) / (mid[:, 2] - mid[:, 0])
         self.config["ew_dlam"] = ranges[:, 1, 1] - ranges[:, 1, 0]
 
+    def _set_pixels(self):
+        """Select the central-window pixels fitted in ``spectra`` mode.
+
+        Stores the pixel positions on the observed grid (``pix_idx``), the
+        index each one belongs to (``pix_owner``) and its weight ``t`` for the
+        pseudo-continuum interpolation (``pix_t``). Masked pixels are skipped.
+        """
+        wl = self.config["wavelength"].value
+        good = (self.config["weights"] > 0) & np.isfinite(self.config["flux"])
+        ranges = self.config["ew_ranges"].reshape(-1, 3, 2)
+        mid = ranges.mean(axis=2)
+        idx, owner = [], []
+        for ith, (low, high) in enumerate(ranges[:, 1]):
+            pixels = np.flatnonzero((wl >= low) & (wl <= high) & good)
+            idx.append(pixels)
+            owner.append(np.full(pixels.size, ith))
+        idx, owner = np.concatenate(idx), np.concatenate(owner)
+        self.config["pix_idx"] = idx
+        self.config["pix_owner"] = owner
+        self.config["pix_wl"] = wl[idx]
+        self.config["pix_t"] = ((wl[idx] - mid[owner, 0])
+                                / (mid[owner, 2] - mid[owner, 0]))
+
+    def _continuum_pixels(self, means):
+        """Pseudo-continuum at each fitted pixel from the window means."""
+        owner, t = self.config["pix_owner"], self.config["pix_t"]
+        return (1 - t) * means[3 * owner] + t * means[3 * owner + 2]
+
     def prepare_equivalent_widths(self, options):
         """Measure the observed equivalent widths and select the usable ones."""
         
@@ -173,9 +225,16 @@ class EquivalentWidthFitModule(SpectraFitModule):
             if isinstance(names, str):
                 names = names.split(",")
             
-            ews = [EquivalentWidth.from_name(str(name).strip()) for name in names if str(name).strip()]
+            ews = []
+            for name in names:
+                if str(name).strip():
+                    ew = EquivalentWidth.from_name(str(name).strip())
+                    # Indices loaded from JSON files carry no name
+                    ew.name = str(name).strip()
+                    ews.append(ew)
 
         wl = self.config["wavelength"].value
+        spectra_mode = self.config["fit_mode"] == "spectra"
         bad_pixel = (self.config["weights"] <= 0) | ~np.isfinite(self.config["flux"])
 
         selected = []
@@ -183,12 +242,18 @@ class EquivalentWidthFitModule(SpectraFitModule):
             windows = (ew.left_wl_range.value, ew.central_wl_range.value,
                        ew.right_wl_range.value)
             low, high = windows[0][0], windows[2][1]
+            # In spectra mode only the side windows (continuum) must be clean
+            checked = (windows[0], windows[2]) if spectra_mode else [(low, high)]
             if low < wl[0] or high > wl[-1]:
                 logger.warning("Dropping index %s: outside the observed range", ew.name)
-            elif bad_pixel[(wl >= low) & (wl <= high)].any():
+            elif any(bad_pixel[(wl >= a) & (wl <= b)].any() for a, b in checked):
                 logger.warning("Dropping index %s: it includes masked pixels", ew.name)
             elif any(not ((wl >= a) & (wl <= b)).any() for a, b in windows):
                 logger.warning("Dropping index %s: a window has no pixels", ew.name)
+            elif spectra_mode and not (
+                    (wl >= windows[1][0]) & (wl <= windows[1][1])
+                    & ~bad_pixel).any():
+                logger.warning("Dropping index %s: no valid central pixels", ew.name)
             else:
                 selected.append(ew)
         if not selected:
@@ -196,9 +261,28 @@ class EquivalentWidthFitModule(SpectraFitModule):
 
         # Store the indices that will be used
         self._set_indices(selected)
+        if spectra_mode:
+            self._prepare_observed_spectra_windows(selected, options)
+        else:
+            self._prepare_observed_ews(selected, options)
+
+        # Model window means: on the SSP grid, or on the observed grid if the
+        # SED is trimmed after the LOSVD convolution
+        ssp_wl = self.config["ssp_model"].wavelength.to_value("Angstrom")
+        self.config["ssp_wl"] = ssp_wl
+        self.config["ew_matrix"] = self._window_matrix(
+            ssp_wl, self.config["ew_ranges"])
+        self.config["ew_matrix_trimmed"] = self._window_matrix(
+            wl, self.config["ew_ranges"])
+        logger.info("Fitting %d indices (%s mode): %s",
+                    len(self.config["ew_names"]), self.config["fit_mode"],
+                    self.config["ew_names"])
+
+    def _prepare_observed_ews(self, selected, options):
+        """Measure the observed EWs (``ew`` mode)."""
+        wl = self.config["wavelength"].value
         # Compute a matrix for estimating mean fluxes across all wavelength ranges
         matrix = self._window_matrix(wl, self.config["ew_ranges"])
-        # Observed EWs
         means = matrix @ self.config["flux"]
         var_means = (matrix ** 2) @ self.config["var"]
         ew_obs = self._ew_from_means(means)
@@ -215,18 +299,37 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if not good.all():
             self._set_indices([ew for ew, g in zip(selected, good) if g])
 
-        self.config["ew_obs"] = ew_obs[good]
-        self.config["ew_obs_ivar"] = 1.0 / ew_err[good] ** 2
-        # Model window means: on the SSP grid, or on the observed grid if the
-        # SED is trimmed after the LOSVD convolution
-        ssp_wl = self.config["ssp_model"].wavelength.to_value("Angstrom")
-        self.config["ssp_wl"] = ssp_wl
-        self.config["ew_matrix"] = self._window_matrix(
-            ssp_wl, self.config["ew_ranges"])
-        self.config["ew_matrix_trimmed"] = self._window_matrix(
-            wl, self.config["ew_ranges"])
-        logger.info("Fitting %d equivalent widths: %s",
-                    len(self.config["ew_names"]), self.config["ew_names"])
+        self.config["obs_vector"] = ew_obs[good]
+        self.config["obs_ivar"] = 1.0 / ew_err[good] ** 2
+
+    def _prepare_observed_spectra_windows(self, selected, options):
+        """Normalise the observed central windows (``spectra`` mode)."""
+        wl = self.config["wavelength"].value
+        flux, var = self.config["flux"], self.config["var"]
+        for _ in range(2):
+            self._set_pixels()
+            means = self._window_matrix(wl, self.config["ew_ranges"]) @ flux
+            continuum = self._continuum_pixels(means)
+            # An index needs a positive continuum in all its pixels
+            n_index = len(selected)
+            owner = self.config["pix_owner"]
+            n_pix = np.bincount(owner, minlength=n_index)
+            n_bad = np.bincount(owner, weights=~(continuum > 0), minlength=n_index)
+            good = (n_pix > 0) & (n_bad == 0)
+            if good.all():
+                break
+            logger.warning("Dropping indices with a non-positive continuum: %s",
+                           [n for n, g in zip(self.config["ew_names"], good) if not g])
+            if not good.any():
+                raise ValueError("No index has a positive continuum.")
+            selected = [ew for ew, g in zip(selected, good) if g]
+            self._set_indices(selected)
+
+        pix = self.config["pix_idx"]
+        floor = options.get_double("spectra_error_floor", default=0.0)
+        self.config["obs_vector"] = flux[pix] / continuum
+        self.config["obs_ivar"] = 1.0 / (var[pix] / continuum ** 2 + floor ** 2)
+        self.config["obs_means"] = means
 
     def prepare_balmer_emission(self, options):
         """Configure the optional Balmer emission of the model."""
@@ -272,6 +375,14 @@ class EquivalentWidthFitModule(SpectraFitModule):
         fraction = (ndtr((high[:, None] - _BALMER_WAVELENGTH) / sigma)
                     - ndtr((low[:, None] - _BALMER_WAVELENGTH) / sigma))
         self.config["balmer_matrix"] = fraction / (high - low)[:, None]
+        if self.config["fit_mode"] == "spectra":
+            # Same, for every fitted pixel (mean flux density within the pixel)
+            half_pixel = 0.5 * self.config["velscale"] / _SPEED_OF_LIGHT.to_value("km/s")
+            pix_low = self.config["pix_wl"] * np.exp(-half_pixel)
+            pix_high = self.config["pix_wl"] * np.exp(half_pixel)
+            fraction = (ndtr((pix_high[:, None] - _BALMER_WAVELENGTH) / sigma)
+                        - ndtr((pix_low[:, None] - _BALMER_WAVELENGTH) / sigma))
+            self.config["balmer_pix_matrix"] = fraction / (pix_high - pix_low)[:, None]
         logger.info("Adding Balmer emission to the model (%s)", mode)
 
     def balmer_luminosities(self, block):
@@ -345,10 +456,18 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if block.has_section("kinematics"):
             self.config["losvd_kernel"].parse_parameters(block)
             sed = self.convolve_losvd_and_trim(sed)
+        elif self.config["fit_mode"] == "spectra":
+            raise ValueError(
+                "fit_mode = spectra needs a 'kinematics' section in the "
+                "parameters to broaden the model and match the observed pixels.")
         return sed
 
     def make_observable(self, block, parse=False):
-        """Compute the model equivalent widths (Angstrom)."""
+        """Compute the model observable.
+
+        The equivalent widths in Angstrom (``ew`` mode) or the normalised
+        flux at every fitted pixel (``spectra`` mode).
+        """
         sed = self.model_sed(block, parse=parse)
         means = self._model_grid(sed)[1] @ sed
         lines = self.balmer_luminosities(block)
@@ -358,7 +477,12 @@ class EquivalentWidthFitModule(SpectraFitModule):
         # Save SFH mass-fraction times and sSFRs (one mass-history evaluation)
         self.save_sfh_extras(block, self.config["sfh_model"])
 
-        return self._ew_from_means(means)
+        if self.config["fit_mode"] == "ew":
+            return self._ew_from_means(means)
+        flux = sed[self.config["pix_idx"]]
+        if lines is not None:
+            flux = flux + self.config["balmer_pix_matrix"] @ lines
+        return flux / self._continuum_pixels(means)
 
     def execute(self, block):
         """Function executed by sampler.
@@ -374,15 +498,15 @@ class EquivalentWidthFitModule(SpectraFitModule):
             block[section_names.likelihoods, self.like_name] = prior_penalty
             return 0
 
-        ew_model = self.make_observable(block)
-        if not np.isfinite(ew_model).all():
-            logger.debug("Non-finite model equivalent widths: %s", ew_model)
+        model = self.make_observable(block)
+        if not np.isfinite(model).all():
+            logger.debug("Non-finite model observables: %s", model)
             block[section_names.likelihoods, self.like_name] = -1e20
             return 0
 
-        like = self.log_like(self.config["ew_obs"],
-                             ew_model,
-                             self.config["ew_obs_ivar"],
+        like = self.log_like(self.config["obs_vector"],
+                             model,
+                             self.config["obs_ivar"],
                              include_norm=True)
         block[section_names.likelihoods, self.like_name] = like + prior_penalty
 
@@ -391,11 +515,14 @@ class EquivalentWidthFitModule(SpectraFitModule):
         return 0
 
     def plot_solution(self, block, figname=None, ncols=3):
-        """Plot the observed and model equivalent widths.
+        """Plot the observed and model indices.
 
-        Each panel shows one index: the observed spectrum, the model spectrum
-        scaled to the data over the index windows, and the left, central and
-        right windows. The annotation compares the observed and model EWs.
+        Each panel shows one index. In ``ew`` mode: the observed spectrum, the
+        model spectrum scaled to the data over the index windows, and the
+        left, central and right windows, with the observed and model EWs in
+        the annotation. In ``spectra`` mode: the observed and model spectra
+        normalised by their pseudo-continuum, with the fitted pixels
+        highlighted and the chi2 of the index in the annotation.
 
         Parameters
         ----------
@@ -410,10 +537,13 @@ class EquivalentWidthFitModule(SpectraFitModule):
         -------
         fig : :class:`matplotlib.figure.Figure`
         solution_data : dict
-            Names, observed EWs and errors, model EWs and residuals in units
-            of the error.
+            ``ew`` mode: names, observed EWs and errors, model EWs and
+            residuals in units of the error. ``spectra`` mode: for every
+            fitted pixel, the index name and number, wavelength, observed and
+            model normalised flux, error and residual in units of the error.
         """
-        ew_model = self.make_observable(block, parse=True)
+        spectra_mode = self.config["fit_mode"] == "spectra"
+        model = self.make_observable(block, parse=True)
         sed = self.model_sed(block)
         model_wl = self._model_grid(sed)[0]
         lines = self.balmer_luminosities(block)
@@ -424,10 +554,10 @@ class EquivalentWidthFitModule(SpectraFitModule):
                 * np.exp(-0.5 * ((model_wl[:, None] - _BALMER_WAVELENGTH) / sigma) ** 2),
                 axis=1)
         names = np.array(self.config["ew_names"])
-        ew_obs = self.config["ew_obs"]
-        ew_err = self.config["ew_obs_ivar"] ** -0.5
-        chi = (ew_model - ew_obs) / ew_err
-        loglike = self.log_like(ew_obs, ew_model, self.config["ew_obs_ivar"],
+        obs = self.config["obs_vector"]
+        err = self.config["obs_ivar"] ** -0.5
+        chi = (model - obs) / err
+        loglike = self.log_like(obs, model, self.config["obs_ivar"],
                                 include_norm=True)
 
         wl = self.config["wavelength"].value
@@ -435,12 +565,24 @@ class EquivalentWidthFitModule(SpectraFitModule):
         flux_err = np.sqrt(self.config["var"])
 
         n_ew = names.size
+        if spectra_mode:
+            owner = self.config["pix_owner"]
+            pix_chi2 = np.bincount(owner, weights=chi ** 2, minlength=n_ew)
+            pix_count = np.bincount(owner, minlength=n_ew)
+            ranges = self.config["ew_ranges"].reshape(-1, 3, 2)
+            mid = ranges.mean(axis=2)
+            window_matrix = self.config["ew_matrix_trimmed"]
+            means_obs = window_matrix @ flux
+            means_model = window_matrix @ np.interp(wl, model_wl, sed)
+            title = (f"chi2 = {np.sum(chi ** 2):.1f} "
+                     f"({owner.size} pixels, {n_ew} indices)")
+        else:
+            title = f"chi2 = {np.sum(chi ** 2):.1f} ({n_ew} indices)"
         ncols = min(ncols, n_ew)
         nrows = int(np.ceil(n_ew / ncols))
         fig, axs = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows),
                                 squeeze=False, constrained_layout=True)
-        fig.suptitle(f"Module: {self.name}   "
-                     f"chi2 = {np.sum(chi ** 2):.1f} ({n_ew} indices)   "
+        fig.suptitle(f"Module: {self.name}   {title}   "
                      f"log-likelihood = {loglike:.1f}")
 
         for ith, (ax, ew) in enumerate(zip(axs.flat, self.config["ew_list"])):
@@ -450,47 +592,78 @@ class EquivalentWidthFitModule(SpectraFitModule):
             pad = 0.1 * (right[1] - left[0])
             region = (wl >= left[0] - pad) & (wl <= right[1] + pad)
             window = (wl >= left[0]) & (wl <= right[1])
-
-            # Scale the model to the data over the index windows
             model_on_obs = np.interp(wl, model_wl, sed)
-            scale = ml_amplitude(flux[window], model_on_obs[window],
-                                 self.config["ivar"][window])
 
-            ax.fill_between(wl[region], (flux - flux_err)[region],
-                            (flux + flux_err)[region], color="k", alpha=0.3)
-            ax.plot(wl[region], flux[region], c="k", lw=0.7, label="Observed")
-            ax.plot(wl[region], scale * model_on_obs[region], c="b", lw=0.7,
-                    label="Model")
+            if spectra_mode:
+                # Both spectra normalised by their own pseudo-continuum
+                t_line = (wl[region] - mid[ith, 0]) / (mid[ith, 2] - mid[ith, 0])
+                cont_obs = ((1 - t_line) * means_obs[3 * ith]
+                            + t_line * means_obs[3 * ith + 2])
+                cont_model = ((1 - t_line) * means_model[3 * ith]
+                              + t_line * means_model[3 * ith + 2])
+                norm_obs = flux[region] / cont_obs
+                norm_err = flux_err[region] / cont_obs
+                ax.fill_between(wl[region], norm_obs - norm_err,
+                                norm_obs + norm_err, color="k", alpha=0.3)
+                ax.plot(wl[region], norm_obs, c="k", lw=0.7, label="Observed")
+                ax.plot(wl[region], model_on_obs[region] / cont_model, c="b",
+                        lw=0.7, label="Model")
+                fitted = owner == ith
+                ax.plot(self.config["pix_wl"][fitted], obs[fitted], "k.", ms=3)
+                ax.plot(self.config["pix_wl"][fitted], model[fitted], "b.", ms=3)
+                text = (f"{names[ith]}\n"
+                        f"chi2 / N = {pix_chi2[ith]:.1f} / {pix_count[ith]}")
+                ylabel = "Normalised flux"
+            else:
+                # Scale the model to the data over the index windows
+                scale = ml_amplitude(flux[window], model_on_obs[window],
+                                     self.config["ivar"][window])
+                ax.fill_between(wl[region], (flux - flux_err)[region],
+                                (flux + flux_err)[region], color="k", alpha=0.3)
+                ax.plot(wl[region], flux[region], c="k", lw=0.7, label="Observed")
+                ax.plot(wl[region], scale * model_on_obs[region], c="b", lw=0.7,
+                        label="Model")
+                text = (f"{names[ith]}\n"
+                        f"obs: {obs[ith]:.2f} $\\pm$ {err[ith]:.2f} $\\AA$\n"
+                        f"model: {model[ith]:.2f} $\\AA$ ($\\Delta$ = {chi[ith]:.1f}$\\sigma$)")
+                ylabel = "Flux"
             for span, color in ((left, "tab:blue"), (centre, "tab:green"),
                                 (right, "tab:red")):
                 ax.axvspan(*span, color=color, alpha=0.2)
             ax.set_xlim(wl[region][[0, -1]])
-            ax.annotate(
-                f"{names[ith]}\n"
-                f"obs: {ew_obs[ith]:.2f} $\\pm$ {ew_err[ith]:.2f} $\\AA$\n"
-                f"model: {ew_model[ith]:.2f} $\\AA$ ($\\Delta$ = {chi[ith]:.1f}$\\sigma$)",
-                xy=(0.03, 0.97), xycoords="axes fraction", va="top", fontsize=8,
-                bbox=dict(boxstyle="round", fc="w", alpha=0.8))
+            ax.annotate(text, xy=(0.03, 0.97), xycoords="axes fraction",
+                        va="top", fontsize=8,
+                        bbox=dict(boxstyle="round", fc="w", alpha=0.8))
+            ax.set_ylabel(ylabel)
             if ith == 0:
                 ax.legend(loc="lower right", fontsize=7)
         for ax in axs.flat[n_ew:]:
             ax.axis("off")
         for ax in axs[-1]:
             ax.set_xlabel("Wavelength (AA)")
-        for ax in axs[:, 0]:
-            ax.set_ylabel("Flux")
 
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight", dpi=300)
             logger.info("Fit plot saved at: %s", figname)
 
-        solution_data = {
-            "name": names,
-            "ew_obs": ew_obs,
-            "ew_err": ew_err,
-            "ew_model": ew_model,
-            "chi": chi,
-        }
+        if spectra_mode:
+            solution_data = {
+                "name": names[owner],
+                "index": owner,
+                "wavelength": self.config["pix_wl"],
+                "obs": obs,
+                "obs_err": err,
+                "model": model,
+                "chi": chi,
+            }
+        else:
+            solution_data = {
+                "name": names,
+                "ew_obs": obs,
+                "ew_err": err,
+                "ew_model": model,
+                "chi": chi,
+            }
         plt.close(fig)
         return fig, solution_data
 
