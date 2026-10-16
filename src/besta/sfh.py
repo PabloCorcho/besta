@@ -2077,6 +2077,7 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         for key in self.sfh_bin_keys:
             self.free_params[key] = [-5.0, 0.0, 5.0]
 
+        # self.model = cem.TabularCEM_ZTimePowerLaw(
         self.model = cem.TabularCEM_ZPowerLaw(
             times=self.time << u.Gyr,
             masses=np.ones(self.time.size) << u.Msun,
