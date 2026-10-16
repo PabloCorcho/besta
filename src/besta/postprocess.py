@@ -2859,7 +2859,7 @@ def reconstruct_sfh(
         ssfr.append((frac[:-1] - frac[1:]) / (np.diff(edges) * 1e9))
         ssfr_tau.append((1.0 - mass[n_edges:] / mass_today) / (taus * 1e9))
         if has_z:
-            zhist.append(as_values(model.model.ism_metallicity(times))[::-1])
+            zhist.append(as_values(model.model.ism_metallicity(times << u.Gyr))[::-1])
         used.append(row)
 
     used = np.asarray(used, dtype=int)
