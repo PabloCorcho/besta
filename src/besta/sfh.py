@@ -2138,13 +2138,13 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             )
 
         # Hyperparameters defining the internal latent transformation
-        self.sigma_dex = float(kwargs.get("sfh_sigma_delta_dex", 1.0))
+        self.sigma_dex = float(kwargs.get("sfh_sigma_delta_dex", 0.7))
         if self.sigma_dex <= 0.0:
             raise ValueError(
                 "The standard deviation of the SFH bin corrections must be positive, "
                 f"got {self.sigma_dex} dex."
             )
-        self.eta = float(kwargs.get("sfh_eta", 0.5))
+        self.eta = float(kwargs.get("sfh_eta", 0.1))
         if self.eta <= 0.0 or self.eta > 1.0:
             raise ValueError(
                 "The suppression of the tau-tangent component must be in (0, 1], "
