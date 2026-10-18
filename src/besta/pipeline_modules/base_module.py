@@ -1000,6 +1000,17 @@ class SpectraFitModule(BaseModule):
                  np.count_nonzero(line_mask))
             self.config["emission_lines_mask"] = line_mask
             self.config["emission_lines_used"] = lines_used
+        # Optional MW extinction correction
+        if options.has_value("mw_extinction") and options["mw_extinction"]:
+            mw_ebv = options.get_double("mw_ebv", default=0.0)
+            mw_rv = options.get_double("mw_rv", default=3.1)
+            _log(f"Correcting for Milky Way extinction (E(B-V)={mw_ebv}, R_V={mw_rv})")
+            mw_extinction_model = self._get_dust_model("ccm89", r_value=mw_rv)
+            # apply extinction correction to the observed flux and covariance
+            mw_extinction_factor = mw_extinction_model.extinction_factor(
+                wavelength * (1 + redshift), ebv=mw_ebv)
+            flux /= mw_extinction_factor
+            cov /= mw_extinction_factor**2
 
         self.config["flux"] = flux
         self.config["var"] = cov
@@ -1652,14 +1663,23 @@ class PhotometryFitModule(BaseModule):
             else:
                 filt = Filter.from_svo(filter_name)
             photometric_filters.append(filt)
-        # TODO: For now save both for backwards compatibility
-        # TODO: Superseed by FilterList
-        self.config["filters"] = photometric_filters
+
         self.config["filter_list"] = FilterList(photometric_filters)
 
         redshift = options.get_double("redshift", default=0.0)
         self.config["redshift"] = redshift
         _log("Source redshift: ", redshift)
+
+        # MW extinction correction
+        if options.has_value("mw_extinction") and options["mw_extinction"]:
+            mw_ebv = options.get_double("mw_ebv", default=0.0)
+            mw_rv = options.get_double("mw_rv", default=3.1)
+            _log(f"Computing Milky Way extinction correction: E(B-V)={mw_ebv}, R_V={mw_rv}"
+                  " that will be applied to the model SEDs.")
+            mw_curve = dust.ExtinctionLibCurve(law="ccm89", Rv=mw_rv)
+            mw_attenuation = dust.DustScreenAttenuation(curve=mw_curve)
+            self.config["mw_attenuation"] = mw_attenuation
+
         _log("Configuration done.")
 
     def prepare_galaxy(self, options):
