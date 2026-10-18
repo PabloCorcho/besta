@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from math import lgamma
 import numpy as np
 from numpy.polynomial import Polynomial
+from scipy.special import gammainc
 from astropy import units as u
 
 from cosmosis import DataBlock
@@ -1953,6 +1954,73 @@ def _soft_orthogonal_mapping(z, basis, u, sigma_dex, eta=1.0):
     return delta_over_sigma * sigma_dex
 
 
+def _subdivide_bins(edges, n_sub, n_sub_first=None):
+    """Add interior nodes to the bins of a time grid.
+
+    The first bin starts at the Big Bang, where the delayed-tau SFR grows as
+    :math:`t`. Its nodes are therefore spaced as :math:`(k / n)^3`, which
+    concentrates them at early times; the remaining bins are subdivided
+    uniformly.
+
+    Parameters
+    ----------
+    edges : array-like, shape (N + 1,)
+        Increasing bin edges, the first of them being 0.
+    n_sub : int
+        Number of sub-intervals of every bin except the first.
+    n_sub_first : int, optional
+        Number of sub-intervals of the first bin. Default ``n_sub``.
+
+    Returns
+    -------
+    nodes : np.ndarray
+        Increasing nodes, containing all the edges.
+    bin_index : np.ndarray of int, shape (nodes.size - 1,)
+        Bin to which each interval between consecutive nodes belongs.
+    """
+    edges = np.asarray(edges, dtype=float)
+    n_sub_first = n_sub if n_sub_first is None else n_sub_first
+    nodes = [edges[:1]]
+    bin_index = []
+    for i, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+        n = n_sub_first if i == 0 else n_sub
+        s = np.arange(1, n + 1) / n
+        if i == 0 and n > 1:
+            s = s**3
+        nodes.append(lo + (hi - lo) * s)
+        bin_index.extend([i] * n)
+    return np.concatenate(nodes), np.asarray(bin_index, dtype=int)
+
+
+def _delayed_tau_mass_increments(x):
+    r"""Mass formed by a delayed-tau SFH between consecutive nodes.
+
+    The cumulative mass is :math:`1 - (1 + x) e^{-x}` with :math:`x = t / \tau`,
+    up to the normalisation. Its increments are evaluated from the form that
+    keeps the relative precision: the regularised incomplete gamma function
+    for :math:`x < 1`, where :math:`1 - (1 + x) e^{-x}` loses it by
+    cancellation, and the difference of :math:`(1 + x) e^{-x}` otherwise, where
+    the tiny masses of a quenched SFH would be lost against 1.
+
+    Parameters
+    ----------
+    x : array-like
+        Increasing nodes in units of :math:`\tau`.
+
+    Returns
+    -------
+    np.ndarray, shape (x.size - 1,)
+        Mass increments, normalised such that the total mass of the SFH over
+        :math:`x \in [0, \infty)` is 1.
+    """
+    x = np.asarray(x, dtype=float)
+    survival = (1 + x) * np.exp(-x)
+    late = survival[:-1] - survival[1:]
+    cumulative = gammainc(2, x)
+    early = cumulative[1:] - cumulative[:-1]
+    return np.where(x[:-1] < 1, early, late)
+
+
 class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     r"""A hybrid non-parametric model combined with a delayed-tau SFH.
 
@@ -1988,6 +2056,13 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     :math:`\mathbf u_\tau`, where it is :math:`\eta\sigma_\Delta`. With
     ``sfh_eta = 1`` there is no suppression.
 
+    Within each bin the SFR follows the delayed-tau shape, scaled by
+    :math:`10^{\Delta_i}`, so it is discontinuous only at the bin edges. The
+    cumulative mass is tabulated on a grid that subdivides each bin (see
+    ``sfh_bin_subdivisions``) and interpolated as set by ``sfh_interpolation``.
+    With ``sfh_interpolation="linear"`` the SFR is piecewise constant on the
+    sub-intervals.
+
     The time bins are parametrised as used in :class:`FixedTimeSFH`: ``M``
     lookback times define ``M + 1`` bins, the oldest one running to the Big Bang,
     so at least two lookback times are required. The free parameters are
@@ -2016,6 +2091,20 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         :math:`\tau`-like variation to :math:`\tau`; very small values
         penalise histories that are not delayed-tau like at all, such as a
         steadily rising SFR.
+    sfh_bin_subdivisions : int, optional
+        Number of sub-intervals into which every bin but the oldest is divided
+        to follow the delayed-tau shape inside the bin. The oldest bin, where the
+        SFR rises from zero at the Big Bang, uses four times as many, spaced
+        more densely at early times. Default 8. A value of 1 keeps only the
+        bin edges, which makes the SFR constant within every bin and washes
+        out the shape of the baseline, mainly in the oldest bin.
+
+    Attributes
+    ----------
+    time : np.ndarray
+        Edges of the bins in cosmic time, in Gyr.
+    time_grid : np.ndarray
+        Nodes of the tabulated mass history, in Gyr. They contain ``time``.
 
     Examples
     --------
@@ -2067,6 +2156,16 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         # Bin edges in cosmic time
         self.time = np.concatenate(([0.0], today_gyr - lookback_gyr, [today_gyr]))
 
+        # Oversample to ensure the baseline SFH is followed
+        n_sub = int(kwargs.get("sfh_bin_oversample", 10))
+        if n_sub < 1:
+            raise ValueError(
+                f"The number of bin oversamples must be at least 1, got {n_sub}."
+            )
+        self.time_grid, self._interval_bin = _subdivide_bins(
+            self.time, n_sub, 4 * n_sub if n_sub > 1 else 1
+        )
+
         # Beyond tau~50 the SFH does not change much
         self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 2])
         # standard latent parameters
@@ -2079,8 +2178,8 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
 
         # self.model = cem.TabularCEM_ZTimePowerLaw(
         self.model = cem.TabularCEM_ZPowerLaw(
-            times=self.time << u.Gyr,
-            masses=np.ones(self.time.size) << u.Msun,
+            times=self.time_grid << u.Gyr,
+            masses=np.ones(self.time_grid.size) << u.Msun,
             today=self.today,
             mass_today=1 << u.Msun,
             ism_metallicity_today=kwargs.get("ism_metallicity_today", 0.02)
@@ -2093,13 +2192,16 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     def parse_datablock(self, datablock: DataBlock):
         """Update the SFH from a CosmoSIS DataBlock."""
         z = self.get_sfh_parameters_array(datablock)
-        x = self.time / 10 ** datablock[self.sect_name, "logtau"]
+        tau = 10 ** datablock[self.sect_name, "logtau"]
         # Corrections, with the tau-like direction at this tau suppressed
         delta = _soft_orthogonal_mapping(
-            z, self.h_basis, _delayed_tau_tangent(x), self.sigma_dex, self.eta)
-        # M(t)/M(today) is (1 + x) exp(-x)
-        baseline = -np.diff((1 + x) * np.exp(-x))
-        mass = baseline * 10.0**delta
+            z, self.h_basis, _delayed_tau_tangent(self.time / tau), self.sigma_dex,
+            self.eta)
+        # Delayed-tau mass of every sub-interval, scaled by the correction of its bin
+        mass = (
+            _delayed_tau_mass_increments(self.time_grid / tau)
+            * 10.0 ** delta[self._interval_bin]
+        )
         self.model.table_mass = np.insert(np.cumsum(mass), 0, 0.0) / mass.sum() << u.Msun
         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
         self.model.ism_metallicity_today = (
