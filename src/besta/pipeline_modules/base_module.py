@@ -485,6 +485,8 @@ class BaseModule(ClassModule):
             ssp_kwargs = {}
 
         ssp_kwargs["path"] = ssp_dir
+        if "verbose" not in ssp_kwargs:
+            ssp_kwargs["verbose"] = False
 
         ssp = getattr(SSP, ssp_name)(*ssp_args, **ssp_kwargs)
 
