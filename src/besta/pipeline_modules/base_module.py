@@ -565,10 +565,10 @@ class BaseModule(ClassModule):
                   f" max sigma={lsf_sigma_pixels.max():.2} pix]")
             try:
                 utils.check_array_memory(
-                (ssp.L_lambda.shape[0], ssp.L_lambda.shape[1],
-                 ssp.L_lambda.shape[2], ssp.L_lambda.shape[2]),
-                dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
-                safety_margin=memory["ram_safety_margin"])
+                    (3,) + tuple(ssp.L_lambda.shape),
+                    dtype=ssp.L_lambda.dtype, unit='GB',
+                    safety_margin=memory["ram_safety_margin"])
+                # If no MemoryError is raised, convolve the full SSP SED at once
                 _log("Convolving full SSP model at once")
                 ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda, lsf_sigma_pixels)
@@ -576,15 +576,20 @@ class BaseModule(ClassModule):
                 # Do a loop along metallicity axis to prevent memory overflows
                 _log("Insufficient RAM memory for full SSP SED convolution")
                 _log("Looping along metallicity axis")
-                utils.check_array_memory(
-                (ssp.L_lambda.shape[1], ssp.L_lambda.shape[2],
-                 ssp.L_lambda.shape[2]),
-                dtype=ssp.L_lambda[0, 0, 0].dtype, unit='GB',
-                safety_margin=memory["ram_safety_margin"])
+                try:
+                    utils.check_array_memory(
+                        (3,) + tuple(ssp.L_lambda.shape[1:]),
+                        dtype=ssp.L_lambda.dtype, unit='GB',
+                        safety_margin=memory["ram_safety_margin"])
+                except MemoryError as err:
+                    raise MemoryError(
+                        "Not enough RAM to convolve the SSP models with the "
+                        "instrumental LSF, even one metallicity at a time: "
+                        f"{err}") from err
 
                 for ith in range(ssp.L_lambda.shape[0]):
                     ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
-                    ssp.L_lambda[ith], lsf_sigma_pixels)
+                        ssp.L_lambda[ith], lsf_sigma_pixels)
 
         _ensure_float64_sed(ssp)
         self.config["ssp_model"] = ssp

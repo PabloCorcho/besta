@@ -426,7 +426,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
                 "Dust attenuation parameter 'a_v' is missing in the data block.")
         if block.has_value("dust.attenuation", "r"):
             dust_model = self._get_dust_model(
-                dust_model.name, block["dust.attenuation", "r"])
+                dust_model.extinction_law_name, block["dust.attenuation", "r"])
         return dust_model, block["dust.attenuation", "a_v"]
 
     def _model_grid(self, sed):
