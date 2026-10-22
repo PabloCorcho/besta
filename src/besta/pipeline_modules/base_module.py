@@ -35,6 +35,7 @@ import numpy as np
 from sklearn.decomposition import NMF
 from astropy import units as u
 from astropy.io import ascii
+from threadpoolctl import threadpool_limits
 
 from cosmosis import ClassModule
 from cosmosis import DataBlock
@@ -227,6 +228,10 @@ class BaseModule(ClassModule):
         alias : str, optional
             Module alias used to resolve section names.
         """
+        # The environment variables above are ignored when numpy was imported
+        # first, so cap the already-loaded BLAS/OpenMP pools of this process.
+        threadpool_limits(limits=_BLAS_THREADS)
+
         if alias is None:
             self.alias = self.name
         else:
