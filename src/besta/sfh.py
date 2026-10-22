@@ -2069,6 +2069,13 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
     ``logtau`` (the base e-folding time, in dex of Gyr) and ``z_latent_<k>``, with
     ``k = 0, ..., M - 1``.
 
+    The optional robust curvature prior :class:`SFHSmoothnessPrior` can be
+    applied to the resulting mass formed in each bin, as for the other
+    piecewise SFH models: set ``use_sfh_smoothness_prior = True`` and the
+    ``sfh_smoothness_*`` options (for example ``sfh_smoothness_time_mode = log``
+    and ``sfh_smoothness_edge_residuals = extrapolate``). It penalises isolated
+    empty or over-populated bins, so it limits the freedom added by extra bins.
+
     .. warning::
         The prior of the latent variables is not set by this class. Add a
         standard normal prior for each of them to the ``priors`` .ini file,
@@ -2202,13 +2209,23 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             _delayed_tau_mass_increments(self.time_grid / tau)
             * 10.0 ** delta[self._interval_bin]
         )
+        # Optional smoothness prior on the mass formed in each SFH bin
+        log_prior = 0.0
+        if self.use_sfh_smoothness_prior:
+            mass_per_bin = np.bincount(
+                self._interval_bin, weights=mass, minlength=self.time.size - 1)
+            log_prior = self.evaluate_sfh_smoothness_prior(
+                mass_per_bin=mass_per_bin, time_edges=self.time)
+            if not np.isfinite(log_prior):
+                return 0, -1e20
+
         self.model.table_mass = np.insert(np.cumsum(mass), 0, 0.0) / mass.sum() << u.Msun
         self.model.alpha_powerlaw = datablock[self.sect_name, "alpha_powerlaw"]
         self.model.ism_metallicity_today = (
             datablock[self.sect_name, "ism_metallicity_today"]
             << u.dimensionless_unscaled
         )
-        return 1, 0.0
+        return 1, log_prior
 
 
 ################################################################################
