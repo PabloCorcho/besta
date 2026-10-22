@@ -1008,9 +1008,11 @@ class SpectraFitModule(BaseModule):
             mw_rv = options.get_double("mw_rv", default=3.1)
             _log(f"Correcting for Milky Way extinction (E(B-V)={mw_ebv}, R_V={mw_rv})")
             mw_extinction_model = self._get_dust_model("ccm89", r_value=mw_rv)
-            # apply extinction correction to the observed flux and covariance
-            mw_extinction_factor = mw_extinction_model.extinction_factor(
-                wavelength * (1 + redshift), ebv=mw_ebv)
+            # Transmission of the MW dust screen at the observed wavelengths
+            # (A_V = R_V * E(B-V)), used to deredden the flux and covariance
+            mw_extinction_factor = mw_extinction_model.get_extinction(
+                (wavelength * (1 + redshift) << wl_units).to("Angstrom"),
+                a_v=mw_rv * mw_ebv).to_value(u.dimensionless_unscaled)
             flux /= mw_extinction_factor
             cov /= mw_extinction_factor**2
 
