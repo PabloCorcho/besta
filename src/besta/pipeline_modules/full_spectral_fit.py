@@ -64,7 +64,8 @@ class FullSpectralFitModule(SpectraFitModule):
                 raise ValueError("Dust attenuation parameter 'a_v' is missing in the data block.")
             # check if r is also included
             if block.has_value("dust.attenuation", "r"):
-                dust_model = self._get_dust_model(dust_model.name, block["dust.attenuation", "r"])
+                dust_model = self._get_dust_model(
+                    dust_model.extinction_law_name, block["dust.attenuation", "r"])
             flux_model = dust_model.apply_extinction(
                 self.config["ssp_model"].wavelength,
                 flux_model,
