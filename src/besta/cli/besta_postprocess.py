@@ -29,8 +29,12 @@ def parser_setup():
                         help="Generate corner plot for the results")
     parser.add_argument("--make_summary_statistics", action="store_true",
                         help="Generate summary statistics from the results")
+    parser.add_argument("--results_to_fits", "-rtf", action="store_true",
+                        help="Convert the ASCII results file to a FITS table")
     parser.add_argument("--output", type=str, default=None,
                         help="Output file for summary statistics (FITS format)")
+    parser.add_argument("--results_fits_output", "-rfo", type=str, default=None,
+                        help="Output FITS file for --results_to_fits")
     parser.add_argument("--log_level", "--log-level", type=str.upper, default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Console logging level (default: INFO)")
@@ -162,6 +166,17 @@ def make_summary_statistics(file, from_ini=False, output=None):
     results.write_fits(output, overwrite=True)
     pprint("Summary statistics written to", output)
 
+
+def convert_results_to_fits(file, from_ini=False, output=None):
+    """Convert the run results table from ASCII text to FITS."""
+    reader = load_reader(file, from_ini)
+    if output is None:
+        results_path = reader.results_file
+        output = os.path.splitext(str(results_path))[0] + ".fits"
+    reader.results_table.write(output, format="fits", overwrite=True)
+    pprint("Results table written to", output)
+    return output
+
 def make_sfh(file, args):
     """Reconstruct the posterior SFHs of a run and write them to FITS."""
     kwargs = dict(
@@ -217,6 +232,9 @@ def main(argv=None):
         pprint("Creating summary statistics FITS")
         output = args.output
         make_summary_statistics(file, from_ini, output)
+    if args.convert_results_to_fits:
+        pprint("Converting ASCII results file to FITS")
+        convert_results_to_fits(file, from_ini, args.results_fits_output)
     if args.make_sfh:
         pprint("Reconstructing the star formation history")
         make_sfh(file, args)
