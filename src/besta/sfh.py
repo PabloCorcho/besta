@@ -443,7 +443,7 @@ class SFHSmoothnessPrior:
 
     sigma_dex: float = 0.3
     dof: float = 3.0
-    relative_sfr_floor: float = 1e-4
+    relative_sfr_floor: float = 1e-5
     time_mode: str = "log"
     edge_residuals: str = "extrapolate"
 
@@ -606,9 +606,9 @@ class SFHBase(ABC):
         sigma_dex = float(kwargs.get("sfh_smoothness_sigma_dex", 0.3))
         dof = float(kwargs.get("sfh_smoothness_dof", 3.0))
         relative_floor = float(
-            kwargs.get("sfh_smoothness_relative_floor", 1e-4)
+            kwargs.get("sfh_smoothness_relative_floor", 1e-5)
         )
-        time_mode = str(kwargs.get("sfh_smoothness_time_mode", "lin")).strip().lower()
+        time_mode = str(kwargs.get("sfh_smoothness_time_mode", "log")).strip().lower()
         edge_residuals = str(
             kwargs.get("sfh_smoothness_edge_residuals", "none")).strip().lower()
         logger.info(
