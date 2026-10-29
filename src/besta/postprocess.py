@@ -1551,6 +1551,10 @@ def to_physical_table(reader, *, module_name: Optional[str] = None, **kwargs) ->
     if table is None:
         reader.load_results()
         table = reader.results_table
+    # check if any of the modules set use_transforms = T, otherwise no conversion is needed
+    if not any(mod.get("use_transforms", False) for mod in reader.ini.values() if "SFHModel" in mod):
+        logger.info("No SFH module uses latent transforms; returning the original table.")
+        return table
     return _table_to_physical(table, reader.ini, module_name, **kwargs)
 
 
