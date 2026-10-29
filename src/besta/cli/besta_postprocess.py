@@ -232,7 +232,7 @@ def main(argv=None):
         pprint("Creating summary statistics FITS")
         output = args.output
         make_summary_statistics(file, from_ini, output)
-    if args.convert_results_to_fits:
+    if args.results_to_fits:
         pprint("Converting ASCII results file to FITS")
         convert_results_to_fits(file, from_ini, args.results_fits_output)
     if args.make_sfh:

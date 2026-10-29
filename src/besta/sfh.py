@@ -2174,7 +2174,7 @@ class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         )
 
         # Beyond tau~50 the SFH does not change much
-        self.free_params["logtau"] = kwargs.get("logtau", [-1, 0.5, 2])
+        self.free_params["logtau"] = kwargs.get("logtau", [-0.5, 0.5, 1.7])
         # standard latent parameters
         self.sfh_bin_keys = [f"z_latent_{i}" for i in range(lookback_gyr.size)]
 

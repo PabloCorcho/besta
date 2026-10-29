@@ -406,7 +406,7 @@ class BaseModule(ClassModule):
             options = SectionOptions(options)
         return options
 
-    def prepare_ssp_model(self, options, normalize=False, velocity_buffer=None):
+    def prepare_ssp_model(self, options, normalize=False, include_ionising_q=False, velocity_buffer=None):
         """Prepare the SSP data.
 
         Parameters
@@ -430,7 +430,7 @@ class BaseModule(ClassModule):
             else:
                 velocity_buffer = float(
                     getattr(besta_config, "kinematics", {}).get(
-                        "extra_velocity_buffer", 800.0))
+                        "extra_velocity_buffer", 1000.0))
         _log("Velocity buffer for LOSVD convolution: ", velocity_buffer, " km/s")
 
         if options.has_value("SSPModelFromPickle"):
@@ -457,6 +457,10 @@ class BaseModule(ClassModule):
             self.config["velscale"] = velscale
             self.config["extra_pixels"] = extra_offset_pixel
             _log("Configuration done.")
+
+            # TODO
+            # Currently if the SSP is loaded from pickle it is assumed that it includes
+            # the ionising photons
             return
 
         ssp_name = options["SSPModel"]
@@ -494,6 +498,13 @@ class BaseModule(ClassModule):
             ssp_kwargs["verbose"] = False
 
         ssp = getattr(SSP, ssp_name)(*ssp_args, **ssp_kwargs)
+
+        if include_ionising_q:
+            # Before resampling the SSP SED, compute the ionising photon rate
+            if ssp.log_ionising_HI_photons is None:
+                logger.info("Computing ionising photon rate for SSP model")
+                # compute the Qh and sets it as attribute
+                _ = ssp.get_ionising_photon_rate(species="HI")
 
         # For photometric analyses stop here
         #TODO: loose check

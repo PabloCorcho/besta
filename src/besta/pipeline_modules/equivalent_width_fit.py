@@ -112,10 +112,16 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if fit_mode not in {"ew", "spectra"}:
             raise ValueError(
                 f"Unknown fit_mode={fit_mode!r}; expected ew or spectra.")
+        logger.info("Equivalent width module fitting mode: %s", fit_mode)
         self.config["fit_mode"] = fit_mode
 
+        if options.get_string("balmer_emission", default="none") == "ionising":
+            include_ionising_q = True
+        else:
+            include_ionising_q = False
+
         self.prepare_observed_spectra(options)
-        self.prepare_ssp_model(options)
+        self.prepare_ssp_model(options, include_ionising_q=include_ionising_q)
         self.prepare_sfh_model(options)
         self.prepare_extinction_law(options)
         self.prepare_equivalent_widths(options)
