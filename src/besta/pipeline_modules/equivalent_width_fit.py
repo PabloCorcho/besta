@@ -347,12 +347,12 @@ class EquivalentWidthFitModule(SpectraFitModule):
         modes = None
         if options.has_value("ew_list"):
             # load from a list containing 7 columns, plus an optional mode
-            fields = [("name", "U20"), ("bl", "f4"), ("br", "f4"),
+            fields = [("name", "U40"), ("bl", "f4"), ("br", "f4"),
                       ("cl", "f4"), ("cr", "f4"), ("rl", "f4"), ("rr", "f4")]
             with open(options["ew_list"]) as f:
-                first = next((line for line in f if line.strip()
-                              and not line.lstrip().startswith("#")), "")
-            if len(first.split()) == 8:
+                rows = (line.split("#")[0].split() for line in f)
+                first = next((row for row in rows if row), [])
+            if len(first) == 8:
                 fields.append(("mode", "U10"))
             ew_list = np.loadtxt(options["ew_list"], dtype=fields, ndmin=1)
             if "mode" in ew_list.dtype.names:
