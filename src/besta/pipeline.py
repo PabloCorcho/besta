@@ -477,6 +477,22 @@ def _run_main_pipeline_job(job):
     return {"index": job["index"], "status": status}
 
 
+def _ssp_sections(config):
+    """Module sections of ``config`` that configure an SSP model for spectra.
+
+    Those are the sections defining both ``SSPModel`` and ``velscale``, i.e. the
+    ones for which ``SaveSSPModel`` and ``SSPModelFromPickle`` apply.
+    """
+    names = []
+    for name, section in config.items():
+        if not isinstance(section, dict):
+            continue
+        keys = {str(key).lower() for key in section}
+        if "sspmodel" in keys and "velscale" in keys:
+            names.append(name)
+    return names
+
+
 class BatchPipeline(object):
     """Manager for running multiple independent MainPipeline instances in parallel.
 
@@ -492,6 +508,21 @@ class BatchPipeline(object):
         Per-pipeline ini_values_files lists to pass to each MainPipeline.
     n_jobs_parallel : int, optional
         Maximum number of parallel processes.
+    ssp_pickle : str, optional
+        Path of a pickle file with the configured SSP model, shared by all the
+        pipelines. If the file does not exist, it is created before any
+        pipeline is launched by initialising (without running the sampler) the
+        first spectral module that defines ``SSPModel`` and ``velscale``, with
+        ``SaveSSPModel`` set to this path. Every pipeline is then run with
+        ``SSPModelFromPickle`` set to this path in those module sections, so the
+        SSP interpolation and LSF convolution are done only once. An existing
+        file is reused as is.
+
+        All the pipelines must share the inputs that determine the SSP model
+        (SSP library and arguments, wavelength grid, ``velscale``, LSF and
+        redshift): this is not checked. Only pipelines defined by
+        configuration dictionaries are supported, not those run from
+        ``ini_files``.
     """
 
     def __init__(
@@ -503,6 +534,7 @@ class BatchPipeline(object):
         ini_values_files=None,
         n_jobs_parallel=None,
         blas_threads=1,
+        ssp_pickle=None,
     ):
         if pipeline_configuration_list is None:
             if ini_files is None:
@@ -524,6 +556,9 @@ class BatchPipeline(object):
             [None] * n_pipelines if ini_values_files is None else ini_values_files
         )
         self.n_jobs_parallel = n_jobs_parallel
+        if ssp_pickle is not None:
+            ssp_pickle = os.path.abspath(os.path.expandvars(ssp_pickle))
+        self.ssp_pickle = ssp_pickle
 
         self._validate_inputs()
 
@@ -541,6 +576,12 @@ class BatchPipeline(object):
                     f"{attr_name} length ({len(value)}) must match "
                     f"number of pipelines ({n_pipelines})"
                 )
+        if self.ssp_pickle is not None and any(
+                ini_file is not None for ini_file in self.all_ini_files):
+            raise ValueError(
+                "ssp_pickle is only supported for pipelines defined by "
+                "configuration dictionaries, not by ini_files"
+            )
 
     def cpu_info(self):
         """Log available CPU cores and number of independent pipelines."""
@@ -568,6 +609,56 @@ class BatchPipeline(object):
             )
         return pipelines
 
+    def _build_ssp_pickle(self, indices=None):
+        """Create the SSP pickle if it does not exist yet.
+
+        The first spectral module found in the pipelines ``indices`` (all by
+        default) is initialised in this process, which saves the pickle.
+        """
+        if self.ssp_pickle is None:
+            return
+        if os.path.isfile(self.ssp_pickle):
+            logger.info("Reusing SSP model pickle %s", self.ssp_pickle)
+            return
+        if indices is None:
+            indices = range(len(self.all_pipelines_config))
+        for index in indices:
+            for config in self.all_pipelines_config[index]:
+                sections = _ssp_sections(config)
+                if sections:
+                    break
+            else:
+                continue
+            break
+        else:
+            raise ValueError(
+                "ssp_pickle was given but no module defines SSPModel and velscale"
+            )
+
+        logger.info("Saving SSP model pickle %s using module %s of pipeline %d",
+                    self.ssp_pickle, sections[0], index)
+        config = copy.deepcopy(config)
+        config[sections[0]]["SaveSSPModel"] = self.ssp_pickle
+        os.makedirs(os.path.dirname(self.ssp_pickle), exist_ok=True)
+        module_class = io.load_class_from_path(
+            os.path.expandvars(config[sections[0]]["file"]), "module")
+        # The module configures itself on initialisation
+        module_class(config, alias=sections[0])
+        if not os.path.isfile(self.ssp_pickle):
+            raise RuntimeError(
+                f"Module {sections[0]} did not write the SSP pickle {self.ssp_pickle}"
+            )
+
+    def _with_ssp_pickle(self, pipeline_config):
+        """Copy of ``pipeline_config`` loading the SSP model from the pickle."""
+        pipeline_config = copy.deepcopy(pipeline_config)
+        for config in pipeline_config:
+            for name in _ssp_sections(config):
+                if not any(str(key).lower() == "sspmodelfrompickle"
+                           for key in config[name]):
+                    config[name]["SSPModelFromPickle"] = self.ssp_pickle
+        return pipeline_config
+
     def _build_jobs(self, plot_result=False, sfh_reconstruction=None):
         # Validate once, before any process is started
         sfh_reconstruction = normalize_sfh_reconstruction_settings(sfh_reconstruction)
@@ -580,6 +671,8 @@ class BatchPipeline(object):
                 self.all_ini_values_files,
             )
         ):
+            if self.ssp_pickle is not None:
+                pipeline_config = self._with_ssp_pickle(pipeline_config)
             jobs.append(
                 {
                     "index": index,
@@ -604,6 +697,7 @@ class BatchPipeline(object):
             raise IndexError(f"Pipeline index {index} out of range")
         # Use the context manager to limit the BLAS threads used by numpy
         with limit_blas_threads(self.blas_threads):
+            self._build_ssp_pickle([index])
             return _run_main_pipeline_job(jobs[index])["status"]
 
     def run_all_pipelines(self, plot_result=False, sfh_reconstruction=None):
@@ -626,6 +720,7 @@ class BatchPipeline(object):
         logger.info(f"Running {n_jobs} pipelines in parallel")
         # Use the context manager to limit the BLAS threads used by numpy
         with limit_blas_threads(self.blas_threads):
+            self._build_ssp_pickle()
             if n_jobs == 1:
                 raw_results = [_run_main_pipeline_job(job) for job in jobs]
             else:
