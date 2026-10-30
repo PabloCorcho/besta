@@ -1373,6 +1373,32 @@ class SpectraFitModule(BaseModule):
 
         return line_table, line_segm_map
 
+    def solution_sections(self, solution: DataBlock):
+        """Group the values of a solution by data block section.
+
+        Used to display the parameters in the plots (visualization purpose
+        only). If the SFH parameters were sampled in the latent space
+        (``use_transforms``), the physical values are added to the SFH
+        section. A ``settings`` section reports ``use_transforms``.
+        """
+        sol_sections = {}
+        for (sec, name) in solution.keys():
+            if sec not in sol_sections:
+                sol_sections[sec] = {name: solution[sec, name]}
+            else:
+                sol_sections[sec].update({name: solution[sec, name]})
+
+        sol_sections["settings"] = {"use_transforms": self.config.get("use_transforms", False)}
+
+        if sol_sections["settings"]["use_transforms"]:
+            sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
+            sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
+
+            for key, value in zip(self.config["sfh_model"].sfh_bin_keys,
+                                  sfh_params_phys):
+                sol_sections[self.config["sfh_model"].sect_name][key] = value
+        return sol_sections
+
     def plot_solution(self, solution: DataBlock, figname=None, plot_lines=True):
         """Plot the fit."""
         flux_model = self.make_observable(solution, parse=True)
@@ -1386,13 +1412,7 @@ class SpectraFitModule(BaseModule):
             weights = np.ones_like(flux_model)
 
         # Grab the solution values (visualuzation purpose only)
-        sol_keys = solution.keys()
-        sol_sections = {}
-        for (sec, name) in sol_keys:
-            if sec not in sol_sections:
-                sol_sections[sec] = {name: solution[sec, name]}
-            else:
-                sol_sections[sec].update({name: solution[sec, name]})
+        sol_sections = self.solution_sections(solution)
 
         fig, axs = plt.subplots(ncols=2, nrows=2, sharex="col", sharey="row",
                                 constrained_layout=True,
@@ -1421,16 +1441,6 @@ class SpectraFitModule(BaseModule):
                      " - Emission lines": np.sum(
                         self.config.get("emission_lines_mask", 0))}
         
-        sol_sections["settings"] = {"use_transforms": self.config.get("use_transforms", False)}
-
-        if sol_sections["settings"]["use_transforms"]:
-            sfh_params_latent = self.config["sfh_model"].get_sfh_parameters_array(solution)
-            sfh_params_phys = self.config["sfh_model"].to_physical(sfh_params_latent)
-
-            for key, value in zip(self.config["sfh_model"].sfh_bin_keys,
-                                  sfh_params_phys):
-                sol_sections[self.config["sfh_model"].sect_name][key] = value
-
         sections = [(k, v) for k, v in sol_sections.items()]
         sections = sections + [("Masking", mask_info)]
         _ = draw_dict_in_axes(ax, sections, section_spacing=1,
