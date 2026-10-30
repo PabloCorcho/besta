@@ -1626,7 +1626,7 @@ class SpectraFitModule(BaseModule):
 
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight",
-                    dpi=300)
+                    dpi=200)
             _log(f"Fit plot saved at: {figname}")
 
         # store the solution data
@@ -1926,7 +1926,7 @@ class PhotometryFitModule(BaseModule):
 
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight",
-                    dpi=300)
+                    dpi=200)
             _log(f"Fit plot saved at: {figname}")
 
         solution_data = {

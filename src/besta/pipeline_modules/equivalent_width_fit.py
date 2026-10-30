@@ -864,7 +864,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
             ax.set_xlabel("Wavelength (AA)")
 
         if figname is not None:
-            fig.savefig(figname, bbox_inches="tight", dpi=300)
+            fig.savefig(figname, bbox_inches="tight", dpi=200)
             logger.info("Fit plot saved at: %s", figname)
 
         ew_data = {
