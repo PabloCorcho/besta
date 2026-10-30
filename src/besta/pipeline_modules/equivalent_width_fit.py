@@ -10,6 +10,7 @@ from scipy.special import ndtr
 from cosmosis.datablock import names as section_names
 from cosmosis.datablock import SectionOptions
 from besta.logging import get_logger
+from besta.visualization import draw_dict_in_axes
 from pst.observables import EquivalentWidth
 
 logger = get_logger(__name__)
@@ -752,7 +753,8 @@ class EquivalentWidthFitModule(SpectraFitModule):
         obs = self.config["obs_vector"]
         err = self.config["obs_ivar"] ** -0.5
         chi = (model - obs) / err
-        loglike = sum(self._term_likelihoods(model))
+        terms = self._term_likelihoods(model)
+        loglike = sum(terms)
 
         wl = self.config["wavelength"].value
         flux = self.config["flux"]
@@ -782,10 +784,26 @@ class EquivalentWidthFitModule(SpectraFitModule):
         title = ", ".join(summary)
         ncols = min(ncols, n_index)
         nrows = int(np.ceil(n_index / ncols))
-        fig, axs = plt.subplots(nrows, ncols, figsize=(5 * ncols, 3.5 * nrows),
-                                squeeze=False, constrained_layout=True)
-        fig.suptitle(f"Module: {self.name}   {title}   "
-                     f"log-likelihood = {loglike:.1f}")
+        # Indices on the left, solution parameters and fit summary on the right
+        fig = plt.figure(figsize=(5 * ncols + 4, 3.5 * nrows),
+                         constrained_layout=True)
+        panels, info = fig.subfigures(1, 2, width_ratios=[5 * ncols, 4])
+        axs = panels.subplots(nrows, ncols, squeeze=False)
+        panels.suptitle(f"Module: {self.name}   {title}   "
+                        f"log-likelihood = {loglike:.1f}")
+
+        fit_info = {"Indices (EW / spectra)":
+                    f"{ew_rows.size} / {spectra_rows.size}"}
+        if spectra_rows.size:
+            fit_info["Fitted pixels"] = owner.size
+        if self.config["split_terms"]:
+            fit_info["ln L (EW)"], fit_info["ln L (spectra)"] = terms
+        fit_info["ln L"] = loglike
+        ax_info = info.subplots()
+        draw_dict_in_axes(
+            ax_info, list(self.solution_sections(block).items()) + [("Fit", fit_info)],
+            section_spacing=1, title_style="underline")
+        ax_info.axis("off")
 
         for ith, (ax, ew) in enumerate(zip(axs.flat, self.config["ew_list"])):
             left, centre, right = (ew.left_wl_range.value,
