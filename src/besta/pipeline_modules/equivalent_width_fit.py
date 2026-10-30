@@ -76,6 +76,20 @@ class EquivalentWidthFitModule(SpectraFitModule):
     EquivalentWidthFit_ew EquivalentWidthFit_spectra``, even if one of them has
     no index. With a single mode there is one term, ``<like_name>_like``.
 
+    As in :class:`FullSpectralFitModule`, the stellar mass (log10 Msun) is
+    written to ``extra/stellar_mass`` at every sample (NaN for samples that
+    cannot be evaluated). The fitted observables do not depend on the
+    normalization of the model, so the mass is the one that scales the model
+    to the observed flux: the maximum-likelihood amplitude between the model
+    and the observed mean flux in the index windows (all the windows of the EW
+    indices and the side windows of the spectra ones), including the Balmer
+    emission of the model if enabled. It follows the conventions of
+    :class:`FullSpectralFitModule` (``dl_sq``, 1e10 Msun normalization). It is
+    only as constrained as the SFH and the dust attenuation, which these
+    observables barely probe, so it is usually broad. Other modules in the
+    pipeline that write ``extra/stellar_mass`` overwrite it, or are overwritten
+    by it, depending on their order.
+
     Module options (on top of the ones needed to read the spectrum and set up
     the SSP, SFH and dust models):
 
@@ -154,6 +168,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
         self.prepare_extinction_law(options)
         self.prepare_equivalent_widths(options)
         self.prepare_likelihood_terms(options)
+        self.prepare_stellar_mass()
         self.prepare_balmer_emission(options)
         self.prepare_losvd_kernel(options)
 
@@ -499,6 +514,46 @@ class EquivalentWidthFitModule(SpectraFitModule):
         self.config["ivar_spec"] = 1.0 / (var[pix] / continuum ** 2 + floor ** 2)
         self.config["obs_means"] = means
 
+    def prepare_stellar_mass(self):
+        """Prepare the observed fluxes used to derive the stellar mass.
+
+        The model is scaled to the observed mean fluxes in the index windows:
+        all three windows of the indices fitted as EW and the side windows of
+        those fitted as spectra (their central window may include masked
+        pixels).
+        """
+        matrix = self._window_matrix(self.config["wavelength"].value,
+                                     self.config["ew_ranges"])
+        means = matrix @ self.config["flux"]
+        var_means = (matrix ** 2) @ self.config["var"]
+        # (index, [left, centre, right]) windows used for the scale
+        use = np.ones((len(self.config["ew_list"]), 3), dtype=bool)
+        use[self.config["ew_is_spectra"], 1] = False
+        use = use.ravel() & np.isfinite(means) & (var_means > 0)
+        self.config["mass_windows"] = use
+        self.config["mass_obs"] = means[use]
+        self.config["mass_ivar"] = 1.0 / var_means[use]
+
+    def _save_stellar_mass(self, block, means):
+        """Write the stellar mass (log10 Msun) that scales the model to the data.
+
+        ``means`` are the model window means (stellar light and, if enabled,
+        Balmer emission) in the units of the SED. Follows
+        :class:`FullSpectralFitModule`: if the SFH model has no mass
+        normalization the mass is the one formed by the SFH.
+        """
+        sfh_model = self.config["sfh_model"]
+        if sfh_model.use_mass_normalization:
+            scale = 1e10 / self.config["dl_sq"]
+            amplitude = ml_amplitude(
+                self.config["mass_obs"], scale * means[self.config["mass_windows"]],
+                self.config["mass_ivar"])
+            mass = np.log10(amplitude) + 10.0 if amplitude > 0 else np.nan
+        else:
+            mass = np.log10(sfh_model.model.stellar_mass_formed(
+                sfh_model.today).to_value("Msun"))
+        block["extra", "stellar_mass"] = mass
+
     def prepare_balmer_emission(self, options):
         """Configure the optional Balmer emission of the model."""
         mode = options.get_string("balmer_emission", default="none")
@@ -643,6 +698,7 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if lines is not None:
             means = means + self.config["balmer_matrix"] @ lines
 
+        self._save_stellar_mass(block, means)
         # Save SFH mass-fraction times and sSFRs (one mass-history evaluation)
         self.save_sfh_extras(block, self.config["sfh_model"])
 
@@ -664,6 +720,10 @@ class EquivalentWidthFitModule(SpectraFitModule):
                 if obs.size else 0.0
             terms.append(weight * like)
         return terms
+
+    def _write_missing_stellar_mass(self, block):
+        """Write NaN as the stellar mass of a sample that could not be evaluated."""
+        block["extra", "stellar_mass"] = np.nan
 
     def _write_likelihoods(self, block, values):
         """Write the likelihood terms, in the order of ``like_keys``."""
@@ -687,12 +747,14 @@ class EquivalentWidthFitModule(SpectraFitModule):
         if not valid:
             logger.debug("Invalid sample: %s", block)
             self._write_likelihoods(block, [prior_penalty] + [0.0] * (n_terms - 1))
+            self._write_missing_stellar_mass(block)
             return 0
 
         model = self.make_observable(block)
         if not np.isfinite(model).all():
             logger.debug("Non-finite model observables: %s", model)
             self._write_likelihoods(block, [-1e20] + [0.0] * (n_terms - 1))
+            self._write_missing_stellar_mass(block)
             return 0
 
         terms = self._term_likelihoods(model)
@@ -785,25 +847,15 @@ class EquivalentWidthFitModule(SpectraFitModule):
         ncols = min(ncols, n_index)
         nrows = int(np.ceil(n_index / ncols))
         # Indices on the left, solution parameters and fit summary on the right
-        fig = plt.figure(figsize=(5 * ncols + 4, 3.5 * nrows),
+        # The side panel needs some height to keep the text readable
+        fig = plt.figure(figsize=(5 * ncols + 4, max(3.5 * nrows, 7.0)),
                          constrained_layout=True)
         panels, info = fig.subfigures(1, 2, width_ratios=[5 * ncols, 4])
         axs = panels.subplots(nrows, ncols, squeeze=False)
         panels.suptitle(f"Module: {self.name}   {title}   "
                         f"log-likelihood = {loglike:.1f}")
 
-        fit_info = {"Indices (EW / spectra)":
-                    f"{ew_rows.size} / {spectra_rows.size}"}
-        if spectra_rows.size:
-            fit_info["Fitted pixels"] = owner.size
-        if self.config["split_terms"]:
-            fit_info["ln L (EW)"], fit_info["ln L (spectra)"] = terms
-        fit_info["ln L"] = loglike
         ax_info = info.subplots()
-        draw_dict_in_axes(
-            ax_info, list(self.solution_sections(block).items()) + [("Fit", fit_info)],
-            section_spacing=1, title_style="underline")
-        ax_info.axis("off")
 
         for ith, (ax, ew) in enumerate(zip(axs.flat, self.config["ew_list"])):
             left, centre, right = (ew.left_wl_range.value,
@@ -862,6 +914,19 @@ class EquivalentWidthFitModule(SpectraFitModule):
             ax.axis("off")
         for ax in axs[-1]:
             ax.set_xlabel("Wavelength (AA)")
+
+        # Solution parameters and fit summary
+        fit_info = {"Indices (EW / spectra)":
+                    f"{ew_rows.size} / {spectra_rows.size}"}
+        if spectra_rows.size:
+            fit_info["Fitted pixels"] = owner.size
+        if self.config["split_terms"]:
+            fit_info["ln L (EW)"], fit_info["ln L (spectra)"] = terms
+        fit_info["ln L"] = loglike
+        draw_dict_in_axes(
+            ax_info, list(self.solution_sections(block).items()) + [("Fit", fit_info)],
+            section_spacing=1, title_style="underline")
+        ax_info.axis("off")
 
         if figname is not None:
             fig.savefig(figname, bbox_inches="tight", dpi=200)
