@@ -4,6 +4,8 @@ import pytest
 
 from cosmosis import DataBlock
 
+from pst import dust
+
 from besta import kinematics, sfh
 from besta.pipeline_modules.base_module import (
     BaseModule,
@@ -12,6 +14,7 @@ from besta.pipeline_modules.base_module import (
     ml_amplitude,
     rest_frame_instrumental_fwhm,
 )
+from besta.pipeline_modules.equivalent_width_fit import EquivalentWidthFitModule
 from besta.pipeline_modules.full_spectral_fit import FullSpectralFitModule
 from besta.pipeline_modules.galaxy_spectra import GalaxySpectraModule
 from besta.pipeline_modules.galaxy_photometry import GalaxyPhotometryModule
@@ -120,6 +123,75 @@ def test_emission_lines_masked_at_rest_frame_position(tmp_path):
     # Only the H-alpha/[NII] complex is masked, nothing elsewhere
     assert np.all(np.abs(wl[mask] - 6562.80) < 40.0)
     assert np.all(mod.config["weights"][mask] == 0.0)
+
+
+def test_equivalent_width_dust_uses_sampled_r_v():
+    """A sampled ``dust.attenuation r`` rebuilds the screen with that R_V.
+
+    Regression test: the helper read a non-existent ``DustScreen.name``.
+    """
+    class Fake:
+        config = {"extinction_law": dust.DustScreen("ccm89", r_extinction=3.1)}
+        _get_dust_model = staticmethod(
+            lambda name, r_value: dust.DustScreen(name, r_extinction=r_value))
+
+    block = DataBlock()
+    block["dust.attenuation", "a_v"] = 0.5
+    model, a_v = EquivalentWidthFitModule._get_dust_for_block(Fake(), block)
+    assert model.r_extinction == 3.1 and a_v == 0.5
+
+    block["dust.attenuation", "r"] = 4.2
+    model, a_v = EquivalentWidthFitModule._get_dust_for_block(Fake(), block)
+    assert model.extinction_law_name == "ccm89"
+    assert model.r_extinction == 4.2 and a_v == 0.5
+
+
+def test_mw_extinction_dereddens_spectra_at_observed_wavelengths(tmp_path):
+    """The MW correction divides by the CCM89 transmission at observed wavelengths.
+
+    The transmission is evaluated for A_V = R_V * E(B-V) at ``lambda_rest * (1 + z)``
+    and applied to both the flux and its variance.
+    """
+    z, ebv, rv = 0.05, 0.08, 3.1
+    rest_wl = np.linspace(4000.0, 6000.0, 80)
+    obs_wl = rest_wl * (1 + z)
+    spec = tmp_path / "spec_mw.dat"
+    np.savetxt(spec, np.vstack([obs_wl, np.ones_like(obs_wl), np.full_like(obs_wl, 0.1)]).T)
+
+    class Dummy(SpectraFitModule):
+        name = "Dummy"
+
+        def __init__(self, options):
+            super().__init__(options)
+            options = self.parse_options(options)
+            self.prepare_observed_spectra(options)
+
+        def make_observable(self, *args, **kwargs):
+            pass
+
+        def execute(self, *args, **kwargs):
+            pass
+
+        def plot_solution(self, *args, **kwargs):
+            pass
+
+    def build(**extra):
+        return Dummy({"Dummy": {"inputSpectrum": str(spec), "redshift": z, **extra}})
+
+    plain = build()
+    corrected = build(mw_extinction=True, mw_ebv=ebv, mw_rv=rv)
+
+    wl_rest = corrected.config["wavelength"].to_value("Angstrom")
+    transmission = dust.DustScreen("ccm89", r_extinction=rv).get_extinction(
+        (wl_rest * (1 + z)) << u.angstrom, a_v=rv * ebv).to_value(u.dimensionless_unscaled)
+
+    assert np.all(transmission < 1.0)
+    # bluer wavelengths are more extinguished, so they are boosted more
+    assert transmission[0] < transmission[-1]
+    np.testing.assert_allclose(
+        corrected.config["flux"] / plain.config["flux"], 1.0 / transmission)
+    np.testing.assert_allclose(
+        corrected.config["var"] / plain.config["var"], 1.0 / transmission**2)
 
 
 @pytest.mark.parametrize("with_features", [True, False])
@@ -802,6 +874,263 @@ def test_prepare_sfh_model_builds_fixed_mass_frac_2d():
     assert isinstance(model, sfh.FixedMassFracSFH2D)
     assert model.model.name == "tabular_mass_frac_cem_2d"
     assert "sigma_log_metallicity" in model.free_params
+
+
+# name, then the (min, max) of the left, central and right windows
+_EW_INDICES = {
+    "Hb": (4828, 4848, 4848, 4877, 4878, 4892),
+    "Mgb": (5142, 5161, 5161, 5193, 5191, 5206),
+    "Fe5270": (5233, 5248, 5248, 5286, 5286, 5318),
+    "Ca4227": (4212, 4222, 4222, 4235, 4241, 4251),
+}
+
+
+@pytest.fixture(scope="module")
+def ew_inputs(tmp_path_factory):
+    """Noisy synthetic spectrum and a helper to write index lists."""
+    from besta.sfh import ExponentialSFH
+    from pst.SSP import PopStar
+
+    tmp_path = tmp_path_factory.mktemp("ew_modes")
+    ssp = PopStar(IMF="cha")
+    model = ExponentialSFH()
+    model.parse_free_params({"logtau": 0.5, "alpha_powerlaw": 1,
+                             "ism_metallicity_today": 0.02})
+    sed = np.asarray(model.model.compute_SED(ssp, t_obs=model.today))
+    rng = np.random.default_rng(1)
+    err = 0.02 * sed
+    spectrum = tmp_path / "spec.dat"
+    np.savetxt(spectrum, np.array([ssp.wavelength.to_value("Angstrom"),
+                                   sed + rng.normal(size=sed.size) * err, err]).T)
+
+    def write_list(name, modes):
+        """Index list with the given ``{index: mode}``; no mode column if ``None``."""
+        path = tmp_path / name
+        with open(path, "w") as f:
+            for index, mode in modes.items():
+                row = " ".join(str(w) for w in _EW_INDICES[index])
+                f.write(f"{index} {row}" + ("" if mode is None else f" {mode}") + "\n")
+        return str(path)
+
+    return str(spectrum), write_list
+
+
+def _ew_module(spectrum, ew_list, **options):
+    config = {"file": EquivalentWidthFitModule.get_path(), "redshift": 0.0,
+              "inputSpectrum": spectrum, "SSPModel": "PopStar",
+              "SSPModelArgs": "cha", "SSPDir": "None",
+              "wlRange": [3700.0, 6000.0], "wlUnits": "Angstrom",
+              "SFHModel": "ExponentialSFH", "velscale": 200.0,
+              "ExtinctionLaw": "ccm89", "DustAttenuation": True,
+              "ew_list": ew_list, "spectra_error_floor": 0.01,
+              "save_chi2": True}
+    config.update(options)
+    return EquivalentWidthFitModule({"EquivalentWidthFit": config})
+
+
+def _ew_block():
+    block = DataBlock()
+    block["dust.attenuation", "a_v"] = 0.3
+    for key, value in (("los_vel", 0), ("los_sigma", 100.0), ("los_h3", 0),
+                       ("los_h4", 0)):
+        block["kinematics", key] = value
+    block["stars.sfh", "logtau"] = 1
+    block["stars.sfh", "alpha_powerlaw"] = 1
+    block["stars.sfh", "ism_metallicity_today"] = 0.02
+    return block
+
+
+_EW_MODES = {"Hb": "ew", "Mgb": "spectra", "Fe5270": "ew", "Ca4227": "spectra"}
+
+
+def test_equivalent_width_mode_list_terms_match_pure_modes(ew_inputs):
+    """Each term equals the pure mode fitted on its own indices.
+
+    The modes come from the ``mode`` column, a positional list or ``name:mode``
+    pairs, which must all give the same likelihood.
+    """
+    spectrum, write_list = ew_inputs
+    plain = write_list("plain.txt", dict.fromkeys(_EW_MODES))
+    specs = {
+        "column": _ew_module(spectrum, write_list("column.txt", _EW_MODES)),
+        "list": _ew_module(spectrum, plain, fit_mode="ew, spectra, ew, spectra"),
+        "named": _ew_module(spectrum, plain, fit_mode="Mgb:spectra, Ca4227:spectra"),
+    }
+    pure_ew = _ew_module(spectrum, write_list("ew.txt", {"Hb": None, "Fe5270": None}))
+    pure_spectra = _ew_module(
+        spectrum, write_list("spectra.txt", {"Mgb": None, "Ca4227": None}),
+        fit_mode="spectra")
+    assert pure_ew.config["like_keys"] == ("EquivalentWidthFit_like",)
+
+    reference = {}
+    for module in (pure_ew, pure_spectra):
+        reference[module] = _ew_block()
+        module.execute(reference[module])
+    like_ew = reference[pure_ew]["likelihoods", "EquivalentWidthFit_like"]
+    like_spectra = reference[pure_spectra]["likelihoods", "EquivalentWidthFit_like"]
+
+    for module in specs.values():
+        assert module.config["like_keys"] == ("EquivalentWidthFit_ew_like",
+                                              "EquivalentWidthFit_spectra_like")
+        ew_key, spectra_key = module.config["like_keys"]
+        block = _ew_block()
+        module.execute(block)
+        assert block["likelihoods", ew_key] == pytest.approx(like_ew, rel=1e-12)
+        assert block["likelihoods", spectra_key] == pytest.approx(like_spectra, rel=1e-12)
+        assert block["extra", ew_key + "_chi2"] == pytest.approx(-2 * like_ew, rel=1e-12)
+        # The observables are the EWs followed by the pixels
+        assert module.config["n_ew_obs"] == 2
+        assert module.config["obs_vector"].size == 2 + module.config["pix_idx"].size
+        assert list(module.config["ew_names"]) == ["Hb", "Mgb", "Fe5270", "Ca4227"]
+
+
+def test_equivalent_width_mode_list_options_and_weights(ew_inputs):
+    """Weights scale each term; a uniform list still has two terms."""
+    spectrum, write_list = ew_inputs
+    plain = write_list("plain.txt", dict.fromkeys(_EW_MODES))
+    reference = _ew_module(spectrum, plain, fit_mode="ew, spectra, ew, spectra")
+    weighted = _ew_module(spectrum, plain, fit_mode="ew, spectra, ew, spectra",
+                          ew_like_weight=2.0, spectra_like_weight=0.1)
+    keys = reference.config["like_keys"]
+    first, second = _ew_block(), _ew_block()
+    reference.execute(first)
+    weighted.execute(second)
+    assert second["likelihoods", keys[0]] == pytest.approx(
+        2.0 * first["likelihoods", keys[0]], rel=1e-12)
+    assert second["likelihoods", keys[1]] == pytest.approx(
+        0.1 * first["likelihoods", keys[1]], rel=1e-12)
+
+    # All the indices as EW: the spectra term is empty but still written
+    uniform = _ew_module(spectrum, plain, fit_mode="ew, ew, ew, ew")
+    single = _ew_module(spectrum, plain)
+    block, block_single = _ew_block(), _ew_block()
+    uniform.execute(block)
+    single.execute(block_single)
+    assert block["likelihoods", keys[1]] == 0.0
+    assert block["likelihoods", keys[0]] == pytest.approx(
+        block_single["likelihoods", "EquivalentWidthFit_like"], rel=1e-12)
+
+
+def test_equivalent_width_mode_list_errors(ew_inputs):
+    spectrum, write_list = ew_inputs
+    plain = write_list("plain.txt", dict.fromkeys(_EW_MODES))
+    column = write_list("column.txt", _EW_MODES)
+    with pytest.raises(ValueError, match="4 indices"):
+        _ew_module(spectrum, plain, fit_mode="ew, spectra")
+    with pytest.raises(ValueError, match="unknown indices"):
+        _ew_module(spectrum, plain, fit_mode="Nope:spectra")
+    with pytest.raises(ValueError, match="Unknown fit_mode"):
+        _ew_module(spectrum, plain, fit_mode="hybrid")
+    with pytest.raises(ValueError, match="Unknown fit_mode"):
+        _ew_module(spectrum, plain, fit_mode="Mgb:both")
+    with pytest.raises(ValueError, match="mix"):
+        _ew_module(spectrum, plain, fit_mode="Mgb:spectra, ew")
+    with pytest.raises(ValueError, match="twice"):
+        _ew_module(spectrum, plain, fit_mode="Mgb:spectra, Mgb:ew")
+    with pytest.raises(ValueError, match="Unknown index mode"):
+        _ew_module(spectrum, write_list("bad.txt", {"Hb": "both", "Mgb": "ew"}))
+    # The column and fit_mode must agree
+    with pytest.raises(ValueError, match="disagree"):
+        _ew_module(spectrum, column, fit_mode="Mgb:ew")
+    with pytest.raises(ValueError, match="disagree"):
+        _ew_module(spectrum, column, fit_mode="ew")
+    _ew_module(spectrum, column, fit_mode="Mgb:spectra")
+
+
+def test_equivalent_width_mode_list_writes_every_term(ew_inputs):
+    """Invalid or non-finite samples still write both likelihood terms."""
+    spectrum, write_list = ew_inputs
+    module = _ew_module(spectrum, write_list("column.txt", {"Hb": "ew", "Mgb": "spectra"}))
+    ew_key, spectra_key = module.config["like_keys"]
+
+    module.config["sfh_model"].parse_datablock = lambda block: (False, -5.0)
+    block = _ew_block()
+    module.execute(block)
+    assert block["likelihoods", ew_key] == -5.0
+    assert block["likelihoods", spectra_key] == 0.0
+
+    module.config["sfh_model"].parse_datablock = lambda block: (True, None)
+    module.make_observable = lambda block, parse=False: np.full(
+        module.config["obs_vector"].size, np.nan)
+    block = _ew_block()
+    module.execute(block)
+    assert block["likelihoods", ew_key] + block["likelihoods", spectra_key] == -1e20
+
+
+def test_equivalent_width_list_comments_and_long_names(ew_inputs, tmp_path):
+    """Comment lines, inline comments and names longer than 20 characters."""
+    spectrum, _ = ew_inputs
+    long_name = "A_long_index_name_over_20_chars"
+    path = tmp_path / "commented.txt"
+    # The first row has 7 values and a bare '#': 8 tokens, but no mode column
+    path.write_text("# header\n"
+                    f"{long_name} 4828 4848 4848 4877 4878 4892 #\n"
+                    "# Skipped 1 2 3 4 5 6\n"
+                    "Mgb 5142 5161 5161 5193 5191 5206   # inline note\n")
+    module = _ew_module(spectrum, str(path))
+    assert list(module.config["ew_names"]) == [long_name, "Mgb"]
+    assert module.config["like_keys"] == ("EquivalentWidthFit_like",)
+
+
+def test_equivalent_width_stellar_mass(ew_inputs, tmp_path):
+    """The mass that scales the model to the window fluxes is recovered."""
+    spectrum, write_list = ew_inputs
+    ew_list = write_list("plain.txt", {"Hb": None, "Mgb": None, "Fe5270": None,
+                                       "Ca4227": None})
+    block = _ew_block()
+    # A noise-free spectrum made of the model with a known mass
+    reference = _ew_module(spectrum, ew_list)
+    sed = reference.model_sed(block, parse=True)
+    wavelength = reference.config["wavelength"].value
+    flux = 10 ** (10.7 - 10) * 1e10 / reference.config["dl_sq"] * sed
+    exact = tmp_path / "exact.dat"
+    np.savetxt(exact, np.array([wavelength, flux, 0.01 * flux]).T)
+    module = _ew_module(str(exact), ew_list)
+    module.execute(block)
+    assert block["extra", "stellar_mass"] == pytest.approx(10.7, abs=1e-6)
+    # Scaling the observed flux scales the mass, and nothing else
+    like = block["likelihoods", module.like_name]
+    scaled = tmp_path / "scaled.dat"
+    np.savetxt(scaled, np.array([wavelength, 3 * flux, 0.03 * flux]).T)
+    module = _ew_module(str(scaled), ew_list)
+    module.execute(block)
+    assert block["extra", "stellar_mass"] == pytest.approx(10.7 + np.log10(3), abs=1e-6)
+    assert block["likelihoods", module.like_name] == pytest.approx(like, rel=1e-8)
+
+    # Samples that cannot be evaluated have no mass
+    module.config["sfh_model"].parse_datablock = lambda block: (False, None)
+    module.execute(block)
+    assert np.isnan(block["extra", "stellar_mass"])
+
+
+def test_equivalent_width_stellar_mass_modes_and_balmer(ew_inputs):
+    """The mass is also derived with spectra indices and Balmer emission."""
+    spectrum, write_list = ew_inputs
+    modes = {"Hb": "ew", "Mgb": "spectra", "Fe5270": "ew", "Ca4227": "spectra"}
+    module = _ew_module(spectrum, write_list("column.txt", modes),
+                        balmer_emission="kennicutt")
+    # EW windows (3 each) and the side windows of the spectra indices (2 each)
+    assert module.config["mass_windows"].sum() == 3 * 2 + 2 * 2
+    block = _ew_block()
+    module.execute(block)
+    assert np.isfinite(block["extra", "stellar_mass"])
+
+
+def test_equivalent_width_mode_list_plot_solution(ew_inputs, tmp_path):
+    spectrum, write_list = ew_inputs
+    module = _ew_module(spectrum, write_list("plain.txt", {"Hb": None, "Mgb": None, "Fe5270": None}),
+                        fit_mode="Mgb:spectra")
+    fig, data = module.plot_solution(_ew_block(), figname=str(tmp_path / "fit.png"))
+    assert list(data["ew"]["name"]) == ["Hb", "Fe5270"]
+    assert set(data["spectra"]["name"]) == {"Mgb"}
+    assert data["ew"]["chi"].size == 2
+    assert data["spectra"]["chi"].size == data["spectra"]["wavelength"].size
+    # The parameters of the solution are listed next to the indices
+    from matplotlib.text import Text
+    text = "\n".join(t.get_text() for t in fig.findobj(Text))
+    for expected in ("dust.attenuation", "a_v", "los_sigma", "logtau", "Fit",
+                     "ln L (EW)", "ln L (spectra)"):
+        assert expected in text
 
 
 if __name__ == "__main__":
