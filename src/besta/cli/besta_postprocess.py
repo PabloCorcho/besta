@@ -1,11 +1,12 @@
 import os
 import sys
 import argparse
-from besta.io import Reader
+from besta.io import Reader, _select_parameter_keys
 from besta.logging import setup_logging
 from besta.postprocess import (
     summarize_results, to_physical_table,
-    reconstruct_sfh_from_file, reconstruct_sfh_from_reader, parse_burn_in)
+    reconstruct_sfh_from_file, reconstruct_sfh_from_reader, parse_burn_in,
+    _burn_in_steps, _sampler_walkers)
 
 def _burn_in(text):
     try:
@@ -76,10 +77,12 @@ def parser_setup():
     sfh.add_argument("--sfh_module", type=str, default=None,
                      help="Pipeline module defining the SFH (default: the first one)")
     sfh.add_argument("--burn_in", type=_burn_in, default="auto",
-                     help="Samples to discard per walker: 'auto' (estimated from "
+                     help="Samples to discard per walker, for the SFH reconstruction and "
+                          "the summary statistics: 'auto' (estimated from "
                           "the autocorrelation time), a number of steps (>= 1), a "
                           "fraction of the chain (in (0, 1)) or 0 for none "
-                          "(default: auto)")
+                          "(default: auto). Ignored for weighted samples (nested "
+                          "samplers: 'log_weight' column)")
     sfh.add_argument("--nwalkers", type=int, default=None,
                      help="Number of walkers, used with --burn_in (default: read from "
                           "the sampler configuration, else 1)")
@@ -153,12 +156,27 @@ def make_chain_plots(file, from_ini=False):
     reader = load_reader(file, from_ini)
     pass
 
-def make_summary_statistics(file, from_ini=False, output=None):
+def make_summary_statistics(file, from_ini=False, output=None, burn_in="auto", nwalkers=None):
+    """Summary statistics of a run, written to FITS.
+
+    Weighted samples (nested samplers: 'log_weight' column) are summarised with
+    their weights; the samples of samplers with walkers (e.g. emcee) lose the
+    same burn-in as in the SFH reconstruction.
+    """
     reader = load_reader(file, from_ini)
     # Latent SFH parameters (use_transforms = T) are always summarised in
     # physical space.
     table = to_physical_table(reader)
-    results = summarize_results(table)
+    kwargs = {}
+    if "log_weight" not in table.colnames:
+        walkers = _sampler_walkers(reader.ini)
+        nwalkers = nwalkers or walkers or 1
+        steps = _burn_in_steps(table, _select_parameter_keys(table), burn_in, nwalkers,
+                               has_walkers=walkers is not None or nwalkers > 1)
+        kwargs = dict(burn_in=steps, nwalkers=nwalkers)
+        if steps:
+            pprint(f"Discarding {steps} steps per walker ({nwalkers} walkers) as burn-in")
+    results = summarize_results(table, **kwargs)
     if output is None:
         # Same default naming as the SFH reconstruction
         results_path = (reader.ini["output"]["filename"] if from_ini else file)
@@ -231,7 +249,8 @@ def main(argv=None):
     if args.make_summary_statistics:
         pprint("Creating summary statistics FITS")
         output = args.output
-        make_summary_statistics(file, from_ini, output)
+        make_summary_statistics(file, from_ini, output, burn_in=args.burn_in,
+                                nwalkers=args.nwalkers)
     if args.results_to_fits:
         pprint("Converting ASCII results file to FITS")
         convert_results_to_fits(file, from_ini, args.results_fits_output)

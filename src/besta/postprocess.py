@@ -2953,6 +2953,7 @@ def summarize_results(
     parameter_prefix: str = "--",
     posterior_key: str = "post",
     use_posterior_weights: bool = False,
+    weight_key: Optional[str] = "log_weight",
     parameter_keys: Optional[Sequence[str]] = None,
     percentiles: Sequence[float] = (0.05, 0.16, 0.5, 0.84, 0.95),
     compute_1d: bool = True,
@@ -2984,8 +2985,22 @@ def summarize_results(
         If provided, writes a JSON file with summary products.
     parameter_prefix : str
         Delimiter/prefix used in parameter names (default: "--").
+    nwalkers, burn_in : int
+        Walkers of the sampler and samples to discard at the start of each
+        walker (``"auto"``: estimated from the autocorrelation time). Ignored
+        for weighted samples (``weight_key`` column present).
     posterior_key : str
         Name of the log-posterior column (default: "post").
+    use_posterior_weights : bool
+        Weight unweighted samples by exp(post). Ignored when the table has a
+        ``weight_key`` column. Samples of MCMC samplers (e.g. emcee) are
+        already distributed as the posterior and must not be reweighted.
+    weight_key : str, optional
+        Column with the sample weights written by weighted samplers (nested
+        samplers such as nautilus write every likelihood evaluation with its
+        importance weight in "log_weight"). Columns whose name contains "log"
+        hold log-weights. If the column is missing (or ``None``), the samples
+        are equally weighted. The same convention as :func:`reconstruct_sfh`.
     parameter_keys : list of str, optional
         Explicit list of parameter columns to use. If None, selects columns
         containing parameter_prefix.
@@ -3027,6 +3042,12 @@ def summarize_results(
     keys = io._select_parameter_keys(
         table, parameter_prefix=parameter_prefix, parameter_keys=parameter_keys)
 
+    # Weighted samples (nested samplers): each row carries its own weight
+    weighted = weight_key is not None and weight_key in table.colnames
+    if weighted and burn_in != 0:
+        logger.warning("Ignoring burn_in: the samples are weighted ('%s').", weight_key)
+        burn_in = 0
+
     if burn_in == "auto":
         if nwalkers is None:
             raise ValueError("nwalkers must be provided for auto burn-in estimation.")
@@ -3058,13 +3079,27 @@ def summarize_results(
         raise ValueError("No finite samples after masking posterior/parameters.")
 
     logpost = logpost_all[mask]
-    # Stabilized weights from log-posterior
     max_lp = np.max(logpost)
-    if use_posterior_weights:
+    if weighted:
+        # Importance weights of the sampler: the rows are weighted points, not
+        # posterior draws (stabilised when they are log-weights)
+        logger.info("Using column '%s' as sample weights.", weight_key)
+        if use_posterior_weights:
+            logger.warning("use_posterior_weights ignored: the samples are weighted ('%s').",
+                           weight_key)
+        w = _as_float_array(table[weight_key])[mask]
+        if "log" in weight_key.lower():
+            w = np.exp(w - np.nanmax(w))
+        w = normalize_weights(w)
+        extra_info["weights"] = weight_key
+    elif use_posterior_weights:
+        # Stabilized weights from log-posterior
         w = np.exp(logpost - max_lp)
         w = normalize_weights(w)
+        extra_info["weights"] = posterior_key
     else:
         w = np.ones_like(logpost, dtype=float)
+        extra_info["weights"] = "uniform"
     # Effective sample size
     extra_info["ess"] = effective_sample_size(w)
     # Samples matrix (D, N)
