@@ -2331,18 +2331,33 @@ class SFHReconstruction:
             Passed to :meth:`_plot_percentiles`.
         """
         n_rows = 3 if self.metallicity is not None else 2
-        fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=True)
+        fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=False,
+                                 constrained_layout=True)
         ax = axes[0]
         # symlog: the first bin starts at a lookback time of 0
-        ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
+        # ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
         self._plot_percentiles("mass_fraction", ax=ax, **kwargs)
         ax.set_ylabel("Mass fraction")
         mass_label = self._stellar_mass_label()
         if mass_label:
             ax.text(0.97, 0.95, mass_label, transform=ax.transAxes,
                     ha="right", va="top", fontsize="small")
+        ax.set_xlabel("Lookback time [Gyr]")
 
-        ax = axes[1]
+        # Metallicity
+        if self.metallicity is not None:
+            ax = axes[1]
+            ax.sharex(axes[0])
+            self._plot_percentiles("metallicity", ax=ax, **kwargs)
+            ax.set_yscale("log")
+            ylims = list(ax.get_ylim())
+            ylims[0] = max(ylims[0], 1e-4)
+            ylims[1] = min(ylims[1], 1e-1)
+            ax.set_ylim(*ylims)
+            ax.set_ylabel("ISM metallicity [Z]")
+        # sSFR
+        ax = axes[2 if self.metallicity is not None else 1]
+        ax.set_xscale("symlog", linthresh=1e-2, linscale=0.3)
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
         tau_handle = (self._plot_ssfr_tau(ax) if show_taus and self.taus.size
                       else None)
@@ -2353,16 +2368,6 @@ class SFHReconstruction:
         ax.set_ylim(*ylim)
         ax.set_ylabel("sSFR [1/yr]")
 
-        if self.metallicity is not None:
-            ax = axes[2]
-            self._plot_percentiles("metallicity", ax=ax, **kwargs)
-            ax.set_yscale("log")
-            ylims = list(ax.get_ylim())
-            ylims[0] = max(ylims[0], 1e-4)
-            ylims[1] = min(ylims[1], 1e-1)
-            ax.set_ylim(*ylims)
-            ax.set_ylabel("Metallicity [Z]")
-
         # Shared x axis and bands: one x label and one legend
         for ax in axes[:-1]:
             ax.set_xlabel("")
@@ -2371,8 +2376,9 @@ class SFHReconstruction:
             if legend is not None:
                 legend.remove()
         if tau_handle is not None:
-            axes[1].legend(handles=[tau_handle], frameon=False, fontsize="small",
-                           loc="upper left")
+            axes[-1].legend(
+                handles=[tau_handle], frameon=False, fontsize="small",
+                loc="lower left")
         axes[-1].set_xlabel("Lookback time [Gyr]")
         fig.tight_layout()
         return fig, axes
