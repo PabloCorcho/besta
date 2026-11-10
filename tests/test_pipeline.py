@@ -125,6 +125,93 @@ def test_batch_run_all_pipelines_sequential_order(monkeypatch):
 
     assert batch.run_all_pipelines() == [100, 101, 102]
 
+
+_SSP_MODULE = """
+import json
+
+class module:
+    def __init__(self, options, alias=None):
+        section = options[alias]
+        with open(section["SaveSSPModel"], "w") as f:
+            f.write("pickle")
+        with open(section["SaveSSPModel"] + ".log", "a") as f:
+            f.write(alias + "\\n")
+"""
+
+
+def _ssp_batch_configs(tmp_path, n=3):
+    module_file = tmp_path / "ssp_module.py"
+    module_file.write_text(_SSP_MODULE)
+    return [
+        [{
+            "pipeline": {"modules": "Fit"},
+            "output": {"filename": str(tmp_path / f"out{i}")},
+            "Fit": {"file": str(module_file), "SSPModel": "X", "velscale": 70.0},
+        }]
+        for i in range(n)
+    ]
+
+
+def test_batch_ssp_pickle_is_built_once_and_loaded_by_all_jobs(tmp_path, monkeypatch):
+    jobs_seen = []
+
+    def fake_worker(job):
+        jobs_seen.append(job)
+        return {"index": job["index"], "status": 0}
+
+    monkeypatch.setattr(pipeline_module, "_run_main_pipeline_job", fake_worker)
+    configs = _ssp_batch_configs(tmp_path)
+    pickle_path = tmp_path / "sub" / "ssp.pkl"
+    batch = BatchPipeline(pipeline_configuration_list=configs, n_jobs_parallel=1,
+                          ssp_pickle=str(pickle_path))
+
+    assert batch.run_all_pipelines() == [0, 0, 0]
+    assert pickle_path.is_file()
+    # The module was initialised once, with the save option
+    assert (tmp_path / "sub" / "ssp.pkl.log").read_text().split() == ["Fit"]
+    # Every job loads the pickle, the stored configurations are untouched
+    for job in jobs_seen:
+        assert job["pipeline_config"][0]["Fit"]["SSPModelFromPickle"] == str(pickle_path)
+    assert all("SSPModelFromPickle" not in c[0]["Fit"] for c in configs)
+    assert all("SaveSSPModel" not in c[0]["Fit"] for c in configs)
+
+
+def test_batch_ssp_pickle_existing_file_is_reused(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline_module, "_run_main_pipeline_job",
+                        lambda job: {"index": job["index"], "status": 0})
+    pickle_path = tmp_path / "ssp.pkl"
+    pickle_path.write_text("existing")
+    batch = BatchPipeline(pipeline_configuration_list=_ssp_batch_configs(tmp_path),
+                          n_jobs_parallel=1, ssp_pickle=str(pickle_path))
+
+    batch.run_all_pipelines()
+    assert pickle_path.read_text() == "existing"
+
+
+def test_batch_ssp_pickle_keeps_user_pickle_and_skips_other_sections(tmp_path):
+    configs = _ssp_batch_configs(tmp_path, n=1)
+    configs[0][0]["Fit"]["SSPModelFromPickle"] = "mine.pkl"
+    configs[0][0]["Photo"] = {"SSPModel": "X"}
+    batch = BatchPipeline(pipeline_configuration_list=configs,
+                          ssp_pickle=str(tmp_path / "ssp.pkl"))
+
+    job = batch._build_jobs()[0]
+    assert job["pipeline_config"][0]["Fit"]["SSPModelFromPickle"] == "mine.pkl"
+    assert "SSPModelFromPickle" not in job["pipeline_config"][0]["Photo"]
+
+
+def test_batch_ssp_pickle_errors(tmp_path):
+    with pytest.raises(ValueError, match="ini_files"):
+        BatchPipeline(ini_files=["a.ini"], ssp_pickle=str(tmp_path / "ssp.pkl"))
+
+    configs = [[{"pipeline": {"modules": "Dummy"}, "Dummy": {},
+                 "output": {"filename": "x"}}]]
+    batch = BatchPipeline(pipeline_configuration_list=configs,
+                          ssp_pickle=str(tmp_path / "ssp.pkl"))
+    with pytest.raises(ValueError, match="SSPModel"):
+        batch.run_single_pipeline(0)
+
+
 if __name__ == "__main__":
     from besta.logging import setup_logging
     setup_logging()
