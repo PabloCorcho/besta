@@ -824,6 +824,46 @@ class TestHelmertBasis(unittest.TestCase):
         np.testing.assert_allclose(sfh._helmert_basis(3), expected, atol=1e-6)
 
 
+class TestDelayedTauMassIncrements(unittest.TestCase):
+
+    def test_sum_to_one_and_match_closed_form(self):
+        x = np.array([0.0, 1e-3, 0.4, 1.0, 2.5, 8.0, 40.0, 700.0])
+        inc = sfh._delayed_tau_mass_increments(x)
+        self.assertAlmostEqual(inc.sum(), 1.0, places=12)
+        cumulative = 1 - (1 + x) * np.exp(-x)
+        np.testing.assert_allclose(inc, np.diff(cumulative), atol=1e-15)
+
+    def test_keeps_precision_at_both_ends(self):
+        # tiny increment at x << 1 and tiny increment deep in the exponential tail
+        inc = sfh._delayed_tau_mass_increments(np.array([1e-5, 2e-5, 30.0, 31.0]))
+        series = lambda x: x**2 / 2 - x**3 / 3 + x**4 / 8
+        self.assertAlmostEqual(inc[0] / (series(2e-5) - series(1e-5)), 1.0, places=9)
+        expected_tail = (1 + 30.0) * np.exp(-30.0) - (1 + 31.0) * np.exp(-31.0)
+        self.assertAlmostEqual(inc[2] / expected_tail, 1.0, places=10)
+
+
+class TestSubdivideBins(unittest.TestCase):
+
+    def test_contains_edges_and_assigns_bins(self):
+        edges = np.array([0.0, 3.0, 8.0, 10.0])
+        nodes, bin_index = sfh._subdivide_bins(edges, 4, 8)
+        self.assertEqual(nodes.size, 1 + 8 + 4 + 4)
+        self.assertEqual(bin_index.size, nodes.size - 1)
+        for edge in edges:
+            self.assertIn(edge, nodes)
+        np.testing.assert_array_equal(np.bincount(bin_index), [8, 4, 4])
+        self.assertTrue(np.all(np.diff(nodes) > 0))
+        # denser at early times in the first bin, uniform elsewhere
+        self.assertLess(np.diff(nodes)[0], np.diff(nodes)[7])
+        np.testing.assert_allclose(np.diff(nodes[8:13]), 5.0 / 4)
+
+    def test_no_subdivision_returns_the_edges(self):
+        edges = np.array([0.0, 3.0, 8.0])
+        nodes, bin_index = sfh._subdivide_bins(edges, 1)
+        np.testing.assert_array_equal(nodes, edges)
+        np.testing.assert_array_equal(bin_index, [0, 1])
+
+
 class TestHybridDelayedTauSFH(unittest.TestCase):
 
     def setUp(self):
@@ -853,8 +893,58 @@ class TestHybridDelayedTauSFH(unittest.TestCase):
         reference = sfh.DelayedTauSFH(redshift=0.05)
         reference.parse_datablock(DataBlock.from_dict({reference.sect_name: {
             "logtau": 0.3, "alpha_powerlaw": 0.0, "ism_metallicity_today": 0.02}}))
-        mass = reference.model.stellar_mass_formed(self.model.time << u.Gyr)
+        # Exact at every node of the grid, not only at the bin edges
+        mass = reference.model.stellar_mass_formed(self.model.time_grid << u.Gyr)
         np.testing.assert_allclose(table, (mass / mass[-1]).value, atol=1e-10)
+
+    def test_time_grid_contains_the_bin_edges(self):
+        grid = self.model.time_grid
+        self.assertTrue(np.all(np.diff(grid) > 0))
+        for edge in self.model.time:
+            self.assertEqual(np.sum(np.isclose(grid, edge, rtol=0, atol=1e-12)), 1)
+
+    def test_shape_inside_bins_follows_delayed_tau(self):
+        # The oldest bin used to have a constant SFR (sSFR = 1 / t for every history)
+        z = np.array([0.7, -0.4, 1.1, 0.2, -0.9])
+        logtau = 0.5
+        self._parse(z, logtau=logtau)
+        tau = 10 ** logtau
+        t = np.array([0.2, 0.5, 1.0, 2.0, 3.0]) * u.Gyr
+        self.assertLess(t[-1].value, self.model.time[1])
+        sfr = self.model.model.sfr(t).to_value(u.Msun / u.Gyr)
+        # delayed-tau shape t exp(-t / tau), up to a constant, inside the oldest bin
+        shape = t.value * np.exp(-t.value / tau)
+        ratio = sfr / shape
+        np.testing.assert_allclose(ratio, ratio.mean(), rtol=0.25)
+        # and it rises from zero, unlike a constant SFR
+        self.assertGreater(sfr[-1] / sfr[0], 3.0)
+
+    def test_oldest_bin_ssfr_depends_on_the_history(self):
+        t = [1.0, 3.0] << u.Gyr
+        ssfr = []
+        for z in (np.zeros(5), np.array([1.0, -1.0, 0.5, 0.0, 0.3])):
+            self._parse(z, logtau=0.5)
+            ssfr.append((self.model.model.sfr(t)
+                         / self.model.model.stellar_mass_formed(t)).to_value(1 / u.Gyr))
+        # not the constant-SFR value 1 / t
+        self.assertFalse(np.allclose(ssfr[0], 1 / t.value, rtol=0.1))
+
+    def test_bin_masses_unchanged_by_subdivision(self):
+        z = np.array([0.7, -0.4, 1.1, 0.2, -0.9])
+        coarse = sfh.HybridDelayedTauSFH(
+            self.lookback_bins, redshift=0.05, sfh_bin_subdivisions=1)
+        db = DataBlock.from_dict({coarse.sect_name: dict(
+            zip(coarse.sfh_bin_keys, z), logtau=0.3, alpha_powerlaw=0.0,
+            ism_metallicity_today=0.02)})
+        coarse.parse_datablock(db)
+        table_coarse = coarse.model.table_mass.to_value(u.Msun)
+        table_fine = self._parse(z, logtau=0.3)
+        edge_idx = np.searchsorted(self.model.time_grid, self.model.time - 1e-12)
+        np.testing.assert_allclose(table_fine[edge_idx], table_coarse, rtol=1e-10)
+
+    def test_invalid_subdivisions(self):
+        with self.assertRaises(ValueError):
+            sfh.HybridDelayedTauSFH([1.0, 5.0], sfh_bin_subdivisions=0)
 
     def test_build_from_options(self):
         model = sfh.build_sfh_from_options({
