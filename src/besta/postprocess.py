@@ -3162,12 +3162,22 @@ def summarize_results(
             edges, hist_pdf = histogram_pdf_1d(samples[i, :], w, bins=pdf_bins_1d)
             centers = 0.5 * (edges[:-1] + edges[1:])
             d = {"grid": centers, "edges": edges, "hist_pdf": hist_pdf}
+            mode_pdf = hist_pdf
             if kde_1d:
                 d["kde_pdf"] = kde_pdf_1d(samples[i, :], w, edges)
-                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(centers, d["kde_pdf"])
+                if np.all(np.isfinite(d["kde_pdf"])):
+                    mode_pdf = d["kde_pdf"]
+                else:
+                    # A degenerate weighted sample (e.g. n_eff ~ 1) gives a singular KDE:
+                    # locate the modes on the histogram instead.
+                    logger.warning(
+                        "KDE PDF of %s is not finite (n_eff may be ~1); "
+                        "using the histogram PDF for its modes.", nm)
+            if np.all(np.isfinite(centers)) and np.all(np.isfinite(mode_pdf)):
+                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(centers, mode_pdf)
             else:
-                bins = (edges[:-1] + edges[1:]) / 2
-                n_maxima, maxima_x, maxima_val = check_multimodal_pdf(bins, hist_pdf)
+                logger.warning("PDF of %s is not finite; no modes reported.", nm)
+                n_maxima, maxima_x, maxima_val = 0, np.empty(0), np.empty(0)
             d["n_maxima"] = n_maxima
             d["map"] = maxima_x
             d["map_values"] = maxima_val
