@@ -2444,6 +2444,13 @@ def _parse_sfh_args(value):
         return args, kwargs
     if isinstance(value, str):
         return string_to_func_args(value)
+    if isinstance(value, tuple) or (
+            isinstance(value, np.ndarray) and value.dtype.kind in "USO"):
+        # CosmoSIS options store lists of strings as (string) arrays, e.g.
+        # "C3K, alpha_fe=[0.0, 0.4]" -> array(['C3K', 'alpha_fe=[0.0, 0.4]']).
+        # Numeric arrays (e.g. the mass fractions of SFHArgs) stay one argument.
+        value = list(np.atleast_1d(value).tolist()) if isinstance(
+            value, np.ndarray) else list(value)
     if isinstance(value, list):
         for item in value:
             if isinstance(item, str):
