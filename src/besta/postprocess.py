@@ -1942,15 +1942,18 @@ _SFH_QUANTITIES = {
     "mass_fraction": ("edges", False),      # at the lookback edges
     "ssfr": ("bins", True),                 # averaged in each lookback bin
     "metallicity": ("edges", True),         # at the lookback edges
+    "alpha_fe": ("edges", False),           # [alpha/Fe] of the stars formed
     "ssfr_tau": ("taus", True),             # averaged over the last tau
     "t_formed": ("fractions", True),        # lookback time of mass fractions
     "log_stellar_mass": ("scalar", False),  # log10 of the total mass
+    "mean_alpha_fe": ("scalar", False),     # formed-mass-weighted [alpha/Fe]
 }
 _SFH_MEAN_KINDS = ("arithmetic", "geometric")
 # Arrays of the class: changing one invalidates the cached statistics
 _SFH_DATA_FIELDS = (
     "lookback_edges", "percentiles", "mass_fraction", "ssfr", "ssfr_tau", "taus",
-    "weights", "metallicity", "log_stellar_mass", "t_formed", "mass_frac_formed")
+    "weights", "metallicity", "log_stellar_mass", "t_formed", "mass_frac_formed",
+    "alpha_fe", "mean_alpha_fe")
 
 
 class SFHReconstruction:
@@ -1998,6 +2001,12 @@ class SFHReconstruction:
         limited by the resolution of the lookback grid.
     mass_frac_formed : array-like, shape (n_fractions,), optional
         Mass fractions of ``t_formed``.
+    alpha_fe : array-like, shape (n_samples, n_bins + 1), optional
+        [alpha/Fe] (dex) of the stars formed at the bin edges, for runs that
+        sample [alpha/Fe] (``alpha_fe_model`` other than ``none``).
+    mean_alpha_fe : array-like, shape (n_samples,), optional
+        Formed-mass-weighted [alpha/Fe] (dex) of each sample. Values are
+        those of the model, not clipped to the SSP [alpha/Fe] grid.
     sample_table : astropy.table.Table, optional
         Per-sample input values (SFH parameters, ``post``, weights, ...).
     meta : dict, optional
@@ -2007,7 +2016,7 @@ class SFHReconstruction:
     def __init__(self, lookback_edges, percentiles, mass_fraction, ssfr, ssfr_tau,
                  taus, weights, metallicity=None, log_stellar_mass=None,
                  t_formed=None, mass_frac_formed=None, sample_table=None,
-                 meta=None):
+                 meta=None, alpha_fe=None, mean_alpha_fe=None):
         # Caches of the summary statistics
         self._percentile_cache: Dict[Any, np.ndarray] = {}
         self._mean_cache: Dict[Any, np.ndarray] = {}
@@ -2022,6 +2031,8 @@ class SFHReconstruction:
         self.log_stellar_mass = log_stellar_mass
         self.t_formed = t_formed
         self.mass_frac_formed = mass_frac_formed
+        self.alpha_fe = alpha_fe
+        self.mean_alpha_fe = mean_alpha_fe
         self.sample_table = sample_table
         self.meta = {} if meta is None else dict(meta)
         self._validate()
@@ -2047,6 +2058,10 @@ class SFHReconstruction:
             expected["metallicity"] = (n, n_edges)
         if self.log_stellar_mass is not None:
             expected["log_stellar_mass"] = (n,)
+        if self.alpha_fe is not None:
+            expected["alpha_fe"] = (n, n_edges)
+        if self.mean_alpha_fe is not None:
+            expected["mean_alpha_fe"] = (n,)
         if (self.t_formed is None) != (self.mass_frac_formed is None):
             raise ValueError("t_formed and mass_frac_formed must be given together.")
         if self.t_formed is not None:
@@ -2090,7 +2105,8 @@ class SFHReconstruction:
         """Per-sample array of a quantity (``None`` if not available).
 
         ``name`` is one of ``mass_fraction``, ``ssfr``, ``metallicity``,
-        ``ssfr_tau``, ``t_formed`` or ``log_stellar_mass``.
+        ``alpha_fe``, ``ssfr_tau``, ``t_formed``, ``log_stellar_mass`` or
+        ``mean_alpha_fe``.
         """
         if name not in _SFH_QUANTITIES:
             raise KeyError(f"Unknown SFH quantity '{name}'; "
@@ -2208,7 +2224,8 @@ class SFHReconstruction:
             t_formed=pick(self.t_formed), mass_frac_formed=self.mass_frac_formed,
             sample_table=(None if self.sample_table is None
                           else self.sample_table[selection]),
-            meta=self.meta)
+            meta=self.meta, alpha_fe=pick(self.alpha_fe),
+            mean_alpha_fe=pick(self.mean_alpha_fe))
 
     # --- Plots ----------------------------------------------------------------
     def _plot_percentiles(self, name: str, ax=None, *, color="C0", alpha=0.25,
@@ -2219,8 +2236,8 @@ class SFHReconstruction:
         Parameters
         ----------
         name : str
-            ``"mass_fraction"`` or ``"metallicity"`` (values at the bin
-            edges, drawn as lines) or ``"ssfr"`` (bin averages, drawn as
+            ``"mass_fraction"``, ``"metallicity"`` or ``"alpha_fe"`` (values
+            at the bin edges, drawn as lines) or ``"ssfr"`` (bin averages, drawn as
             steps).
         ax : matplotlib.axes.Axes, optional
             Axes to plot on. If ``None``, a new figure and axes are created.
@@ -2298,6 +2315,13 @@ class SFHReconstruction:
                           f"({100 * quantiles[low]:g}-{100 * quantiles[high]:g}%)")
         return label
 
+    def _mean_alpha_fe_label(self) -> Optional[str]:
+        """Posterior mean of the formed-mass-weighted [alpha/Fe]."""
+        mean = self.mean_values("mean_alpha_fe")
+        if mean is None or not np.isfinite(mean):
+            return None
+        return rf"$\langle[\alpha/\mathrm{{Fe}}]\rangle_\star$: mean {float(mean):.2f}"
+
     def _plot_ssfr_tau(self, ax, *, color="k"):
         """Median and innermost percentile band of the sSFR averaged over the
         last ``tau`` (a cumulative average, drawn at ``lookback = tau``)."""
@@ -2330,9 +2354,11 @@ class SFHReconstruction:
         **kwargs
             Passed to :meth:`_plot_percentiles`.
         """
-        n_rows = 3 if self.metallicity is not None else 2
+        n_rows = (2 + (self.metallicity is not None)
+                  + (self.alpha_fe is not None))
         fig, axes = plt.subplots(n_rows, 1, figsize=figsize, sharex=False,
                                  constrained_layout=True)
+        row = 1
         ax = axes[0]
         # symlog: the first bin starts at a lookback time of 0
         # ax.set_xscale("symlog", linthresh=1e-3, linscale=0.5)
@@ -2346,7 +2372,8 @@ class SFHReconstruction:
 
         # Metallicity
         if self.metallicity is not None:
-            ax = axes[1]
+            ax = axes[row]
+            row += 1
             ax.sharex(axes[0])
             self._plot_percentiles("metallicity", ax=ax, **kwargs)
             ax.set_yscale("log")
@@ -2355,8 +2382,19 @@ class SFHReconstruction:
             ylims[1] = min(ylims[1], 1e-1)
             ax.set_ylim(*ylims)
             ax.set_ylabel("ISM metallicity [Z]")
+        # [alpha/Fe] of the stars formed
+        if self.alpha_fe is not None:
+            ax = axes[row]
+            row += 1
+            ax.sharex(axes[0])
+            self._plot_percentiles("alpha_fe", ax=ax, **kwargs)
+            ax.set_ylabel("[α/Fe] [dex]")
+            label = self._mean_alpha_fe_label()
+            if label:
+                ax.text(0.97, 0.95, label, transform=ax.transAxes,
+                        ha="right", va="top", fontsize="small")
         # sSFR
-        ax = axes[2 if self.metallicity is not None else 1]
+        ax = axes[row]
         ax.set_xscale("symlog", linthresh=1e-2, linscale=0.3)
         self._plot_percentiles("ssfr", ax=ax, **kwargs)
         tau_handle = (self._plot_ssfr_tau(ax) if show_taus and self.taus.size
@@ -2407,22 +2445,24 @@ class SFHReconstruction:
 
         - ``PRIMARY``:  stores metadata,
         - ``SFH_BINS``: sSFR averaged in each lookback bin,
-        - ``SFH_EDGES``: mass fraction and metallicity at the bin edges,
+        - ``SFH_EDGES``: mass fraction, metallicity and [alpha/Fe] at the
+          bin edges,
         - ``SSFR_TAU``: sSFR averaged over the last ``tau``
         - ``T_FORMED``: lookback time at which given mass fractions were formed
         - ``STELLAR_MASS``: stellar mass information.
+        - ``ALPHA_FE``: formed-mass-weighted [alpha/Fe] (runs that sample it).
     
         Every quantity has a ``*_mean`` column (weighted arithmetic mean), a
         ``*_gmean`` column (weighted geometric mean; strictly positive
         quantities only) and ``*_pNN`` columns (weighted percentiles).
         
         With ``include_samples`` it adds an extra ``SAMPLES`` HDU with a 
-        per-sample table and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC``
-        and ``SAMPLES_Z``.
+        per-sample table and the image HDUs ``SAMPLES_SSFR``, ``SAMPLES_MFRAC``,
+        ``SAMPLES_Z`` and ``SAMPLES_AFE``.
         """
         primary = fits.PrimaryHDU()
         header = primary.header
-        header["BESTASFH"] = (3, "BESTA SFH reconstruction format version")
+        header["BESTASFH"] = (4, "BESTA SFH reconstruction format version")
         header["NSAMPLES"] = (self.n_samples, "Posterior samples used")
         header["ESS"] = (float(effective_sample_size(self.weights))
                          if self.n_samples else 0.0, "Effective sample size")
@@ -2443,6 +2483,7 @@ class SFHReconstruction:
         edges = {"lookback": self.lookback_edges}
         edges.update(self._summary_table("mass_fraction", "mass_fraction"))
         edges.update(self._summary_table("metallicity", "metallicity"))
+        edges.update(self._summary_table("alpha_fe", "alpha_fe"))
         taus = {"tau": self.taus}
         taus.update(self._summary_table("ssfr_tau", "ssfr"))
 
@@ -2462,11 +2503,20 @@ class SFHReconstruction:
             mass_hdu.header["COMMENT"] = ("log_stellar_mass_* in log10(Msun); "
                                           "stellar_mass_mean in Msun")
             hdus.append(mass_hdu)
+        if self.mean_alpha_fe is not None:
+            alpha_hdu = fits.BinTableHDU(
+                Table(self._summary_table("mean_alpha_fe", "mean_alpha_fe")),
+                name="ALPHA_FE")
+            alpha_hdu.header["COMMENT"] = (
+                "Formed-mass-weighted [alpha/Fe] in dex")
+            hdus.append(alpha_hdu)
         if include_samples:
             samples = Table() if self.sample_table is None else self.sample_table.copy()
             samples["weight"] = self.weights
             if self.log_stellar_mass is not None:
                 samples["log_stellar_mass"] = self.log_stellar_mass
+            if self.mean_alpha_fe is not None:
+                samples["mean_alpha_fe"] = self.mean_alpha_fe
             for j, tau in enumerate(self.taus):
                 samples[f"ssfr_tau_{tau:g}"] = self.ssfr_tau[:, j]
             if has_t_formed:
@@ -2477,6 +2527,8 @@ class SFHReconstruction:
             hdus.append(fits.ImageHDU(self.mass_fraction, name="SAMPLES_MFRAC"))
             if self.metallicity is not None:
                 hdus.append(fits.ImageHDU(self.metallicity, name="SAMPLES_Z"))
+            if self.alpha_fe is not None:
+                hdus.append(fits.ImageHDU(self.alpha_fe, name="SAMPLES_AFE"))
         return fits.HDUList(hdus)
 
     def write_fits(self, path: str, *, include_samples: bool = False,
@@ -2511,12 +2563,15 @@ class SFHReconstruction:
                         if "STELLAR_MASS" in hdul else None)
             t_formed_tab = (Table(hdul["T_FORMED"].data)
                             if "T_FORMED" in hdul else None)
+            alpha_tab = (Table(hdul["ALPHA_FE"].data)
+                         if "ALPHA_FE" in hdul else None)
             mass_frac_formed = (np.asarray(t_formed_tab["mass_fraction"], dtype=float)
                                 if t_formed_tab is not None else None)
             has_samples = "SAMPLES" in hdul
             lookback_edges = np.asarray(edges["lookback"], dtype=float)
             taus = np.asarray(taus_tab["tau"], dtype=float)
             has_z = any(c.startswith("metallicity_") for c in edges.colnames)
+            has_afe = any(c.startswith("alpha_fe_") for c in edges.colnames)
             if has_samples:
                 samples = Table(hdul["SAMPLES"].data)
                 weights = np.asarray(samples["weight"], dtype=float)
@@ -2524,6 +2579,10 @@ class SFHReconstruction:
                 mfrac = np.asarray(hdul["SAMPLES_MFRAC"].data, dtype=float)
                 z = (np.asarray(hdul["SAMPLES_Z"].data, dtype=float)
                      if "SAMPLES_Z" in hdul else None)
+                afe = (np.asarray(hdul["SAMPLES_AFE"].data, dtype=float)
+                       if "SAMPLES_AFE" in hdul else None)
+                mean_afe = (np.asarray(samples["mean_alpha_fe"], dtype=float)
+                            if "mean_alpha_fe" in samples.colnames else None)
                 ssfr_tau = np.column_stack(
                     [np.asarray(samples[f"ssfr_tau_{tau:g}"], dtype=float) for tau in taus]
                 ) if taus.size else np.empty((weights.size, 0))
@@ -2538,6 +2597,8 @@ class SFHReconstruction:
                 ssfr = np.empty((0, lookback_edges.size - 1))
                 mfrac = np.empty((0, lookback_edges.size))
                 z = np.empty((0, lookback_edges.size)) if has_z else None
+                afe = np.empty((0, lookback_edges.size)) if has_afe else None
+                mean_afe = np.empty(0) if alpha_tab is not None else None
                 ssfr_tau = np.empty((0, taus.size))
                 log_mass = np.empty(0) if mass_tab is not None else None
                 t_formed = (np.empty((0, mass_frac_formed.size))
@@ -2550,7 +2611,8 @@ class SFHReconstruction:
                       mass_fraction=mfrac, ssfr=ssfr, ssfr_tau=ssfr_tau, taus=taus,
                       weights=weights, metallicity=z, log_stellar_mass=log_mass,
                       t_formed=t_formed, mass_frac_formed=mass_frac_formed,
-                      sample_table=samples, meta=meta)
+                      sample_table=samples, meta=meta, alpha_fe=afe,
+                      mean_alpha_fe=mean_afe)
             if not has_samples:
                 def stored(table, prefix):
                     return np.vstack([np.asarray(table[f"{prefix}_{_percentile_label(q)}"],
@@ -2567,6 +2629,8 @@ class SFHReconstruction:
                                  ("ssfr_tau", taus_tab, "ssfr")]
                 if has_z:
                     stored_tables.append(("metallicity", edges, "metallicity"))
+                if has_afe:
+                    stored_tables.append(("alpha_fe", edges, "alpha_fe"))
                 if t_formed_tab is not None:
                     stored_tables.append(("t_formed", t_formed_tab, "t_formed"))
                 for name, table, prefix in stored_tables:
@@ -2584,6 +2648,11 @@ class SFHReconstruction:
                         stored_mean(mass_tab, prefix)[0])
                     rec._mean_cache["stellar_mass"] = np.asarray(
                         mass_tab["stellar_mass_mean"][0], dtype=float)
+                if alpha_tab is not None:
+                    prefix = "mean_alpha_fe"
+                    rec._percentile_cache[prefix] = stored(alpha_tab, prefix)[:, 0]
+                    rec._mean_cache[(prefix, "arithmetic")] = np.asarray(
+                        stored_mean(alpha_tab, prefix)[0])
         return rec
 
 
@@ -2645,6 +2714,25 @@ def _burn_in_steps(table: Table, parameter_columns: Sequence[str], burn_in,
     if 0 < burn_in < 1:
         return int(burn_in * nsteps)
     return int(round(burn_in))
+
+
+def _mean_formed_alpha_fe(cem_model, time_edges) -> float:
+    """Formed-mass-weighted [alpha/Fe] (dex) of a PST CEM.
+
+    Evaluated on the cosmic-time bins ``time_edges`` with the same per-bin
+    [alpha/Fe] the SSP weights use (:meth:`alpha_fe_in_bins`); solar-scaled
+    models give 0.
+    """
+    mass = np.asarray(getattr(m := cem_model.stellar_mass_formed(time_edges),
+                              "value", m), dtype=float)
+    formed = np.clip(np.diff(mass), 0.0, None)
+    total = formed.sum()
+    if not total > 0:
+        return np.nan
+    alpha = cem_model.alpha_fe_in_bins(time_edges, formed << u.Msun)
+    if alpha is None:
+        return 0.0
+    return float(np.sum(formed * np.asarray(alpha, dtype=float)) / total)
 
 
 def reconstruct_sfh(
@@ -2837,12 +2925,16 @@ def reconstruct_sfh(
     eval_times = np.concatenate((times, today - taus))
     n_edges = edges.size
     has_z = hasattr(model.model, "ism_metallicity")
+    has_afe = getattr(model, "alpha_fe_model", "none") != "none"
+    # Fine uniform cosmic-time grid for the formed-mass-weighted [alpha/Fe]
+    afe_time_edges = np.linspace(0.0, today, 1025) << u.Gyr
 
     def as_values(x):
         return np.asarray(getattr(x, "value", x), dtype=float)
 
     # Compute the mass fractions, sSFR, formation times and metallicity of each sample
     mfrac, ssfr, zhist, ssfr_tau, t_formed, used = [], [], [], [], [], []
+    afe_hist, afe_mean = [], []
     for row in rows:
         # prepare the model parameters
         params = dict(fixed)
@@ -2870,6 +2962,10 @@ def reconstruct_sfh(
         ssfr_tau.append((1.0 - mass[n_edges:] / mass_today) / (taus * 1e9))
         if has_z:
             zhist.append(as_values(model.model.ism_metallicity(times << u.Gyr))[::-1])
+        if has_afe:
+            afe_hist.append(as_values(
+                model.model.ism_alpha_fe(times << u.Gyr))[::-1])
+            afe_mean.append(_mean_formed_alpha_fe(model.model, afe_time_edges))
         used.append(row)
 
     used = np.asarray(used, dtype=int)
@@ -2908,6 +3004,8 @@ def reconstruct_sfh(
         mass_frac_formed=mass_frac_formed,
         sample_table=sample_table,
         meta=meta,
+        alpha_fe=np.array(afe_hist).reshape(-1, n_edges) if has_afe else None,
+        mean_alpha_fe=np.array(afe_mean, dtype=float) if has_afe else None,
     )
     logger.info("Reconstructed %d SFHs of model %s on %d lookback bins.",
                 rec.n_samples, meta["sfhmodel"], n_edges - 1)
