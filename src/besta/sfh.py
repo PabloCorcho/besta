@@ -1,6 +1,7 @@
 """
 Star formation history fitting module
 """
+import functools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import lgamma
@@ -11,6 +12,7 @@ from astropy import units as u
 
 from cosmosis import DataBlock
 from pst import cem
+from pst.model import Parameter
 from pst.utils import check_unit
 from besta.config import cosmology
 from besta.logging import get_logger
@@ -580,7 +582,6 @@ class SFHBase(ABC):
 
     free_params = {}
     _defines_latent_free_params = False
-
     def __init__(self, *args, **kwargs):
         self.sect_name = kwargs.get("sect_name", "stars.sfh")
         self.redshift = kwargs.get("redshift", 0.0)
@@ -593,7 +594,6 @@ class SFHBase(ABC):
         self.sfh_smoothness_prior = self._make_sfh_smoothness_prior(
             **kwargs
         )
-
     # Prior setup
     @staticmethod
     def _make_sfh_smoothness_prior(**kwargs):
@@ -786,6 +786,133 @@ class ZPowerLawMixin:
     }
 
 
+class AlphaFeMixin:
+    """[alpha/Fe] of the stars formed, as optional free parameters.
+
+    Place it before :class:`SFHBase` in the bases of an SFH model (as with
+    :class:`ZPowerLawMixin`). The [alpha/Fe] parameters are appended to
+    ``free_params``, applied to every CEM assigned to ``self.model`` and read
+    from the DataBlock after each successful ``parse_datablock``.
+
+    Parameters
+    ----------
+    alpha_fe_model : {"none", "constant", "sfh"}, optional, default="none"
+        [alpha/Fe] of the stars formed. ``"none"``: solar-scaled, no new
+        parameters. ``"constant"``: one free ``alpha_fe`` (dex) for all stars.
+        ``"sfh"``: [alpha/Fe] coupled to the SFH through
+        :class:`pst.cem.SFHAlphaFeMixin`, with free ``tau_alpha_fe`` (Gyr),
+        ``alpha_fe_max``, ``alpha_fe_min`` and ``alpha_fe_gamma``; only for
+        models whose CEM includes that mixin (the tabular SFHs,
+        :class:`ExponentialSFH` and :class:`HybridDelayedTauSFH`). The
+        [alpha/Fe] only changes the spectra with SSP models that have an
+        [alpha/Fe] axis (e.g. BPASS).
+    """
+
+    ALPHA_FE_MODELS = ("none", "constant", "sfh")
+    # Default (lower, start, upper) prior values of the [alpha/Fe] parameters
+    ALPHA_FE_FREE_PARAMS = {
+        "none": {},
+        "constant": {"alpha_fe": [0.0, 0.2, 0.4]},
+        "sfh": {
+            "tau_alpha_fe": [0.1, 1.0, 5.0],
+            "alpha_fe_max": [0.0, 0.3, 0.4],
+            "alpha_fe_min": [0.0, 0.05, 0.3],
+            "alpha_fe_gamma": [0.3, 1.0, 3.0],
+        },
+    }
+
+    def __init_subclass__(cls, **kwargs):
+        """Read the [alpha/Fe] parameters after every ``parse_datablock``."""
+        super().__init_subclass__(**kwargs)
+        parse = cls.__dict__.get("parse_datablock")
+        if parse is None or getattr(parse, "__isabstractmethod__", False):
+            return
+
+        @functools.wraps(parse)
+        def parse_datablock(self, datablock, *args, **kw):
+            # Nested calls (super().parse_datablock) read [alpha/Fe] once,
+            # in the outermost call
+            self._parse_depth = getattr(self, "_parse_depth", 0) + 1
+            try:
+                result = parse(self, datablock, *args, **kw)
+            finally:
+                self._parse_depth -= 1
+            if self._parse_depth > 0 or self.alpha_fe_model == "none":
+                return result
+            if isinstance(result, tuple) and result and result[0] == 0:
+                return result
+            if not self._parse_alpha_fe(datablock):
+                return 0, -1e20
+            return result
+
+        cls.parse_datablock = parse_datablock
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        alpha_fe_model = str(kwargs.get("alpha_fe_model", "none")).strip().lower()
+        if alpha_fe_model not in self.ALPHA_FE_MODELS:
+            raise ValueError(
+                f"Unknown alpha_fe_model {alpha_fe_model!r}; expected one of "
+                f"{self.ALPHA_FE_MODELS}.")
+        self.alpha_fe_model = alpha_fe_model
+        alpha_params = {
+            key: list(value) for key, value
+            in self.ALPHA_FE_FREE_PARAMS[alpha_fe_model].items()}
+        self.free_params.update(alpha_params)
+        # Current values, applied to every CEM assigned to ``self.model``
+        self._alpha_fe_values = {
+            key: value[1] for key, value in alpha_params.items()}
+        if alpha_fe_model != "none":
+            logger.info("[alpha/Fe] model: %s (parameters: %s)",
+                        alpha_fe_model, ", ".join(alpha_params))
+
+    @property
+    def model(self):
+        """PST chemical evolution model."""
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        self._model = value
+        self._apply_alpha_fe()
+
+    def _apply_alpha_fe(self):
+        """Set the current [alpha/Fe] parameters on ``self.model``."""
+        mode = getattr(self, "alpha_fe_model", "none")
+        if mode == "none":
+            return
+        model = self._model
+        if mode == "sfh" and not isinstance(model, cem.SFHAlphaFeMixin):
+            raise ValueError(
+                f"alpha_fe_model='sfh' needs a CEM with SFHAlphaFeMixin; "
+                f"{type(self).__name__} uses {type(model).__name__}. Use "
+                "alpha_fe_model='constant' instead.")
+        for key, value in self._alpha_fe_values.items():
+            if getattr(model, key) is None:
+                # besta sets these values itself: keep them fixed in PST
+                setattr(model, key, Parameter(
+                    value << u.dimensionless_unscaled, fixed=True))
+            else:
+                # In-place updates of the PST Parameters
+                setattr(model, key, value)
+
+    def _parse_alpha_fe(self, datablock: DataBlock) -> bool:
+        """Read the [alpha/Fe] parameters and apply them to the model.
+
+        Returns False for invalid values (``alpha_fe_max < alpha_fe_min`` or
+        a non-positive ``tau_alpha_fe``), which the caller rejects.
+        """
+        values = {key: float(datablock[self.sect_name, key])
+                  for key in self._alpha_fe_values}
+        if self.alpha_fe_model == "sfh" and (
+                values["alpha_fe_max"] < values["alpha_fe_min"]
+                or values["tau_alpha_fe"] <= 0):
+            return False
+        self._alpha_fe_values = values
+        self._apply_alpha_fe()
+        return True
+
+
 class PieceWiseSFHMixin:
     """Piece-wise star formation history model mixin.
 
@@ -815,7 +942,7 @@ class PieceWiseSFHMixin:
         )
 
 
-class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+class FixedTimeSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
 
     Description
@@ -937,7 +1064,7 @@ class FixedTimeSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
         return 1, log_prior
 
 
-class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+class FixedTime_sSFR_SFH(ZPowerLawMixin, AlphaFeMixin, SFHBase, PieceWiseSFHMixin):
     """A SFH model with fixed time bins.
 
     Description
@@ -1104,7 +1231,7 @@ class FixedTime_sSFR_SFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
             ordered_log_remaining_mass)
 
 
-class FixedMassFracSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+class FixedMassFracSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase, PieceWiseSFHMixin):
     r"""A SFH model with fixed mass fraction bins.
 
     Description
@@ -1532,7 +1659,7 @@ class FixedMassFracSFH2D(FixedMassFracSFH):
 ################ Analytical star formation histories ###########################
 ################################################################################
 
-class ExponentialSFH(ZPowerLawMixin, SFHBase):
+class ExponentialSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     """An analytical exponentially declining SFH model.
 
     Description
@@ -1583,7 +1710,7 @@ class ExponentialSFH(ZPowerLawMixin, SFHBase):
         return 1, 0.0
 
 
-class DelayedTauSFH(ZPowerLawMixin, SFHBase):
+class DelayedTauSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     r"""An exponentially declining delayed-tau SFH model.
 
     Description
@@ -1627,7 +1754,7 @@ class DelayedTauSFH(ZPowerLawMixin, SFHBase):
         return 1, 0.0
 
 
-class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
+class DelayedTauQuenchedSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     r"""An exponentially declining delayed-tau SFH model with a quenching event.
 
     Description
@@ -1681,7 +1808,7 @@ class DelayedTauQuenchedSFH(ZPowerLawMixin, SFHBase):
         return 1, 0.0
 
 
-class LogNormalSFH(ZPowerLawMixin, SFHBase):
+class LogNormalSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     """An analytical log-normal declining SFH model.
 
     Description
@@ -1730,7 +1857,7 @@ class LogNormalSFH(ZPowerLawMixin, SFHBase):
         return 1, 0.0
 
 
-class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
+class LogNormalQuenchedSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     """An analytical log-normal declining SFH model including a quenching event.
 
     Description
@@ -1789,7 +1916,7 @@ class LogNormalQuenchedSFH(ZPowerLawMixin, SFHBase):
         )
         return 1, 0.0
 
-class BetaSFH(ZPowerLawMixin, SFHBase):
+class BetaSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase):
     """An analytical beta SFH model.
 
     Description
@@ -2021,7 +2148,7 @@ def _delayed_tau_mass_increments(x):
     return np.where(x[:-1] < 1, early, late)
 
 
-class HybridDelayedTauSFH(ZPowerLawMixin, SFHBase, PieceWiseSFHMixin):
+class HybridDelayedTauSFH(ZPowerLawMixin, AlphaFeMixin, SFHBase, PieceWiseSFHMixin):
     r"""A hybrid non-parametric model combined with a delayed-tau SFH.
 
     Description
@@ -2247,6 +2374,7 @@ _SFH_SMOOTHNESS_OPTIONS = (
 # Model options forwarded to the SFH constructor when present (name, type).
 _SFH_MODEL_OPTIONS = (
     ("sfh_interpolation", str),
+    ("alpha_fe_model", str),
     ("min_last_interval", float),
     ("min_time", float),
     ("latent_space", str),
@@ -2331,6 +2459,8 @@ def build_sfh_from_options(options, *, redshift=None, today=None):
           :class:`FixedMassFracSFH`.
         - ``latent_space`` and ``max_dlogsfr``: latent parametrisation of
           :class:`FixedMassFracSFH` with ``use_transforms``.
+        - ``alpha_fe_model``: ``none`` (default), ``constant`` or ``sfh``
+          (see :class:`SFHBase`).
         - ``redshift``: used when the ``redshift`` argument is ``None``.
     redshift : float, optional
         Redshift of the source (sets the age of the Universe at observation).
