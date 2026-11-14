@@ -725,7 +725,9 @@ class BatchPipeline(object):
                 raw_results = [_run_main_pipeline_job(job) for job in jobs]
             else:
                 with get_context("spawn").Pool(processes=n_jobs) as pool:
-                    raw_results = pool.map(_run_main_pipeline_job, jobs)
+                    # one job per task: fits differ a lot in run time, and the default chunks
+                    # (len(jobs) / (4 n_jobs) fits each) leave workers idle at the end
+                    raw_results = pool.map(_run_main_pipeline_job, jobs, chunksize=1)
 
         raw_results.sort(key=lambda x: x["index"])
         results = [item["status"] for item in raw_results]
