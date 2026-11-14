@@ -896,6 +896,23 @@ class AlphaFeMixin:
                 # In-place updates of the PST Parameters
                 setattr(model, key, value)
 
+    # [alpha/Fe] range of the SSP grid, set by the pipeline module
+    alpha_fe_range = None
+
+    def _warn_outside_alpha_fe_range(self, values):
+        """Warn once per parameter about values outside the SSP grid."""
+        lo, hi = self.alpha_fe_range
+        warned = self.__dict__.setdefault("_alpha_fe_range_warned", set())
+        for key in ("alpha_fe", "alpha_fe_max", "alpha_fe_min"):
+            value = values.get(key)
+            if value is None or key in warned or lo <= value <= hi:
+                continue
+            warned.add(key)
+            logger.warning(
+                "Sampled %s = %.3f is outside the SSP [alpha/Fe] grid "
+                "[%.2f, %.2f]: the stars are interpolated at the grid edge. "
+                "Consider restricting its prior.", key, value, lo, hi)
+
     def _parse_alpha_fe(self, datablock: DataBlock) -> bool:
         """Read the [alpha/Fe] parameters and apply them to the model.
 
@@ -908,6 +925,8 @@ class AlphaFeMixin:
                 values["alpha_fe_max"] < values["alpha_fe_min"]
                 or values["tau_alpha_fe"] <= 0):
             return False
+        if self.alpha_fe_range is not None:
+            self._warn_outside_alpha_fe_range(values)
         self._alpha_fe_values = values
         self._apply_alpha_fe()
         return True
