@@ -102,6 +102,68 @@ def ml_amplitude(data, model, inv_var):
 _FWHM_TO_SIGMA = 2.355
 
 
+def _convolve_lsf_in_chunks(ssp, lsf_sigma_pixels, safety_margin,
+                            max_rows=None):
+    """Convolve ``ssp.L_lambda`` with the LSF a block of spectra at a time.
+
+    The SSP spectra are flattened to ``(n_ssp, n_wavelength)`` whatever the
+    grid dimensions (e.g. with an [alpha/Fe] axis), and each block holds as
+    many spectra as fit in the available RAM (three copies per spectrum, as
+    in the full convolution).
+
+    Parameters
+    ----------
+    ssp : pst.SSP.SSPBase
+        SSP model, modified in place.
+    lsf_sigma_pixels : np.ndarray
+        LSF sigma per pixel.
+    safety_margin : float
+        Fractional memory margin (see :func:`besta.utils.check_array_memory`).
+    max_rows : int, optional
+        Upper limit on the spectra per block (for testing).
+    """
+    sed = ssp.L_lambda
+    n_wl = sed.shape[-1]
+    rows = sed.value.reshape(-1, n_wl)
+    bytes_per_row = 3 * n_wl * np.dtype(rows.dtype).itemsize * (1 + safety_margin)
+    n_block = int(utils.available_memory_bytes() // bytes_per_row)
+    if max_rows is not None:
+        n_block = min(n_block, max_rows)
+    if n_block < 1:
+        raise MemoryError(
+            "Not enough RAM to convolve the SSP models with the instrumental "
+            "LSF, even one spectrum at a time.")
+    _log(f"Convolving {rows.shape[0]} SSP spectra in blocks of {n_block}")
+    convolved = np.empty_like(rows)
+    for start in range(0, rows.shape[0], n_block):
+        convolved[start:start + n_block] = (
+            kinematics.convolve_variable_gaussian_kernel(
+                rows[start:start + n_block], lsf_sigma_pixels))
+    ssp.L_lambda = convolved.reshape(sed.shape) << sed.unit
+
+
+def _check_alpha_fe_setup(sfh_model, ssp):
+    """Check the [alpha/Fe] option of the SFH model against the SSP grid.
+
+    Raises a ValueError when the SFH samples [alpha/Fe] but the SSP model has
+    a single [alpha/Fe] value (the parameters would have no effect), and
+    gives the SFH model the SSP [alpha/Fe] range so that it warns about
+    sampled values outside it (they are clipped to the grid edges).
+    """
+    mode = getattr(sfh_model, "alpha_fe_model", "none")
+    if mode == "none":
+        return
+    if ssp.alpha_fe is None or ssp.n_alpha_fe < 2:
+        raise ValueError(
+            f"alpha_fe_model='{mode}' needs an SSP model with several "
+            f"[alpha/Fe] values; {ssp.name or type(ssp).__name__} has "
+            f"{ssp.n_alpha_fe}. Use an SSP with an [alpha/Fe] axis (e.g. "
+            "BPASS with all [alpha/Fe]) or alpha_fe_model='none'.")
+    grid = ssp.alpha_fe.to_value(u.dex(u.dimensionless_unscaled))
+    sfh_model.alpha_fe_range = (float(grid.min()), float(grid.max()))
+    _log("SSP [alpha/Fe] grid: ", grid)
+
+
 def _ensure_float64_sed(ssp):
     """Store the SSP SEDs as a C-contiguous float64 array (exact upcast).
 
@@ -446,9 +508,9 @@ class BaseModule(ClassModule):
             _ensure_float64_sed(ssp)
 
             self.config["ssp_model"] = ssp
+            # One row per SSP: (([alpha/Fe],) metallicity, age) flattened
             self.config["ssp_sed"] = ssp.L_lambda.value.reshape(
-            (ssp.L_lambda.shape[0] * ssp.L_lambda.shape[1],
-             ssp.L_lambda.shape[2]))
+                -1, ssp.L_lambda.shape[-1])
             self.config["ssp_wl"] = ssp.wavelength.to_value("Angstrom")
             # Grid parameters
             velscale = options["velscale"]
@@ -473,21 +535,9 @@ class BaseModule(ClassModule):
 
         # Additional arguments to be passed to the SSP model
         if options.has_value("SSPModelArgs"):
-            ssp_all_args = options["SSPModelArgs"]
-
-            if isinstance(ssp_all_args, str):
-                ssp_all_args = ssp_all_args.split(",")
-
-            ssp_args = []
-            ssp_kwargs = {}
-            for i, arg in enumerate(ssp_all_args):
-                if "=" in arg:
-                    key, value = arg.split("=", 1)
-                    value = io._parse_value(value)
-                    ssp_kwargs[key.strip()] = value
-                else:
-                    value = io._parse_value(arg)
-                    ssp_args.append(value)
+            # Same syntax as SFHArgs: commas inside brackets do not split
+            # arguments, e.g. "C3K, alpha_fe=[0.0, 0.4]"
+            ssp_args, ssp_kwargs = sfh._parse_sfh_args(options["SSPModelArgs"])
             _log("SSP Model extra arguments: ", ssp_args, ssp_kwargs)
         else:
             ssp_args = []
@@ -540,7 +590,8 @@ class BaseModule(ClassModule):
         # Resample the SED
         ssp.interpolate_sed(np.exp(lnlam_bins), method="binfrac")
         _ensure_float64_sed(ssp)
-        _log("SSP Model SED dimensions (met, age, lambda): ", ssp.L_lambda.shape)
+        _log("SSP Model SED dimensions ([alpha/Fe], met, age, lambda): ",
+             ssp.L_lambda.shape)
         # Convolve with instrumental LSF
         if "lsf" in self.config:
             _log("Convolving SSP model with instrumental LSF")
@@ -584,23 +635,9 @@ class BaseModule(ClassModule):
                 ssp.L_lambda = kinematics.convolve_variable_gaussian_kernel(
                     ssp.L_lambda, lsf_sigma_pixels)
             except MemoryError:
-                # Do a loop along metallicity axis to prevent memory overflows
                 _log("Insufficient RAM memory for full SSP SED convolution")
-                _log("Looping along metallicity axis")
-                try:
-                    utils.check_array_memory(
-                        (3,) + tuple(ssp.L_lambda.shape[1:]),
-                        dtype=ssp.L_lambda.dtype, unit='GB',
-                        safety_margin=memory["ram_safety_margin"])
-                except MemoryError as err:
-                    raise MemoryError(
-                        "Not enough RAM to convolve the SSP models with the "
-                        "instrumental LSF, even one metallicity at a time: "
-                        f"{err}") from err
-
-                for ith in range(ssp.L_lambda.shape[0]):
-                    ssp.L_lambda[ith] = kinematics.convolve_variable_gaussian_kernel(
-                        ssp.L_lambda[ith], lsf_sigma_pixels)
+                _convolve_lsf_in_chunks(ssp, lsf_sigma_pixels,
+                                        memory["ram_safety_margin"])
 
         _ensure_float64_sed(ssp)
         self.config["ssp_model"] = ssp
@@ -655,6 +692,8 @@ class BaseModule(ClassModule):
         # model
         sfh_model = sfh.build_sfh_from_options(
             options, redshift=self.config.get("redshift"))
+        if "ssp_model" in self.config:
+            _check_alpha_fe_setup(sfh_model, self.config["ssp_model"])
         self.config["sfh_model"] = sfh_model
         self.config["use_transforms"] = sfh_model.use_transforms
         if sfh_model.use_transforms:
